@@ -755,7 +755,7 @@ function wireOf(entry) {
  * exists to survive. Text commits only when it carries visible content, the
  * same bar `sawAnswer` uses, so whitespace noise cannot pin a chain either.
  */
-function commitsAnswer(chunk) {
+export function commitsAnswer(chunk) {
   if (chunk === null || typeof chunk !== 'object') return false
   if (chunk.type === 'text-delta') return typeof chunk.text === 'string' && chunk.text.trim() !== ''
   if (chunk.type === 'tool-call-delta') return true

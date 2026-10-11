@@ -11,13 +11,21 @@ const availabilityNames: Record<string, string> = {
   available: '已探测可用', listed: '清单已收录', unknown: '未探测',
   unavailable: '不可用', throttled: '限流中', 'region-blocked': '地区受限',
 }
-const sourceNames: Record<string, string> = { anonymous: '匿名模型', kilo: 'Kilo 免费池', eac: 'EAC 协付' }
+const sourceNames: Record<string, string> = { anonymous: '匿名模型', kilo: 'Kilo 免费池', eac: 'EAC 协付', combo: '模型组' }
 const channelName = (id: string) => sourceNames[id]
   ?? providers.find(provider => provider.id === id)?.name ?? id
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const capacity = (value?: number) => value && Number.isFinite(value) && value > 0
   ? value >= 1000 ? `${Number((value / 1000).toFixed(1))}K` : number(value) : '未知'
-const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'all', access: 'all' }
+// 默认视图是「已探测可用」：快捷标签组与该默认值联动，四个标签是互斥视图，
+// 各自完整决定 access × availability 两个维度（用下拉自由组合时无标签高亮）。
+const views = [
+  { id: 'all', name: '全部模型', patch: { access: 'all', availability: 'all' } },
+  { id: 'available', name: '已探测可用', patch: { access: 'all', availability: 'available' } },
+  { id: 'routable', name: '可接入', patch: { access: 'routable', availability: 'all' } },
+  { id: 'hidden', name: '未公开', patch: { access: 'hidden', availability: 'all' } },
+] as const
+const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'available', access: 'all' }
 type Operation = 'refresh' | 'probe' | 'test'
 type TestState = { model: Model; state: 'pending' | 'success' | 'error' | 'cancelled'; result?: ModelTestResult; error?: string }
 
@@ -158,9 +166,11 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       </select>
     </div>
     <div className="model-list-toolbar">
-      <div className="channel-filters" role="group" aria-label="筛选公开范围">
-        {([['all', '全部模型'], ['routable', '可接入'], ['hidden', '未公开']] as const).map(([id, name]) =>
-          <button key={id} aria-pressed={filters.access === id} onClick={() => changeFilters({ access: id })}>{name}</button>)}
+      <div className="channel-filters" role="group" aria-label="筛选模型视图">
+        {views.map(view => (
+          <button key={view.id} aria-pressed={filters.access === view.patch.access && filters.availability === view.patch.availability}
+            onClick={() => changeFilters(view.patch)}>{view.name}</button>
+        ))}
       </div>
       <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)} 个模型</span>
       {filtered && <Button variant="ghost" onClick={() => changeFilters(initialFilters)}><X size={14} />清空筛选</Button>}

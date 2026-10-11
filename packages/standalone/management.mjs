@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
+import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, normalizeCombos } from '../../src/combos.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
 import { openLoginTerminal } from './login-terminal.mjs'
@@ -61,6 +62,26 @@ function validateSettings(patch) {
     result[key] = value
   }
   return result
+}
+
+/** 模型组（combo）的表单校验：字段全部来自页面输入，按不受信任处理。 */
+function validateCombo(body) {
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (name === '' || name.length > 60) throw fail(400, '请输入 60 字以内的模型组名称')
+  const id = typeof body.id === 'string' && body.id.startsWith(COMBO_PREFIX) ? body.id : comboId(name)
+  if (id === '') throw fail(400, '模型组名称无法生成有效标识，请换一个名称')
+  const models = [...new Set((Array.isArray(body.models) ? body.models : [])
+    .map(value => String(value ?? '').trim())
+    .filter(value => value !== ''))]
+  if (models.length === 0) throw fail(400, '请至少勾选一个模型')
+  if (models.length > 32) throw fail(400, '一条链最多 32 个模型')
+  if (models.some(value => value.length > 300)) throw fail(400, '模型 ID 过长')
+  if (models.includes(id)) throw fail(400, '模型组不能包含它自己')
+  const strategy = body.strategy === undefined ? 'fallback' : body.strategy
+  if (!COMBO_STRATEGIES.includes(strategy)) throw fail(400, '调度策略必须是 fallback 或 round-robin')
+  const stickyLimit = body.stickyLimit === undefined ? 1 : Number(body.stickyLimit)
+  if (!Number.isInteger(stickyLimit) || stickyLimit < 1 || stickyLimit > 64) throw fail(400, '粘滞轮数必须是 1 到 64 的整数')
+  return { id, name, models, strategy, stickyLimit, enabled: body.enabled !== false }
 }
 
 export function managementSettings(value) {
@@ -142,7 +163,9 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
         contextWindow: entry.contextWindow ?? entry.context_window, maxOutput: entry.maxOutput ?? entry.max_tokens,
         routable: routable.has(entry.id),
-        availability: entry.channel ? 'listed' : available.results?.[entry.id]?.state ?? 'unknown',
+        // 渠道行探测前保持「清单已收录」的原状；一旦有真实探测判定（核心轮或
+        // 渠道轮写入 availability），如实显示，不再一律盖成 listed。
+        availability: available.results?.[entry.id]?.state ?? (entry.channel ? 'listed' : 'unknown'),
         ttftMs: available.results?.[entry.id]?.ttftMs ?? null,
       })),
     }
@@ -181,6 +204,21 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       json(res, 200, { ok: true }, {
         'set-cookie': `${cookieName}=${id}; Path=${PREFIX}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}`,
       })
+      return
+    }
+    if (method === 'GET' && pathname === `${PREFIX}/local-key`) {
+      // 登录前自动读取本机令牌：服务只监听回环地址，这里再限制 ①Host 必须是回环名
+      // （防 DNS rebinding 把恶意页面变成“同源”）②必须由页面自身发起（sec-fetch-site）。
+      // 满足这两点时，调用方与本机登录页等价，泄露的只是用户自己已能读到的文件内容。
+      if (req.headers['sec-fetch-site'] !== 'same-origin') throw fail(403, '仅限本机登录页面读取令牌')
+      const hostHeader = String(req.headers.host ?? '')
+      const hostname = hostHeader.startsWith('[')
+        ? hostHeader.slice(1, hostHeader.indexOf(']'))
+        : hostHeader.replace(/:\d+$/, '')
+      if (!(hostname === '127.0.0.1' || hostname === '::1' || hostname === 'localhost')) {
+        throw fail(403, '仅限回环地址访问')
+      }
+      json(res, 200, { key: stores.settings.get().forwardKey })
       return
     }
     if (!authenticated(req)) throw fail(401, '请先登录管理页面')
@@ -249,6 +287,31 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (until) sessions.set(id, until)
       bootstrap = null
       json(res, 200, { key: stores.settings.get().forwardKey })
+    } else if (method === 'GET' && pathname === `${PREFIX}/combos`) {
+      json(res, 200, { combos: normalizeCombos(stores.settings.get().combos) })
+    } else if (method === 'POST' && pathname === `${PREFIX}/combos`) {
+      const body = await readBody(req)
+      const combo = validateCombo(body)
+      const combos = normalizeCombos(stores.settings.get().combos)
+      if (typeof body.id === 'string' && body.id.startsWith(COMBO_PREFIX)) {
+        const index = combos.findIndex(row => row.id === body.id)
+        if (index < 0) throw fail(404, '要编辑的模型组不存在')
+        combos[index] = combo
+      } else {
+        if (combos.some(row => row.id === combo.id)) throw fail(409, '同名模型组已存在，请换一个名称')
+        combos.push(combo)
+      }
+      persist({ combos })
+      // 组合行由 service 层按 settings 现算，落盘即生效，无需刷新目录。
+      json(res, 200, { combos })
+    } else if (method === 'POST' && pathname === `${PREFIX}/combos/delete`) {
+      const body = await readBody(req)
+      if (typeof body.id !== 'string' || !body.id.startsWith(COMBO_PREFIX)) throw fail(400, '请提供要删除的模型组')
+      const before = normalizeCombos(stores.settings.get().combos)
+      const combos = before.filter(row => row.id !== body.id)
+      if (combos.length === before.length) throw fail(404, '模型组不存在')
+      persist({ combos })
+      json(res, 200, { combos })
     } else if (method === 'POST' && pathname === `${PREFIX}/models/refresh`) {
       const body = await readBody(req)
       if (body.probe !== undefined && typeof body.probe !== 'boolean') throw fail(400, 'probe 必须是布尔值')

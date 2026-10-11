@@ -1,4 +1,4 @@
-export type Page = 'overview' | 'models' | 'usage' | 'channels' | 'eac' | 'settings' | 'connection'
+export type Page = 'overview' | 'models' | 'combos' | 'usage' | 'channels' | 'eac' | 'settings' | 'connection'
 export interface Model {
   id: string
   name: string
@@ -10,6 +10,22 @@ export interface Model {
   maxOutput?: number
   availability?: string
   ttftMs?: number | null
+}
+export interface Combo {
+  id: string
+  name: string
+  models: string[]
+  strategy: string
+  stickyLimit: number
+  enabled: boolean
+}
+export interface ComboDraft {
+  id?: string
+  name: string
+  models: string[]
+  strategy: string
+  stickyLimit?: number
+  enabled?: boolean
 }
 export interface ModelTestResult { ok: boolean; text: string; latencyMs: number }
 export interface ServiceSettings {
@@ -71,4 +87,7 @@ export interface Host {
   testModel(model: string, signal: AbortSignal): Promise<ModelTestResult>
   refreshModels(probe: boolean, signal: AbortSignal): Promise<void>
   saveSettings(settings: ServiceSettings): Promise<ServiceSettings>
+  listCombos(): Promise<Combo[]>
+  saveCombo(combo: ComboDraft): Promise<Combo[]>
+  deleteCombo(id: string): Promise<Combo[]>
 }

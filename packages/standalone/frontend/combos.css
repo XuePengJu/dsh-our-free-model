@@ -1,0 +1,108 @@
+/* ============================================
+   模型组页面样式 — 与模型清单同一套昼/夜变量语言。
+   昼：纸面卡片 + 顺序编号；夜：深色面板 + 微光边线。
+   动画只用 transform / opacity。
+   ============================================ */
+
+.combo-browser { display: flex; flex-direction: column; gap: 16px; }
+.combo-browser .model-summary span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---- 编辑器 ---- */
+.combo-editor {
+  border: 1px solid var(--md-accent-border, #e9ddc0);
+  border-radius: 14px;
+  background: var(--md-surface-raised, #f9f5ee);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--md-shadow-card, none);
+  scroll-margin-top: 24px;
+}
+.combo-editor-head { display: flex; align-items: center; justify-content: space-between; }
+.combo-editor-head strong { font-size: 15px; color: var(--md-ink, #262320); }
+.combo-editor-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; align-items: start; }
+@media (max-width: 1080px) { .combo-editor-grid { grid-template-columns: 1fr; } }
+
+.combo-editor-form { display: flex; flex-direction: column; gap: 6px; }
+.combo-editor-form label, .combo-column-label {
+  font-size: 12px; font-weight: 600; color: var(--md-ink-tertiary, #6b6458);
+  letter-spacing: 0.02em; margin-top: 6px;
+}
+.combo-editor-form label:first-child, .combo-column-label:first-child { margin-top: 0; }
+.combo-editor-form select {
+  border: 1px solid var(--md-line-strong, #d8d2c7); border-radius: 8px;
+  background: var(--md-surface, #fffdfa); color: var(--md-ink, #262320);
+  padding: 7px 10px; font-size: 13px;
+}
+.combo-hint { font-size: 12px; color: var(--md-ink-muted, #726b5f); line-height: 1.55; margin: 2px 0 0; }
+
+.combo-chain { min-width: 0; }
+.combo-chain-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.combo-chain-list li {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--md-surface, #fffdfa);
+  border: 1px solid var(--md-line, #e9e4db); border-radius: 10px;
+  padding: 7px 10px; min-height: 42px;
+}
+.combo-order {
+  flex: none; width: 20px; height: 20px; border-radius: 999px;
+  background: var(--md-accent-tint, rgba(180, 83, 9, 0.10));
+  color: var(--md-accent, var(--amber)); font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.combo-chain-model { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: left; }
+.combo-chain-model strong { font-size: 13px; color: var(--md-ink, #262320); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-chain-model code { font-size: 11px; color: var(--md-ink-muted, #726b5f); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-chain-actions { display: inline-flex; gap: 2px; flex: none; }
+
+.combo-picker { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.combo-picker .model-search { display: flex; align-items: center; gap: 8px; color: var(--md-ink-muted, #726b5f); }
+.combo-picker-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 320px; overflow-y: auto;
+  border: 1px solid var(--md-line, #e9e4db); border-radius: 10px;
+  background: var(--md-surface, #fffdfa); padding: 6px;
+}
+.combo-picker-list button {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; padding: 6px 8px; cursor: pointer;
+  transition: background var(--md-duration-fast, 120ms) var(--md-ease-out, ease);
+}
+.combo-picker-list button:hover { background: var(--md-accent-tint, rgba(180, 83, 9, 0.10)); }
+.combo-picker-list button.picked {
+  background: var(--md-accent-tint, rgba(180, 83, 9, 0.10));
+  border-color: var(--md-accent-border, #e9ddc0);
+}
+.combo-picker-list button svg { color: var(--md-success, #177552); flex: none; }
+
+.combo-editor-error { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--md-error, #b23b4b); margin: 0; }
+.combo-editor-actions { display: flex; gap: 10px; }
+
+/* ---- 列表卡片 ---- */
+.combo-list { display: flex; flex-direction: column; gap: 12px; }
+.combo-card {
+  border: 1px solid var(--md-line, #e9e4db); border-radius: 14px;
+  background: var(--md-surface, #fffdfa);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--md-shadow-card, none);
+  transition: opacity var(--md-duration-normal, 220ms) var(--md-ease-out, ease);
+}
+.combo-card.is-disabled { opacity: 0.62; }
+.combo-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.combo-card-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.combo-card-title strong { font-size: 15px; color: var(--md-ink, #262320); }
+.combo-card-title code { font-size: 12px; color: var(--md-ink-muted, #726b5f); }
+.combo-card-tools { display: inline-flex; align-items: center; gap: 8px; }
+.combo-card .combo-chain-list { margin: 0; }
+.combo-card-actions { display: flex; align-items: center; gap: 8px; }
+.combo-card-actions .combo-delete-armed { color: var(--md-error, #b23b4b); font-weight: 600; }
+
+.combo-test { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--md-ink-secondary, #4b453d); font-variant-numeric: tabular-nums; }
+.combo-test-error { color: var(--md-error, #b23b4b); }
+
+/* ---- 夜主题微调 ---- */
+[data-theme="dark"] .combo-editor { box-shadow: none; }
+[data-theme="dark"] .combo-card { box-shadow: none; }
+[data-theme="dark"] .combo-picker-list button:hover,
+[data-theme="dark"] .combo-picker-list button.picked { background: rgba(255, 255, 255, 0.06); }

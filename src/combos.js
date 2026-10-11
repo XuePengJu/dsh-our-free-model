@@ -41,14 +41,14 @@ export function isComboEntry(entry) {
   return entry?.channel === COMBO_CHANNEL && Array.isArray(entry.combo)
 }
 
-/** `My Fast Chain` -> `combo:my-fast-chain`. */
+/** `My Fast Chain` -> `combo:my-fast-chain`；中文名按字保留：`深度求索` -> `combo:深度求索`。 */
 export function comboId(name) {
-  const slug = String(name ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+  const slug = [...String(name ?? '').trim().toLowerCase()]
+    .map(char => /\p{Letter}|\p{Number}/u.test(char) ? char : '-')
+    .join('')
+    .replace(/^-+/, '')
     .slice(0, 48)
+    .replace(/-+$/g, '')
   return slug === '' ? '' : `${COMBO_PREFIX}${slug}`
 }
 

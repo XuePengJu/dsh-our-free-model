@@ -184,6 +184,18 @@ try {
     assert.equal(response.status, 200)
     assert.equal(response.headers.get('access-control-allow-origin'), null)
   })
+  await check('登录前令牌自动读取仅限同源回环页面，跨站与伪造 Host 一律拒绝', async () => {
+    const ok = await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin' } })
+    assert.equal(ok.status, 200)
+    assert.equal((await ok.json()).key, key)
+    // 同站跨端口的本机应用（same-site）、跨站脚本、无浏览器标记的调用都不算登录页自身。
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': site } })).status, 403, site)
+    }
+    assert.equal((await request('/api/management/local-key', { cookie: '' })).status, 403)
+    // DNS rebinding：sec-fetch-site 是 same-origin 但 Host 不是回环名。
+    assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin', host: 'evil.example' } })).status, 403)
+  })
   await check('设置严格校验字段类型范围和请求体，不发生部分保存', async () => {
     for (const body of [
       null, [], { enabled: 'false' }, { enabled: false, unknown: 1 },
@@ -323,6 +335,54 @@ try {
       assert.equal((await request('/api/management/session', { cookie: '', body: { bootstrapToken: token } })).status, 401)
     } finally { Date.now = nativeNow }
     cookie = await login({ key })
+  })
+  await check('模型组接口校验输入，创建后组合行即时可拨且无需刷新目录', async () => {
+    const empty = await request('/api/management/combos')
+    assert.equal(empty.status, 200)
+    assert.deepEqual((await empty.json()).combos, [])
+    assert.equal((await request('/api/management/combos', { body: { name: 'x', models: [] } })).status, 400)
+    assert.equal((await request('/api/management/combos', { body: { name: 'x', models: [model], strategy: 'bogus' } })).status, 400)
+    assert.equal((await request('/api/management/combos', { body: { name: 'x', models: [model], stickyLimit: 0 } })).status, 400)
+    const created = await request('/api/management/combos', { body: { name: 'deepseek', models: [model, kilo] } })
+    assert.equal(created.status, 200)
+    const rows = (await created.json()).combos
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].id, 'combo:deepseek')
+    assert.deepEqual(rows[0].models, [model, kilo])
+    assert.equal((await request('/api/management/combos', { body: { name: 'deepseek', models: [model] } })).status, 409)
+    // 组合行按 settings 现算：保存后立刻出现在公开模型行，不用等服务刷新。
+    assert.ok(service.runtime.publicModelRows().some(row => row.id === 'combo:deepseek'))
+  })
+  await check('模型组支持中文名、编辑调整顺序与策略，组合推理走链首可用成员', async () => {
+    const created = await request('/api/management/combos', { body: { name: '深度求索', models: [model] } })
+    assert.equal(created.status, 200)
+    assert.ok((await created.json()).combos.some(row => row.id === 'combo:深度求索'))
+    const updated = await request('/api/management/combos', {
+      body: { id: 'combo:deepseek', name: 'deepseek', models: [kilo, model], strategy: 'round-robin', stickyLimit: 2 },
+    })
+    assert.equal(updated.status, 200)
+    const kept = (await updated.json()).combos.find(row => row.id === 'combo:deepseek')
+    assert.deepEqual(kept.models, [kilo, model])
+    assert.equal(kept.strategy, 'round-robin')
+    assert.equal(kept.stickyLimit, 2)
+    // 组合推理：请求 combo ID，链内成员按顺序真实完成一次输出。
+    const completion = await request('/v1/chat/completions', {
+      headers: { authorization: `Bearer ${key}` },
+      body: { model: 'combo:deepseek', messages: [{ role: 'user', content: 'hi' }] },
+    })
+    assert.equal(completion.status, 200)
+    const answer = await completion.json()
+    assert.equal(answer.model, 'combo:deepseek')
+    assert.ok(answer.choices?.[0]?.message?.content)
+    // 停用后拒绝拨号；删除后组合行立即从清单消失。
+    assert.equal((await request('/api/management/combos', { body: { id: 'combo:深度求索', name: '深度求索', models: [model], enabled: false } })).status, 200)
+    assert.equal((await request('/v1/chat/completions', {
+      headers: { authorization: `Bearer ${key}` },
+      body: { model: 'combo:深度求索', messages: [{ role: 'user', content: 'hi' }] },
+    })).status, 404)
+    assert.equal((await request('/api/management/combos/delete', { body: { id: 'combo:深度求索' } })).status, 200)
+    assert.ok(!service.runtime.publicModelRows().some(row => row.id === 'combo:深度求索'))
+    assert.equal((await request('/api/management/combos/delete', { body: { id: 'combo:深度求索' } })).status, 404)
   })
   await check('设置变更重新安排周期任务且 --no-refresh 保持无自动请求', async () => {
     const nativeTimeout = globalThis.setTimeout
