@@ -1,10 +1,16 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
-import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, normalizeCombos } from '../../src/combos.js'
+import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
 import { openLoginTerminal } from './login-terminal.mjs'
+import {
+  listWorkbuddyBackups,
+  restoreWorkbuddyBackup,
+  syncWorkbuddyModels,
+  writeWorkbuddyModel,
+} from './workbuddy-sync.mjs'
 
 const PREFIX = '/api/management'
 const BOOTSTRAP_MS = 10 * 60_000
@@ -151,6 +157,8 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     const state = runtime.state()
     const available = stores.availability.get()
     const routable = new Set(runtime.publicModelRows().map(entry => entry.id))
+    const disabledRaw = stores.settings.get().disabledModels
+    const disabled = new Set(Array.isArray(disabledRaw) ? disabledRaw : [])
     return {
       ...info(),
       channels: channels?.state(),
@@ -163,6 +171,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
         contextWindow: entry.contextWindow ?? entry.context_window, maxOutput: entry.maxOutput ?? entry.max_tokens,
         routable: routable.has(entry.id),
+        disabled: disabled.has(entry.id),
         // 渠道行探测前保持「清单已收录」的原状；一旦有真实探测判定（核心轮或
         // 渠道轮写入 availability），如实显示，不再一律盖成 listed。
         availability: available.results?.[entry.id]?.state ?? (entry.channel ? 'listed' : 'unknown'),
@@ -312,6 +321,49 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (combos.length === before.length) throw fail(404, '模型组不存在')
       persist({ combos })
       json(res, 200, { combos })
+    } else if (method === 'POST' && pathname === `${PREFIX}/combos/export-workbuddy`) {
+      // 幂等全量同步：启用且可解析的模型组 upsert 进 ~/.workbuddy/models.json，
+      // 顺带刷新归属单模型条目并清理 combo: 残留；详见 workbuddy-sync.mjs。
+      await readBody(req)
+      const settings = stores.settings.get()
+      const result = await syncWorkbuddyModels({
+        combos: normalizeCombos(settings.combos), catalog: runtime.catalog,
+        baseUrl: info().baseUrl, forwardKey: settings.forwardKey,
+      })
+      json(res, 200, result)
+    } else if (method === 'POST' && pathname === `${PREFIX}/models/export-workbuddy`) {
+      // 单模型 upsert：只写这一个条目，不清理任何其他条目（无二次确认）。
+      const body = await readBody(req)
+      if (typeof body.id !== 'string' || body.id === '' || body.id.length > 300) throw fail(400, '请提供有效的模型 ID')
+      const model = runtime.catalog.find(row => row.id === body.id && !isComboEntry(row))
+      if (!model) throw fail(404, '模型清单中没有这个模型')
+      const result = await writeWorkbuddyModel({
+        model, baseUrl: info().baseUrl, forwardKey: stores.settings.get().forwardKey,
+      })
+      json(res, 200, result)
+    } else if (method === 'GET' && pathname === `${PREFIX}/workbuddy/backups`) {
+      json(res, 200, { backups: await listWorkbuddyBackups() })
+    } else if (method === 'POST' && pathname === `${PREFIX}/workbuddy/backups/restore`) {
+      const body = await readBody(req)
+      if (typeof body.file !== 'string') throw fail(400, '请提供要恢复的备份文件名')
+      json(res, 200, await restoreWorkbuddyBackup(body.file))
+    } else if (method === 'POST' && pathname === `${PREFIX}/models/disabled`) {
+      // 模型开关：关闭后从公开清单、推理路由、组合链与默认视图中统一剔除，
+      // 仅保留在目录里供「已关闭」页展示与一键恢复。
+      const body = await readBody(req)
+      if (typeof body.id !== 'string' || body.id === '' || body.id.length > 300) throw fail(400, '请提供有效的模型 ID')
+      if (typeof body.disabled !== 'boolean') throw fail(400, 'disabled 必须是布尔值')
+      if (body.disabled && body.id.startsWith(COMBO_PREFIX)) throw fail(400, '模型组请在「模型组」页面启停')
+      if (body.disabled && !runtime.catalog.some(entry => entry.id === body.id)) throw fail(404, '模型清单中没有这个模型')
+      const previous = stores.settings.get().disabledModels
+      const before = Array.isArray(previous) ? previous : []
+      const disabledModels = body.disabled ? [...new Set([...before, body.id])] : before.filter(id => id !== body.id)
+      if (disabledModels.length === before.length && body.disabled) {
+        json(res, 200, { disabledModels })
+        return
+      }
+      persist({ disabledModels })
+      json(res, 200, { disabledModels })
     } else if (method === 'POST' && pathname === `${PREFIX}/models/refresh`) {
       const body = await readBody(req)
       if (body.probe !== undefined && typeof body.probe !== 'boolean') throw fail(400, 'probe 必须是布尔值')

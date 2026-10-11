@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual'
-import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, RefreshCw, Search, SlidersHorizontal, Square, X } from 'lucide-react'
+import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input } from './components/ui'
 import { filterModels } from './models-data.mjs'
@@ -17,16 +17,18 @@ const channelName = (id: string) => sourceNames[id]
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const capacity = (value?: number) => value && Number.isFinite(value) && value > 0
   ? value >= 1000 ? `${Number((value / 1000).toFixed(1))}K` : number(value) : '未知'
-// 默认视图是「已探测可用」：快捷标签组与该默认值联动，四个标签是互斥视图，
-// 各自完整决定 access × availability 两个维度（用下拉自由组合时无标签高亮）。
+// 默认视图是「已探测可用」：快捷标签组与该默认值联动，五个标签是互斥视图，
+// 各自完整决定 access × availability × disabled 三个维度（用下拉自由组合时无标签高亮）。
+// 「已关闭」单独一页：关闭的模型不在其余任何视图出现。
 const views = [
-  { id: 'all', name: '全部模型', patch: { access: 'all', availability: 'all' } },
-  { id: 'available', name: '已探测可用', patch: { access: 'all', availability: 'available' } },
-  { id: 'routable', name: '可接入', patch: { access: 'routable', availability: 'all' } },
-  { id: 'hidden', name: '未公开', patch: { access: 'hidden', availability: 'all' } },
+  { id: 'all', name: '全部模型', patch: { access: 'all', availability: 'all', disabled: 'active' } },
+  { id: 'available', name: '已探测可用', patch: { access: 'all', availability: 'available', disabled: 'active' } },
+  { id: 'routable', name: '可接入', patch: { access: 'routable', availability: 'all', disabled: 'active' } },
+  { id: 'hidden', name: '未公开', patch: { access: 'hidden', availability: 'all', disabled: 'active' } },
+  { id: 'closed', name: '已关闭', patch: { access: 'all', availability: 'all', disabled: 'only' } },
 ] as const
-const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'available', access: 'all' }
-type Operation = 'refresh' | 'probe' | 'test'
+const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'available', access: 'all', disabled: 'active' }
+type Operation = 'refresh' | 'probe' | 'test' | 'export'
 type TestState = { model: Model; state: 'pending' | 'success' | 'error' | 'cancelled'; result?: ModelTestResult; error?: string }
 
 export function Models({ summary, host, active }: { summary: Summary; host: Host; active: boolean }) {
@@ -36,6 +38,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<string>()
+  const [toggling, setToggling] = useState<string>()
+  const [exportingId, setExportingId] = useState<string>()
   const [focusedId, setFocusedId] = useState<string>()
   const scrollRef = useRef<HTMLDivElement>(null)
   const pending = useRef<AbortController | undefined>(undefined)
@@ -65,6 +69,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       pending.current?.abort()
       pending.current = undefined
       setOperation(undefined)
+      setExportingId(undefined)
       setTest(previous => previous?.state === 'pending' ? { ...previous, state: 'cancelled' } : previous)
     }
     return () => { pending.current?.abort(); pending.current = undefined }
@@ -126,13 +131,40 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     }).catch(host.error)
   }
 
+  const toggleModel = (model: Model) => {
+    if (toggling) return
+    setToggling(model.id)
+    void host.setModelDisabled(model.id, model.disabled !== true)
+      .then(() => { if (activeRef.current) setMessage(model.disabled ? `已启用 ${model.name}` : `已关闭 ${model.name}，可在「已关闭」页重新开启`) })
+      .catch(host.error)
+      .finally(() => { if (activeRef.current) setToggling(undefined) })
+  }
+
+  // 写入 WorkBuddy：幂等单模型 upsert，无二次确认；与 toggleModel 相同的卸载保护。
+  const exportModel = (model: Model) => {
+    if (operation || exportingId !== undefined) return
+    setOperation('export'); setExportingId(model.id); setError(''); setMessage('')
+    void host.writeModelToWorkbuddy(model.id)
+      .then(result => {
+        if (activeRef.current) {
+          setMessage(`已写入 WorkBuddy：${model.name}（${result.updated > 0 ? '已更新' : '首次新增'}），重启 WorkBuddy 后生效`)
+        }
+      })
+      .catch(reason => {
+        if (!activeRef.current) return
+        setError(reason instanceof Error ? (reason.name === 'TimeoutError' ? '请求超时，请重试。' : reason.message) : '操作失败，请重试。')
+      })
+      .finally(() => { if (activeRef.current) { setOperation(undefined); setExportingId(undefined) } })
+  }
+
   if (!active) return null
   const filtered = Object.entries(filters).some(([key, value]) => value !== initialFilters[key as keyof typeof initialFilters])
-  const routable = summary.catalog.filter(model => model.routable).length
+  const routable = summary.catalog.filter(model => model.routable && !model.disabled).length
+  const closed = summary.catalog.filter(model => model.disabled).length
   return <div className="model-browser" data-testid="models-ready">
     <header className="dashboard-heading">
       <div><div className="heading-eyebrow">WORKSPACE / MODELS</div><h1>模型清单</h1>
-        <p>{number(summary.catalog.length)} 个模型 · {number(routable)} 个可接入</p></div>
+        <p>{number(summary.catalog.length)} 个模型 · {number(routable)} 个可接入{closed > 0 && ` · ${number(closed)} 个已关闭`}</p></div>
       <div className="actions">
         <Button variant="outline" disabled={!!operation} onClick={() => { void run('refresh') }}>
           <RefreshCw size={15} className={operation === 'refresh' ? 'spinning' : ''} />{operation === 'refresh' ? '正在刷新' : '刷新清单'}
@@ -168,8 +200,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     <div className="model-list-toolbar">
       <div className="channel-filters" role="group" aria-label="筛选模型视图">
         {views.map(view => (
-          <button key={view.id} aria-pressed={filters.access === view.patch.access && filters.availability === view.patch.availability}
-            onClick={() => changeFilters(view.patch)}>{view.name}</button>
+          <button key={view.id} aria-pressed={filters.access === view.patch.access && filters.availability === view.patch.availability && filters.disabled === view.patch.disabled}
+            onClick={() => changeFilters(view.patch)}>{view.name}{view.id === 'closed' && closed > 0 ? ` ${closed}` : ''}</button>
         ))}
       </div>
       <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)} 个模型</span>
@@ -199,7 +231,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
           {virtual.getVirtualItems().map(item => {
             const model = models[item.index]
             const state = model.availability ?? 'unknown'
-            const disabledReason = !summary.settings.enabled ? '推理服务已暂停' : !model.routable ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
+            const disabledReason = model.disabled ? '模型已关闭，可在「已关闭」页重新开启' : !summary.settings.enabled ? '推理服务已暂停' : !model.routable ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
             return <div role="row" aria-rowindex={item.index + 2} key={item.key} data-index={item.index} data-model-id={model.id}
               className="model-table-row" ref={virtual.measureElement} style={{ transform: `translateY(${item.start}px)` }}
               onFocusCapture={() => setFocusedId(model.id)} onBlurCapture={event => {
@@ -211,17 +243,28 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
               <div role="cell" className="model-limits"><span title={model.contextWindow ? `${model.contextWindow} Token` : undefined}>{capacity(model.contextWindow)} <small>上下文</small></span>
                 <span title={model.maxOutput ? `${model.maxOutput} Token` : undefined}>{capacity(model.maxOutput)} <small>输出</small></span></div>
               <div role="cell" className="model-state"><Badge tone={state === 'available' ? 'success' : ['unavailable', 'throttled', 'region-blocked'].includes(state) ? 'warning' : 'neutral'}>
-                {availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && <small>未公开</small>}
+                {model.disabled ? '已关闭' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>未公开</small>}
                 {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}</div>
               <div role="cell" className="model-row-actions">
                 <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
                   className={copied === model.id ? 'md-copy-done' : ''}>
                   {copied === model.id ? <Check size={16} /> : <Copy size={16} />}
                 </Button>
+                <Button variant="outline" disabled={!!toggling && toggling !== model.id}
+                  title={model.disabled ? `重新启用 ${model.name}` : `关闭 ${model.name}，关闭后从清单默认视图隐藏`}
+                  aria-label={`${model.disabled ? '启用' : '关闭'}模型：${model.id}`} onClick={() => toggleModel(model)}
+                  className={toggling === model.id ? 'md-testing' : ''}>
+                  {toggling === model.id ? <LoaderCircle size={14} className="spinning" /> : <Power size={14} />}{model.disabled ? '开启' : '关闭'}
+                </Button>
                 <Button variant="outline" disabled={!!disabledReason} title={disabledReason || `测试 ${model.name}，会产生推理请求`}
                   aria-label={`测试模型：${model.id}`} onClick={() => { void run('test', model) }}
                   className={operation === 'test' && test?.model.id === model.id ? 'md-testing' : ''}>
                   {operation === 'test' && test?.model.id === model.id ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
+                </Button>
+                <Button variant="ghost" disabled={!!disabledReason} title={disabledReason || `把 ${model.name} 写入 WorkBuddy 配置`}
+                  aria-label={`写入 WorkBuddy：${model.id}`} onClick={() => exportModel(model)}
+                  className={operation === 'export' && exportingId === model.id ? 'md-testing' : ''}>
+                  {operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />}
                 </Button>
               </div>
             </div>

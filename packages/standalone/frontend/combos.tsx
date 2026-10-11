@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input, Switch } from './components/ui'
-import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary } from './types'
+import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary, WorkbuddyBackup } from './types'
 import './combos.css'
 
 const strategyNames: Record<string, string> = { fallback: '顺序降级', 'round-robin': '轮询分流' }
@@ -28,7 +28,12 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
   const [saving, setSaving] = useState(false)
   const [draftError, setDraftError] = useState('')
   const [confirming, setConfirming] = useState<string>()
+  const [copiedId, setCopiedId] = useState<string>()
   const [test, setTest] = useState<TestState>()
+  const [backupsOpen, setBackupsOpen] = useState(false)
+  const [backups, setBackups] = useState<WorkbuddyBackup[]>([])
+  const [loadingBackups, setLoadingBackups] = useState(false)
+  const [confirmingRestore, setConfirmingRestore] = useState<string>()
   const pending = useRef<AbortController | undefined>(undefined)
   const editorRef = useRef<HTMLElement>(null)
   // 编辑器打开或切换编辑目标时，把它滚进视野——编辑器渲染在页面顶部，
@@ -62,6 +67,33 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
     try { setMessage(await action()) } catch (reason) {
       setError(reason instanceof Error ? reason.message : '操作失败，请重试。')
     } finally { setSaving(false) }
+  }
+  // 幂等全量同步：无需二次确认；成功文案带 added/updated/removed/total 计数。
+  const syncWorkbuddy = () => {
+    void run(async () => {
+      const result = await host.syncCombosToWorkbuddy()
+      return `已同步到 WorkBuddy：新增 ${number(result.added)}、更新 ${number(result.updated)}、清理 ${number(result.removed)}，共 ${number(result.total)} 条。重启 WorkBuddy 后生效。`
+    })
+  }
+  // 回滚面板：展开时拉取备份列表；恢复采用与删除模型组相同的两段式确认。
+  const toggleBackups = async () => {
+    if (backupsOpen) { setBackupsOpen(false); setConfirmingRestore(undefined); return }
+    setBackupsOpen(true); setLoadingBackups(true); setError(''); setMessage('')
+    try {
+      setBackups(await host.listWorkbuddyBackups())
+    } catch (reason) {
+      setBackupsOpen(false)
+      setError(reason instanceof Error ? reason.message : '备份列表加载失败，请重试。')
+    } finally { setLoadingBackups(false) }
+  }
+  const restoreBackup = (backup: WorkbuddyBackup) => {
+    if (confirmingRestore !== backup.file) { setConfirmingRestore(backup.file); return }
+    setConfirmingRestore(undefined)
+    void run(async () => {
+      const result = await host.restoreWorkbuddyBackup(backup.file)
+      setBackupsOpen(false)
+      return `已回滚到 ${new Date(result.at).toLocaleString('zh-CN', { hour12: false })} 的备份（共 ${number(result.total)} 条），重启 WorkBuddy 后生效。`
+    })
   }
   const save = () => {
     const name = draft?.name.trim() ?? ''
@@ -131,11 +163,38 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
       <div><div className="heading-eyebrow">WORKSPACE / COMBOS</div><h1>模型组</h1>
         <p>{combos === undefined ? '正在加载…' : `${number(combos.length)} 个模型组 · 对外是一个 combo:名称 虚拟模型`}</p></div>
       <div className="actions">
+        <Button variant="outline" disabled={draft !== undefined || saving} title="把启用的模型组写入 ~/.workbuddy/models.json，供 WorkBuddy 直接调用"
+          onClick={syncWorkbuddy}>
+          <FolderOutput size={15} />同步到 WorkBuddy
+        </Button>
+        <Button variant="ghost" disabled={saving} title="回滚 WorkBuddy 配置"
+          onClick={() => { void toggleBackups() }}>
+          <History size={15} />回滚
+        </Button>
         <Button disabled={draft !== undefined || saving} onClick={() => { setDraft({ ...emptyDraft }); setDraftError(''); setMessage('') }}>
           <Plus size={15} />新建模型组
         </Button>
       </div>
     </header>
+    {backupsOpen && <section className="workbuddy-backups" aria-label="WorkBuddy 配置备份">
+      <div className="workbuddy-backups-head">
+        <strong>WorkBuddy 配置备份</strong>
+        <Button variant="ghost" size="sm" aria-label="关闭备份列表" onClick={() => { setBackupsOpen(false); setConfirmingRestore(undefined) }}><X size={14} /></Button>
+      </div>
+      {loadingBackups ? <p className="combo-hint">正在读取备份…</p>
+        : backups.length === 0 ? <p className="combo-hint">暂无备份；每次写入前会自动创建。</p>
+          : <div className="workbuddy-backups-list">{backups.map(backup =>
+            <div key={backup.file} className="workbuddy-backup-row">
+              <span>{new Date(backup.at).toLocaleString('zh-CN', { hour12: false })}</span>
+              <span>{number(backup.bytes)} B · {backup.entries === null ? '无法解析' : `${number(backup.entries)} 条`}</span>
+              <Button variant="ghost" size="sm" disabled={backup.entries === null}
+                className={confirmingRestore === backup.file ? 'combo-delete-armed' : ''}
+                onClick={() => restoreBackup(backup)}
+                onBlur={() => setConfirmingRestore(previous => previous === backup.file ? undefined : previous)}>
+                {confirmingRestore === backup.file ? '确认恢复' : '恢复'}
+              </Button>
+            </div>)}</div>}
+    </section>}
     <div className="model-summary">
       <span><Layers size={14} />把多个模型串成一条调用链：前面的模型没积分、失败或限流时自动换下一个，调用方无感。</span>
       <span>成员按你排的顺序调用，可随时调整。</span>
@@ -217,7 +276,11 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
     <div className="combo-list">
       {combos?.map(combo => <article key={combo.id} className={`combo-card${combo.enabled ? '' : ' is-disabled'}`}>
         <div className="combo-card-head">
-          <div className="combo-card-title"><strong>{combo.name}</strong><code>{combo.id}</code></div>
+          <div className="combo-card-title"><strong>{combo.name}</strong><code>{combo.id}</code>
+            <button className={`combo-copy${copiedId === combo.id ? ' is-copied' : ''}`} title={`复制 ${combo.id}`} aria-label={`复制模型组 ID：${combo.id}`}
+              onClick={() => { void host.copy(combo.id).then(() => { if (activeRef.current) { setCopiedId(combo.id); setTimeout(() => { if (activeRef.current) setCopiedId(undefined) }, 1800) } }).catch(host.error) }}>
+              {copiedId === combo.id ? <Check size={13} /> : <Copy size={13} />}
+            </button></div>
           <div className="combo-card-tools">
             <Badge tone="blue">{strategyNames[combo.strategy] ?? combo.strategy}</Badge>
             {combo.strategy === 'round-robin' && <Badge>粘滞 {combo.stickyLimit} 轮</Badge>}
@@ -259,6 +322,6 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
         <Button variant="outline" onClick={() => setDraft({ ...emptyDraft })}><Plus size={15} />新建模型组</Button>
       </div>}
     </div>
-    <p className="footnote">链内容量取所有成员的交集（上下文 / 视觉能力）；引用了暂不可用模型的链会保留成员位置，渠道恢复后自动回归。测试会向上游发送少量推理请求。</p>
+    <p className="footnote">链内容量取所有成员的交集（上下文 / 视觉能力）；引用了暂不可用模型的链会保留成员位置，渠道恢复后自动回归。测试会向上游发送少量推理请求。同步到 WorkBuddy 只写入 <code>~/.workbuddy/models.json</code> 中由本服务管理的条目（回环地址 + 本服务 API Key），不触碰其他条目；每次写入前自动备份到 <code>models.json.backups/</code>（保留最近 20 份），可在本页回滚。</p>
   </div>
 }

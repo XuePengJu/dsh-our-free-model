@@ -10,6 +10,7 @@ export interface Model {
   maxOutput?: number
   availability?: string
   ttftMs?: number | null
+  disabled?: boolean
 }
 export interface Combo {
   id: string
@@ -76,6 +77,12 @@ export interface UsageModel {
   tps?: number | null
 }
 export interface Snapshot { summary: Summary; stats: Stats }
+/** 「同步到 WorkBuddy」（模型组全量）的结果计数。 */
+export interface WorkbuddySyncResult { added: number; updated: number; removed: number; total: number }
+/** 单模型「写入 WorkBuddy」的结果计数。 */
+export interface WorkbuddyWriteResult { added: number; updated: number; total: number }
+/** WorkBuddy 配置备份条目；entries 为 null 表示备份文件无法解析（禁用恢复）。 */
+export interface WorkbuddyBackup { file: string; at: number; bytes: number; entries: number | null }
 export interface Host {
   navigate(page: Page): void
   refresh(): Promise<void>
@@ -86,8 +93,13 @@ export interface Host {
   error(error: Error): void
   testModel(model: string, signal: AbortSignal): Promise<ModelTestResult>
   refreshModels(probe: boolean, signal: AbortSignal): Promise<void>
+  setModelDisabled(id: string, disabled: boolean): Promise<void>
   saveSettings(settings: ServiceSettings): Promise<ServiceSettings>
   listCombos(): Promise<Combo[]>
   saveCombo(combo: ComboDraft): Promise<Combo[]>
   deleteCombo(id: string): Promise<Combo[]>
+  syncCombosToWorkbuddy(): Promise<WorkbuddySyncResult>
+  writeModelToWorkbuddy(id: string): Promise<WorkbuddyWriteResult>
+  listWorkbuddyBackups(): Promise<WorkbuddyBackup[]>
+  restoreWorkbuddyBackup(file: string): Promise<{ restored: boolean; total: number; at: number }>
 }

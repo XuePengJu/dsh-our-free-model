@@ -90,9 +90,19 @@
 }
 .combo-card.is-disabled { opacity: 0.62; }
 .combo-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.combo-card-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.combo-card-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .combo-card-title strong { font-size: 15px; color: var(--md-ink, #262320); }
 .combo-card-title code { font-size: 12px; color: var(--md-ink-muted, #726b5f); }
+/* 复制模型组 ID：低调的小图标按钮，复制成功后短暂变绿。 */
+.combo-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--md-ink-muted, #726b5f);
+  cursor: pointer; flex-shrink: 0;
+}
+.combo-copy:hover { background: var(--md-accent-tint, rgba(180, 120, 40, 0.1)); color: var(--md-accent, #b4782c); }
+.combo-copy:active { transform: scale(0.92); }
+.combo-copy.is-copied { color: var(--md-success, #2e7d4f); }
 .combo-card-tools { display: inline-flex; align-items: center; gap: 8px; }
 .combo-card .combo-chain-list { margin: 0; }
 .combo-card-actions { display: flex; align-items: center; gap: 8px; }
@@ -106,3 +116,25 @@
 [data-theme="dark"] .combo-card { box-shadow: none; }
 [data-theme="dark"] .combo-picker-list button:hover,
 [data-theme="dark"] .combo-picker-list button.picked { background: rgba(255, 255, 255, 0.06); }
+
+/* ---- WorkBuddy 同步与回滚面板 ---- */
+.workbuddy-backups {
+  border: 1px solid var(--md-line, #e9e4db); border-radius: 14px;
+  background: var(--md-surface, #fffdfa);
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: var(--md-shadow-card, none);
+}
+.workbuddy-backups-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.workbuddy-backups-head strong { font-size: 13px; color: var(--md-ink, #262320); }
+.workbuddy-backups-list { display: flex; flex-direction: column; }
+.workbuddy-backup-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-top: 1px solid var(--md-line, #e9e4db);
+  font-size: 12px; color: var(--md-ink-secondary, #4b453d);
+  font-variant-numeric: tabular-nums;
+}
+.workbuddy-backup-row:first-child { border-top: 0; }
+.workbuddy-backup-row .combo-delete-armed { color: var(--md-error, #b23b4b); font-weight: 600; }
+.workbuddy-backups .combo-hint { margin: 0; }
+[data-theme="dark"] .workbuddy-backups { background: rgba(255, 255, 255, 0.03); box-shadow: none; }
+[data-theme="dark"] .workbuddy-backup-row { border-top-color: rgba(255, 255, 255, 0.08); }
