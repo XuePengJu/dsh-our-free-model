@@ -261,11 +261,12 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                   className={operation === 'test' && test?.model.id === model.id ? 'md-testing' : ''}>
                   {operation === 'test' && test?.model.id === model.id ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
                 </Button>
-                <Button variant="ghost" disabled={!!disabledReason} title={disabledReason || `把 ${model.name} 写入 WorkBuddy 配置`}
+                {/* combo 虚拟行在目录里没有真实模型行可映射，写入必 404，隐藏该按钮。 */}
+                {model.channel !== 'combo' && <Button variant="ghost" disabled={!!disabledReason} title={disabledReason || `把 ${model.name} 写入 WorkBuddy 配置`}
                   aria-label={`写入 WorkBuddy：${model.id}`} onClick={() => exportModel(model)}
                   className={operation === 'export' && exportingId === model.id ? 'md-testing' : ''}>
                   {operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />}
-                </Button>
+                </Button>}
               </div>
             </div>
           })}

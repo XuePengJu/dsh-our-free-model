@@ -34,6 +34,14 @@ const DEFAULT_CONTEXT_WINDOW = 131072
 const DEFAULT_MAX_OUTPUT = 32768
 const REASONING_EFFORTS = ['high', 'xhigh']
 
+/**
+ * 带状态码的错误：管理路由的统一 catch 按 `statusCode` 原样把具体原因
+ * 回给页面（而非笼统的 500「管理操作失败」），满足「拒绝写入并明确报错」。
+ */
+function syncError(statusCode, message) {
+  return Object.assign(new Error(message), { statusCode })
+}
+
 function homePaths(homeDir) {
   const root = path.join(homeDir ?? os.homedir(), '.workbuddy')
   return {
@@ -49,7 +57,8 @@ function positiveInt(value) {
 
 function isLoopbackUrl(value) {
   try {
-    const host = new URL(String(value)).hostname
+    // WHATWG URL 对 IPv6 主机名保留方括号（'[::1]'），比较前剥掉。
+    const host = new URL(String(value)).hostname.replace(/^\[|\]$/g, '')
     return host === '127.0.0.1' || host === '::1' || host === 'localhost'
   } catch { return false }
 }
@@ -109,15 +118,15 @@ function readModelsFile(paths) {
     raw = fs.readFileSync(paths.file, 'utf8')
   } catch (error) {
     if (error?.code === 'ENOENT') return { entries: [], raw: null, exists: false }
-    throw new Error(`无法读取 WorkBuddy 配置（${paths.file}）：${error?.message ?? error}`)
+    throw syncError(500, `无法读取 WorkBuddy 配置（${paths.file}）：${error?.message ?? error}`)
   }
   let parsed
   try {
     parsed = JSON.parse(raw)
   } catch (error) {
-    throw new Error(`WorkBuddy 配置（models.json）不是有效 JSON，已拒绝写入以避免覆盖：${error?.message ?? error}`)
+    throw syncError(409, `WorkBuddy 配置（models.json）不是有效 JSON，已拒绝写入以避免覆盖：${error?.message ?? error}`)
   }
-  if (!Array.isArray(parsed)) throw new Error('WorkBuddy 配置（models.json）顶层必须是数组，已拒绝写入以避免覆盖')
+  if (!Array.isArray(parsed)) throw syncError(409, 'WorkBuddy 配置（models.json）顶层必须是数组，已拒绝写入以避免覆盖')
   return {
     entries: parsed.filter(row => row !== null && typeof row === 'object' && !Array.isArray(row)),
     raw,
@@ -132,6 +141,17 @@ function timestampStamp(date = new Date()) {
     `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
 }
 
+/**
+ * 备份文件的时序键：`[时间戳, 同秒序号]`。
+ * 字典序在这里不等于时间序——同秒的 base 文件（时间上最旧）按字典序排在所有
+ * `-N` 后缀之后（`-` 0x2D < `.` 0x2E），且 `-10` 排在 `-2` 之前，所以淘汰
+ * 必须按解析出的时间戳 + 数字后缀排序。
+ */
+function backupOrder(name) {
+  const match = /^models-(\d{8}-\d{6})(?:-(\d+))?\.json$/.exec(name)
+  return match === null ? ['', 0] : [match[1], Number(match[2] ?? 0)]
+}
+
 /** 把原文写入带时间戳的备份文件，同秒冲突追加 `-N` 后缀；随后淘汰超额旧备份。 */
 function writeBackup(raw, paths) {
   fs.mkdirSync(paths.backups, { recursive: true, mode: 0o700 })
@@ -143,7 +163,12 @@ function writeBackup(raw, paths) {
     name = `models-${stamp}-${index}.json`
   }
   fs.writeFileSync(path.join(paths.backups, name), raw, { encoding: 'utf8', mode: 0o600 })
-  const names = fs.readdirSync(paths.backups).filter(candidate => BACKUP_NAME.test(candidate)).sort()
+  const names = fs.readdirSync(paths.backups).filter(candidate => BACKUP_NAME.test(candidate))
+    .sort((left, right) => {
+      const [stampLeft, seqLeft] = backupOrder(left)
+      const [stampRight, seqRight] = backupOrder(right)
+      return stampLeft === stampRight ? seqLeft - seqRight : (stampLeft < stampRight ? -1 : 1)
+    })
   for (const stale of names.slice(0, Math.max(0, names.length - BACKUP_KEEP))) {
     try { fs.rmSync(path.join(paths.backups, stale), { force: true }) } catch { /* 下次提交再淘汰 */ }
   }
@@ -264,7 +289,7 @@ export async function listWorkbuddyBackups({ homeDir } = {}) {
     names = fs.readdirSync(paths.backups)
   } catch (error) {
     if (error?.code === 'ENOENT') return []
-    throw new Error(`无法读取 WorkBuddy 备份目录：${error?.message ?? error}`)
+    throw syncError(500, `无法读取 WorkBuddy 备份目录：${error?.message ?? error}`)
   }
   const backups = []
   for (const name of names) {
@@ -288,27 +313,27 @@ export async function listWorkbuddyBackups({ homeDir } = {}) {
  * @returns {Promise<{restored: boolean, total: number, at: number}>}
  */
 export async function restoreWorkbuddyBackup(file, { homeDir } = {}) {
-  if (typeof file !== 'string' || !BACKUP_NAME.test(file)) throw new Error('备份文件名不合法')
+  if (typeof file !== 'string' || !BACKUP_NAME.test(file)) throw syncError(400, '备份文件名不合法')
   const paths = homePaths(homeDir)
   const target = path.join(paths.backups, file)
   let raw
   try {
     raw = fs.readFileSync(target, 'utf8')
   } catch (error) {
-    throw new Error(`无法读取备份文件：${error?.message ?? error}`)
+    throw syncError(404, `无法读取备份文件：${error?.message ?? error}`)
   }
   let parsed
   try {
     parsed = JSON.parse(raw)
   } catch (error) {
-    throw new Error(`备份文件不是有效 JSON，无法恢复：${error?.message ?? error}`)
+    throw syncError(400, `备份文件不是有效 JSON，无法恢复：${error?.message ?? error}`)
   }
-  if (!Array.isArray(parsed)) throw new Error('备份文件顶层必须是数组，无法恢复')
+  if (!Array.isArray(parsed)) throw syncError(400, '备份文件顶层必须是数组，无法恢复')
   let previousRaw = null
   try {
     previousRaw = fs.readFileSync(paths.file, 'utf8')
   } catch (error) {
-    if (error?.code !== 'ENOENT') throw new Error(`无法读取当前 WorkBuddy 配置：${error?.message ?? error}`)
+    if (error?.code !== 'ENOENT') throw syncError(500, `无法读取当前 WorkBuddy 配置：${error?.message ?? error}`)
   }
   // 整文件替换：用户选择了某个历史快照，就完整还原它，不做归属过滤。
   const total = await commit(parsed, previousRaw, paths)

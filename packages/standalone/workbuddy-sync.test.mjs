@@ -96,6 +96,10 @@ test('isOwnedByOfm: malformed url / missing fields are not owned', () => {
   assert.equal(isOwnedByOfm(null), false)
 })
 
+test('isOwnedByOfm: IPv6 loopback hostname keeps its brackets in WHATWG URLs — strip before matching', () => {
+  assert.equal(isOwnedByOfm({ id: 'deepseek', url: 'http://[::1]:18900/v1', apiKey: 'ofm-abc' }), true)
+})
+
 // ---- 字段映射 ----
 
 test('buildWorkbuddyEntryFromModel: full mapping with defaults', () => {
@@ -323,10 +327,29 @@ test('backup retention: only the newest 20 survive', async () => {
   for (let index = 1; index < backups.length; index += 1) {
     assert.equal(backups[index - 1].at >= backups[index].at, true)
   }
-  // 保留的都是最后 20 次写入前的原文：最旧的备份 key 是 ofm-rotation-4。
-  const oldest = JSON.parse(fs.readFileSync(
-    path.join(home, '.workbuddy', 'models.json.backups', backups[backups.length - 1].file), 'utf8'))
-  assert.equal(oldest.find(entry => entry.id === 'a').apiKey, 'ofm-rotation-4')
+})
+
+test('backup retention: same-second -N suffixes do not break oldest-first eviction', async () => {
+  // 连续写入是否落在同一秒取决于真实时钟（原动态场景对 -N 后缀路径是碰运气），
+  // 这里改为预置同一秒的种子备份，确定性地覆盖「同秒 -N 后缀」的淘汰次序：
+  // 种子共 21 份（base + -1..-20，时间上 base 最旧），再触发一次真实写入，
+  // 应淘汰时间上最旧的 base 与 -1 两份，保留 -2..-20 与新备份。
+  const seeded = newHome()
+  fs.mkdirSync(path.join(seeded, '.workbuddy', 'models.json.backups'), { recursive: true })
+  writeModels(seeded, [])
+  const backupsDir = path.join(seeded, '.workbuddy', 'models.json.backups')
+  const stamp = '20250101-120000'
+  const seedBackup = (name, apiKey) => fs.writeFileSync(
+    path.join(backupsDir, name), `${JSON.stringify([{ id: 'seed', apiKey }], null, 2)}\n`)
+  seedBackup(`models-${stamp}.json`, 'ofm-seed-oldest')
+  for (let index = 1; index <= 20; index += 1) seedBackup(`models-${stamp}-${index}.json`, `ofm-seed-${index}`)
+  await writeWorkbuddyModel({
+    model: realModel('a'), baseUrl: BASE_URL, homeDir: seeded, forwardKey: FORWARD_KEY,
+  })
+  assert.equal(fs.existsSync(path.join(backupsDir, `models-${stamp}.json`)), false) // 最旧者被淘汰
+  assert.equal(fs.existsSync(path.join(backupsDir, `models-${stamp}-1.json`)), false)
+  assert.equal(fs.existsSync(path.join(backupsDir, `models-${stamp}-20.json`)), true) // 最新种子保留
+  assert.equal((await listWorkbuddyBackups({ homeDir: seeded })).length, 20)
 })
 
 test('listWorkbuddyBackups: unparseable backup shows entries null; foreign files ignored', async () => {
