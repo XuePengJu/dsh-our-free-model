@@ -5224,3 +5224,24 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
   margin-left: auto !important;
 }
 /* ==== 夜主题·工作空间卡片修复 END ==== */
+
+/* ==== 概览·接入卡扩展字段（接入配置一键复制 P0） ==== */
+.ov-access-fields { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 16px; }
+.ov-access-fields label { font-size: 10px; color: #7b8290; }
+.ov-access-key code { letter-spacing: 0.16em; }
+.ov-access-select {
+  border: 1px solid var(--line); border-radius: 8px;
+  background: transparent; color: inherit;
+  padding: 7px 10px; font-size: 12px; width: 100%;
+}
+.ov-access-select:focus { outline: none; border-color: var(--green); }
+.ov-access-copy { width: 100%; justify-content: center; margin-top: 6px; }
+/* CopyConfigButton 复制成功反馈：图标短暂变成功色，2 秒后还原 */
+.cfg-copied { color: var(--success-ink) !important; }
+[data-theme="dark"] .ov-access-fields label { color: var(--ink-quiet); letter-spacing: 0.08em; }
+[data-theme="dark"] .ov-access-select {
+  background: #0a0c10; border-color: rgba(255, 255, 255, 0.08); color: #e8ecf2;
+}
+[data-theme="dark"] .ov-access-select:focus { border-color: rgba(0, 208, 192, 0.45); }
+[data-theme="dark"] .cfg-copied { color: #4fe0b1 !important; }
+/* ==== 概览·接入卡扩展字段 END ==== */
