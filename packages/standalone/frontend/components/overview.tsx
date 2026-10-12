@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, Boxes, Check, CircleCheck, Copy, Handshake, Layers3, Network, RefreshCw, Terminal, Zap } from 'lucide-react'
 import { Badge, Button, Card } from './ui'
+import { resolveEndpointBase } from '../endpoint-origin'
 import '../usage.css'
 import type { Host, Snapshot } from '../types'
 
@@ -35,7 +36,7 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   ]
 
   const copyEndpoint = () => {
-    void host.copy(`${summary.baseUrl}/v1`).then(() => {
+    void host.copy(`${resolveEndpointBase(summary.baseUrl)}/v1`).then(() => {
       setCopied(true)
       if (copyTimer.current) clearTimeout(copyTimer.current)
       copyTimer.current = setTimeout(() => setCopied(false), 2000)
@@ -72,7 +73,7 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
         <div className="quick-icon ov-quick-icon"><Terminal size={20} /></div>
         <h2>API 接入</h2><p>OpenAI 兼容 · Chat Completions / Responses</p>
         <label>API BASE URL</label>
-        <div className="quick-endpoint ov-endpoint"><code>{summary.baseUrl}/v1</code>
+        <div className="quick-endpoint ov-endpoint"><code>{resolveEndpointBase(summary.baseUrl)}/v1</code>
           <Button variant="ghost" aria-label="复制 API 地址" onClick={copyEndpoint} title="复制 API 地址"
             className={copied ? 'ov-copied' : ''}>
             {copied ? <Check size={16} /> : <Copy size={16} />}
