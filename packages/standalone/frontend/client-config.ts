@@ -1,21 +1,9 @@
-// 「接入配置一键复制」的纯逻辑层：把 Base URL + API Key + 模型 ID 组装成
-// 一段 JSON，并提供默认模型 ID 的解析与本地持久化（localStorage）。
+// 客户端接入的纯逻辑层：提供默认模型 ID 的解析与本地持久化（localStorage）。
 // 不依赖 React，方便在任意入口（概览 / 模型清单 / 模型组）复用与测试。
 import type { Model } from './types'
 
 /** 默认模型 ID 在 localStorage 中的键名。 */
 export const CLIENT_MODEL_STORAGE_KEY = 'ofm:client-model'
-
-/**
- * 组装一次性复制的接入配置 JSON（驼峰字段）。
- * apiKey 为空（获取失败降级）时不写入该字段，避免把空串当真 Key 用。
- * @param baseUrl 已含 `/v1` 后缀的完整接入地址（由调用方用 resolveEndpointBase 拼好）
- * @param apiKey 用户的 API Key；获取失败传 undefined
- * @param model 模型 ID 或模型组 ID，原样写入
- */
-export function buildClientConfig(baseUrl: string, apiKey: string | undefined, model: string): string {
-  return JSON.stringify({ baseUrl, ...(apiKey ? { apiKey } : {}), model })
-}
 
 /**
  * 解析默认接入模型 ID，优先级：

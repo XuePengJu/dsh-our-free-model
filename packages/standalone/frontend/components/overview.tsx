@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, Boxes, Check, CircleCheck, Copy, Handshake, KeyRound, Layers3, Network, RefreshCw, Terminal, Zap } from 'lucide-react'
 import { Badge, Button, Card } from './ui'
-import { CopyConfigButton } from './copy-config'
 import { resolveEndpointBase } from '../endpoint-origin'
 import { loadSavedModelId, resolveDefaultModelId, saveClientModelId } from '../client-config'
 import '../usage.css'
@@ -13,6 +12,7 @@ const compact = (value: number) => value >= 1e6 ? `${(value / 1e6).toFixed(1)}M`
 export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   const [refreshing, setRefreshing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [modelCopied, setModelCopied] = useState(false)
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current) }, [])
   // 默认接入模型：初始解析一次（记住上次选择，否则优先模型组，再退首个可接入模型）。
@@ -52,6 +52,15 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   const copyApiKey = () => {
     void host.getApiKey().then(key => host.copy(key))
       .catch(() => host.error(new Error('API Key 获取失败，请先登录管理台')))
+  }
+
+  // 复制当前选中的默认模型 ID（与 copyEndpoint 同款 2 秒反馈）。
+  const copyModelId = () => {
+    void host.copy(modelId).then(() => {
+      setModelCopied(true)
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => setModelCopied(false), 2000)
+    }).catch(host.error)
   }
 
   return <div className="dashboard" data-testid="overview-ready">
@@ -99,14 +108,18 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
             </Button>
           </div>
           <label>默认模型</label>
-          <select className="ov-access-select" value={modelId} aria-label="默认接入模型"
-            onChange={event => { const id = event.target.value; setModelId(id); saveClientModelId(id) }}>
-            {routableModels.length ? routableModels.map(row =>
-              <option key={row.id} value={row.id}>{row.channel === 'combo' ? row.id : row.name}</option>)
-              : <option disabled value="">无可接入模型</option>}
-          </select>
-          <CopyConfigButton host={host} summary={summary} model={modelId} variant="default"
-            label="复制完整配置" className="ov-access-copy" disabled={!modelId} />
+          <div className="ov-access-model-row">
+            <select className="ov-access-select" value={modelId} aria-label="默认接入模型"
+              onChange={event => { const id = event.target.value; setModelId(id); saveClientModelId(id) }}>
+              {routableModels.length ? routableModels.map(row =>
+                <option key={row.id} value={row.id}>{row.channel === 'combo' ? row.id : row.name}</option>)
+                : <option disabled value="">无可接入模型</option>}
+            </select>
+            <Button variant="ghost" aria-label="复制模型 ID" title="复制模型 ID" disabled={!modelId}
+              onClick={copyModelId} className={modelCopied ? 'ov-copied' : ''}>
+              {modelCopied ? <Check size={16} /> : <Copy size={16} />}
+            </Button>
+          </div>
         </div>
         <div className="connect-steps"><span>管理会话：本机独立会话</span><span>推理鉴权：Bearer API Key</span><span>监听范围：仅回环地址</span></div>
         <Button className="connect-button" onClick={() => host.navigate('connection')}>查看接入配置 <ArrowUpRight size={16} /></Button>
