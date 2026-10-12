@@ -52,8 +52,8 @@ function App() {
     listCombos: async () => (await request<{ combos: Combo[] }>('/combos', undefined, 15000)).combos,
     saveCombo: async (combo: ComboDraft) => { const value = await request<{ combos: Combo[] }>('/combos', combo, 15000); void loadData().catch(() => {}); return value.combos },
     deleteCombo: async (id: string) => { const value = await request<{ combos: Combo[] }>('/combos/delete', { id }, 15000); void loadData().catch(() => {}); return value.combos },
-    syncCombosToWorkbuddy: async () => await request<WorkbuddySyncResult>('/combos/export-workbuddy', {}, 30000),
-    writeModelToWorkbuddy: async (id: string) => await request<WorkbuddyWriteResult>('/models/export-workbuddy', { id }, 30000),
+    syncCombosToWorkbuddy: async (baseUrl?: string) => await request<WorkbuddySyncResult>('/combos/export-workbuddy', baseUrl ? { baseUrl } : {}, 30000),
+    writeModelToWorkbuddy: async (id: string, baseUrl?: string) => await request<WorkbuddyWriteResult>('/models/export-workbuddy', { id, ...(baseUrl ? { baseUrl } : {}) }, 30000),
     listWorkbuddyBackups: async () => (await request<{ backups: WorkbuddyBackup[] }>('/workbuddy/backups', undefined, 15000)).backups,
     restoreWorkbuddyBackup: async (file: string) => await request<{ restored: boolean; total: number; at: number }>('/workbuddy/backups/restore', { file }, 30000), }), [page])
   useEffect(() => { const onUnauthorized = () => enterLogin('管理会话已失效，请重新登录'); window.addEventListener('ofm:unauthorized', onUnauthorized); return () => window.removeEventListener('ofm:unauthorized', onUnauthorized) }, [])

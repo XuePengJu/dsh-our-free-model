@@ -30,6 +30,19 @@ function fail(statusCode, message) {
   return Object.assign(new Error(message), { statusCode })
 }
 
+// WorkBuddy 写入地址：允许管理页把「当前访问的域名/IP」作为接入地址写进 ~/.workbuddy/models.json。
+// 仅接受无路径、无查询的 http(s) 源地址（origin），其余一律回退服务端绑定地址。
+function resolveWorkbuddyBase(requested, fallback) {
+  if (requested === undefined || requested === null || requested === '') return fallback
+  if (typeof requested !== 'string') throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址')
+  let parsed
+  try { parsed = new URL(requested) } catch { throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址') }
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.origin !== requested) {
+    throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址')
+  }
+  return requested
+}
+
 function matches(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string' || expected === '') return false
   const left = Buffer.from(actual)
@@ -309,21 +322,24 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     } else if (method === 'POST' && pathname === `${PREFIX}/combos/export-workbuddy`) {
       // 幂等全量同步：启用且可解析的模型组 upsert 进 ~/.workbuddy/models.json，
       // 顺带刷新归属单模型条目并清理 combo: 残留；详见 workbuddy-sync.mjs。
-      await readBody(req)
+      // 可选 body.baseUrl：把写入条目的接入地址切到管理页当前访问的域名/IP。
+      const body = await readBody(req)
       const settings = stores.settings.get()
       const result = await syncWorkbuddyModels({
         combos: normalizeCombos(settings.combos), catalog: runtime.catalog,
-        baseUrl: info().baseUrl, forwardKey: settings.forwardKey,
+        baseUrl: resolveWorkbuddyBase(body.baseUrl, info().baseUrl), forwardKey: settings.forwardKey,
       })
       json(res, 200, result)
     } else if (method === 'POST' && pathname === `${PREFIX}/models/export-workbuddy`) {
       // 单模型 upsert：只写这一个条目，不清理任何其他条目（无二次确认）。
+      // 可选 body.baseUrl：同上，跟随管理页选择的接入地址。
       const body = await readBody(req)
+      const baseUrl = resolveWorkbuddyBase(body.baseUrl, info().baseUrl)
       if (typeof body.id !== 'string' || body.id === '' || body.id.length > 300) throw fail(400, '请提供有效的模型 ID')
       const model = runtime.catalog.find(row => row.id === body.id && !isComboEntry(row))
       if (!model) throw fail(404, '模型清单中没有这个模型')
       const result = await writeWorkbuddyModel({
-        model, baseUrl: info().baseUrl, forwardKey: stores.settings.get().forwardKey,
+        model, baseUrl, forwardKey: stores.settings.get().forwardKey,
       })
       json(res, 200, result)
     } else if (method === 'GET' && pathname === `${PREFIX}/workbuddy/backups`) {
