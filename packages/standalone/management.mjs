@@ -215,21 +215,6 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       })
       return
     }
-    if (method === 'GET' && pathname === `${PREFIX}/local-key`) {
-      // 登录前自动读取本机令牌：服务只监听回环地址，这里再限制 ①Host 必须是回环名
-      // （防 DNS rebinding 把恶意页面变成“同源”）②必须由页面自身发起（sec-fetch-site）。
-      // 满足这两点时，调用方与本机登录页等价，泄露的只是用户自己已能读到的文件内容。
-      if (req.headers['sec-fetch-site'] !== 'same-origin') throw fail(403, '仅限本机登录页面读取令牌')
-      const hostHeader = String(req.headers.host ?? '')
-      const hostname = hostHeader.startsWith('[')
-        ? hostHeader.slice(1, hostHeader.indexOf(']'))
-        : hostHeader.replace(/:\d+$/, '')
-      if (!(hostname === '127.0.0.1' || hostname === '::1' || hostname === 'localhost')) {
-        throw fail(403, '仅限回环地址访问')
-      }
-      json(res, 200, { key: stores.settings.get().forwardKey })
-      return
-    }
     if (!authenticated(req)) throw fail(401, '请先登录管理页面')
     if (method === 'POST' && pathname === `${PREFIX}/logout`) {
       await readBody(req)

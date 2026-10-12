@@ -15,49 +15,18 @@ const terminalName = platform === 'windows' ? 'PowerShell' : '终端'
 type Request = <T = any>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) => Promise<T>
 const messageOf = (error: unknown) => error instanceof Error ? error.name === 'TimeoutError' ? '请求超时，请检查服务是否仍在运行。' : error.message : '请求失败，请重试。'
 
-function LoginScreen({ request, auto = true }: { request: Request; auto?: boolean }) {
+function LoginScreen({ request }: { request: Request }) {
   const [key, setKey] = useState(''), [error, setError] = useState(''), [status, setStatus] = useState(''), [busy, setBusy] = useState(false)
-  const signIn = async (value: string) => { if (busy) return; setBusy(true); setError(''); try { await request('/session', { key: value.trim() }); setKey(''); window.dispatchEvent(new CustomEvent('ofm:logged-in')) } catch (reason) { setError(messageOf(reason)) } finally { setBusy(false) } }
-  // 令牌固定保存在本机数据目录，服务监听回环地址——打开登录页时直接向本机服务
-  // 要一份自动填入并直接登录，省去用户翻文件、复制、点击的整套步骤；读取失败则保持手动流程。
-  // 注意这里刻意不走 request 助手做 local-key 读取：页面加载时 summary/stats 的 401 会连续两次
-  // enterLogin 使会话代际自增，自动填充的响应会撞上代际竞态而被误判丢弃。
-  // 自动登录仍走 request 助手，但会针对「会话已变化」的竞态做短重试，等初始探测尘埃落定。
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      try {
-        const response = await fetch('/api/management/local-key', { credentials: 'same-origin', cache: 'no-store' })
-        if (!response.ok) return
-        const value = await response.json()
-        if (!alive || typeof value?.key !== 'string' || value.key === '') return
-        setKey(value.key)
-        if (!auto) { setStatus('已自动填入本机令牌，直接点击「进入控制台」即可。'); return }
-        setBusy(true); setStatus('正在使用本机令牌自动登录…')
-        try {
-          for (let attempt = 0; ; attempt++) {
-            try { await request('/session', { key: value.key }); setKey(''); window.dispatchEvent(new CustomEvent('ofm:logged-in')); return }
-            catch (reason) {
-              if ((reason as { code?: string })?.code === 'stale-session' && attempt < 5) { await new Promise(resolve => setTimeout(resolve, 150)); continue }
-              setError(messageOf(reason)); setStatus(''); return
-            }
-          }
-        } finally { if (alive) setBusy(false) }
-      } catch { /* 读取失败保持手动流程 */ }
-    })()
-    return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
   const command = platform === 'windows'
     ? '(Get-Content -LiteralPath "$env:USERPROFILE\\.our-free-model\\settings.json" -Raw -Encoding UTF8 | ConvertFrom-Json).forwardKey | Set-Clipboard'
     : platform === 'macos'
       ? `node -e 'const fs = require("node:fs"); const {execFileSync} = require("node:child_process"); const key = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).forwardKey; if (typeof key !== "string" || !key.trim()) throw new Error("missing login token"); execFileSync("/usr/bin/pbcopy", [], {input: key});' "$HOME/.our-free-model/settings.json"`
       : `node -e 'const fs = require("node:fs"); const key = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).forwardKey; if (typeof key !== "string" || !key.trim()) throw new Error("missing login token"); process.stdout.write(key + "\\n");' "$HOME/.our-free-model/settings.json"`
-  const submit = async (event: FormEvent) => { event.preventDefault(); await signIn(key) }
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (busy) return; setBusy(true); setError(''); try { await request('/session', { key: key.trim() }); setKey(''); window.dispatchEvent(new CustomEvent('ofm:logged-in')) } catch (reason) { setError(messageOf(reason)) } finally { setBusy(false) } }
   const openTerminal = async () => { if (platform === 'unsupported' || busy) return; setBusy(true); setStatus(`正在本机打开${terminalName}…`); try { await request('/login/terminal', {}, 15000); setStatus(`已请求打开${terminalName}。窗口提示复制成功后，回到这里粘贴令牌。`); document.getElementById('login-key')?.focus() } catch (reason) { setStatus(`${messageOf(reason)}。可以展开下方的手动获取说明。`) } finally { setBusy(false) } }
   const copyCommand = async () => { try { await navigator.clipboard.writeText(command); setStatus(`命令已复制。在${terminalName}执行后，回到这里粘贴令牌。`) } catch { const input = document.getElementById('login-command') as HTMLTextAreaElement | null; input?.focus(); input?.select(); setStatus(`浏览器未允许复制，已选中命令，请按 ${platform === 'macos' ? 'Command+C' : 'Ctrl+C'} 手动复制。`) } }
   return <section id="login-screen" className="login-shell" data-testid="login-screen"><div className="login-card login-card-enter"><span className="login-card-glow" aria-hidden="true" /><div className="brand-mark" aria-hidden="true">ofm<span>.</span></div>
-    <span className="eyebrow">OUR FREE MODEL / LOCAL CONSOLE</span><h1>连接你的本地服务</h1><p>已自动使用本机令牌登录；如退出或失败，可在此直接进入或改用一次性链接。</p>
+    <span className="eyebrow">OUR FREE MODEL / LOCAL CONSOLE</span><h1>连接你的本地服务</h1><p>使用启动时打印的一次性链接，或输入保存在本机的登录令牌。</p>
     <form id="login-form" onSubmit={event => { void submit(event) }}><label htmlFor="login-key">登录令牌（API Key）</label><input id="login-key" name="key" type="password" autoComplete="off" placeholder="ofm-…" required value={key} onChange={event => setKey(event.target.value)} /><button className={"primary" + (busy ? " is-busy" : "")} type="submit" disabled={busy}>{busy && <span className="ui-spinner" aria-hidden="true" />}<span className="login-submit-label">进入控制台</span> <span aria-hidden="true">→</span></button></form>
     {error && <p id="login-error" role="alert" className="error login-error-enter">{error}</p>}<div className="login-help"><h2>没有令牌？从本机获取</h2><p id="login-terminal-help">{platform === 'unsupported' ? '当前系统不支持自动打开终端，请展开下方说明手动获取令牌。' : `点击下方按钮，会打开${terminalName}并将当前服务的令牌复制到剪贴板。回来粘贴到上方即可。`}</p>
       <button id="login-terminal" className="secondary" type="button" data-login-platform={platform} disabled={platform === 'unsupported' || busy} onClick={() => void openTerminal()}>打开{platform === 'windows' ? ' PowerShell ' : '终端'}获取令牌 ↗</button><p id="login-help-status" role="status">{status}</p><details><summary>手动获取与其他系统</summary><p>默认位置：用户目录下的 <code>.our-free-model/settings.json</code>，取 <code>forwardKey</code> 字段。</p><label id="login-command-label" htmlFor="login-command">获取令牌命令（默认目录）</label><textarea id="login-command" readOnly rows={4} spellCheck={false} value={command} /><button id="copy-login-command" className="text-button" type="button" onClick={() => void copyCommand()}>复制获取令牌命令</button></details></div><small>登录仅用于本机管理。会话在 8 小时后或服务重启后失效。</small></div></section>
@@ -75,7 +44,7 @@ function LazyPage({ name, snapshot, host }: { name: 'models' | 'usage' | 'settin
 }
 function App() {
   const [mode, setMode] = useState<'loading' | 'login' | 'ready'>('loading'), [snapshot, setSnapshot] = useState<Snapshot>(), [page, setPage] = useState<Page>('overview'), [notice, setNotice] = useState(''), [error, setError] = useState('')
-  const generation = useRef(0), loading = useRef<Promise<void> | undefined>(undefined), authenticated = useRef(false), settingsRevision = useRef(0), loggedOut = useRef(false)
+  const generation = useRef(0), loading = useRef<Promise<void> | undefined>(undefined), authenticated = useRef(false), settingsRevision = useRef(0)
   const enterLogin = (reason = '') => { generation.current++; authenticated.current = false; setSnapshot(undefined); setError(reason); setNotice(''); setMode('login') }
   const request: Request = async (path, body, timeoutMs = 10000, signal) => { const current = generation.current; const response = await fetch(API + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) }); const value = await response.json(); if (!response.ok) { const reason = Object.assign(new Error(value.error ?? `请求失败（${response.status}）`), { status: response.status }); if (response.status === 401 && path !== '/session') enterLogin(reason.message); throw reason } if (current !== generation.current) throw Object.assign(new Error('管理会话已变化，请重新操作。'), { code: 'stale-session' }); return value }
   const loadData = async () => { if (loading.current) return loading.current; const current = generation.current, revision = settingsRevision.current; loading.current = Promise.all([request('/summary'), request('/stats')]).then(([summary, stats]) => { if (current !== generation.current) return; setSnapshot(previous => ({ summary: revision !== settingsRevision.current && previous ? { ...summary, settings: previous.summary.settings } : summary, stats })); authenticated.current = true; setMode('ready'); setError('') }).finally(() => { loading.current = undefined }); return loading.current }
@@ -92,7 +61,7 @@ function App() {
   useEffect(() => { if (mode !== 'ready') return; const timer = window.setInterval(() => { if (!document.hidden) void loadData().catch(reason => setError(messageOf(reason))) }, 15000); return () => window.clearInterval(timer) }, [mode])
   const content: ReactNode = snapshot && page === 'overview' ? <Overview {...snapshot} host={host} /> : snapshot && page === 'connection' ? <Connection summary={snapshot.summary} host={host} active /> : snapshot && (page === 'channels' || page === 'eac') ? <ChannelMount kind={page} summary={{ ...snapshot.summary, reload: () => { void loadData() } }} /> : null
   if (mode === 'loading') return <LoadingScreen />
-  if (mode === 'login') return <LoginScreen request={async (...args) => { const result = await request(...args); if (args[0] === '/session') await loadData(); return result }} auto={!loggedOut.current} />
+  if (mode === 'login') return <LoginScreen request={async (...args) => { const result = await request(...args); if (args[0] === '/session') await loadData(); return result }} />
   return <div id="app" className="app-shell"><aside className="sidebar"><Sidebar page={page} summary={snapshot?.summary} host={host} /></aside><main><header className="topbar"><Topbar page={page} summary={snapshot?.summary} /></header>{snapshot?.summary.networkMode === 'fixture' && <div className="notice test-mode-notice notice-enter" role="alert">当前为本机替身测试模式：账号、模型回答与额度均为测试数据。</div>}{notice && <div className="notice notice-enter" role="status">{notice}<button className="text-button" onClick={() => setNotice('')}>关闭</button></div>}{error && <div className="notice error-notice notice-enter" role="alert"><AlertCircle size={16} /><span>{error}</span><button className="text-button" onClick={() => { setError(''); void loadData() }}>重试</button></div>}<section className="page" key={page}>{content}{snapshot && page === 'models' && <LazyPage name="models" snapshot={snapshot} host={host} />}{snapshot && page === 'combos' && <LazyPage name="combos" snapshot={snapshot} host={host} />}{snapshot && page === 'usage' && <LazyPage name="usage" snapshot={snapshot} host={host} />}{snapshot && page === 'settings' && <LazyPage name="settings" snapshot={snapshot} host={host} />}</section><footer>OUR FREE MODEL <span>·</span> 本地运行 · 由你掌控</footer></main></div>
 }
 createRoot(document.getElementById('root')!).render(<App />)
