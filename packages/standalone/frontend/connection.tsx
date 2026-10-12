@@ -55,11 +55,14 @@ export function Connection({ summary, host, active }: { summary: Summary; host: 
     <Card className="connection-card"><div className="connection-card-heading"><span className="cx-icon"><KeyRound size={16} /></span><div><h2>连接凭据</h2><p>管理会话与推理密钥相互独立。</p></div></div>
       <label className="field-label" htmlFor="connection-endpoint">API Base URL</label>
       <div className="copy-field"><div className="cx-field"><Link2 size={14} /><input id="connection-endpoint" readOnly value={endpoint} /></div>
-        {hasAlternate && <select className="cx-endpoint-select" aria-label="选择接入地址" value={originChoice}
-          onChange={event => changeOrigin(event.target.value as EndpointOriginChoice)}>
-          <option value="page">当前访问 · {originLabel(pageBase, '当前域名')}</option>
-          <option value="local">本机 · {originLabel(localBase, '127.0.0.1')}</option>
-        </select>}
+        {hasAlternate && <div className="cx-origin-toggle" role="group" aria-label="切换接入地址">
+          <button type="button" className={originChoice === 'page' ? 'cx-origin-btn cx-origin-active' : 'cx-origin-btn'}
+            aria-pressed={originChoice === 'page'} title="使用打开本页面所用的域名或 IP 接入"
+            onClick={() => changeOrigin('page')}>当前访问 · {originLabel(pageBase, '当前域名')}</button>
+          <button type="button" className={originChoice === 'local' ? 'cx-origin-btn cx-origin-active' : 'cx-origin-btn'}
+            aria-pressed={originChoice === 'local'} title="使用服务端绑定的本机回环地址接入"
+            onClick={() => changeOrigin('local')}>本机 · {originLabel(localBase, '127.0.0.1')}</button>
+        </div>}
         <Button variant="outline" className={copied === 'endpoint' ? 'cx-copied' : undefined} disabled={busy} onClick={() => void copy('endpoint', endpoint, '地址已复制。')}>{copied === 'endpoint' ? <Check size={14} /> : <Copy size={14} />}复制地址</Button></div>
       <label className="field-label" htmlFor="connection-key">API Key</label>
       <div className="copy-field"><div className={`cx-field${apiKey ? ' cx-revealed' : ''}`}><LockKeyhole size={14} /><input id="connection-key" type={apiKey ? 'text' : 'password'} readOnly value={apiKey} placeholder="点击查看后显示" /></div>
