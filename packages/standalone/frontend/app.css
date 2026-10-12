@@ -5235,13 +5235,20 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
   padding: 7px 10px; font-size: 12px; width: 100%;
 }
 .ov-access-select:focus { outline: none; border-color: var(--green); }
-.ov-access-copy { width: 100%; justify-content: center; margin-top: 6px; }
-/* CopyConfigButton 复制成功反馈：图标短暂变成功色，2 秒后还原 */
-.cfg-copied { color: var(--success-ink) !important; }
+/* 默认模型选择行：select 占满 + 右侧「复制模型 ID」图标按钮 */
+.ov-access-model-row { display: flex; align-items: stretch; gap: 6px; }
+.ov-access-model-row .ov-access-select { flex: 1 1 auto; min-width: 0; }
+.ov-access-model-row .ui-button { flex: 0 0 auto; }
 [data-theme="dark"] .ov-access-fields label { color: var(--ink-quiet); letter-spacing: 0.08em; }
 [data-theme="dark"] .ov-access-select {
   background: #0a0c10; border-color: rgba(255, 255, 255, 0.08); color: #e8ecf2;
 }
 [data-theme="dark"] .ov-access-select:focus { border-color: rgba(0, 208, 192, 0.45); }
-[data-theme="dark"] .cfg-copied { color: #4fe0b1 !important; }
 /* ==== 概览·接入卡扩展字段 END ==== */
+
+/* ==== 页头「复制地址 / 复制密钥」成组按钮（模型清单 / 模型组） ==== */
+.ep-copy { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* 复制成功反馈：短暂变成功色，2 秒后还原 */
+.ep-copy-copied { color: var(--success-ink) !important; }
+[data-theme="dark"] .ep-copy-copied { color: #4fe0b1 !important; }
+/* ==== 页头分项复制按钮 END ==== */

@@ -3,7 +3,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/rea
 import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input } from './components/ui'
-import { CopyConfigButton } from './components/copy-config'
+import { EndpointCopyButtons } from './components/endpoint-copy'
 import { resolveEndpointBase } from './endpoint-origin'
 import { filterModels } from './models-data.mjs'
 import type { Host, Model, ModelTestResult, Summary } from './types'
@@ -176,6 +176,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
           {operation === 'probe' ? <LoaderCircle size={15} className="spinning" /> : <CircleCheck size={15} />}
           {operation === 'probe' ? '正在探测' : '探测可用性'}
         </Button>
+        <EndpointCopyButtons host={host} summary={summary} />
       </div>
     </header>
     <div className="model-summary">
@@ -252,7 +253,6 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                   className={copied === model.id ? 'md-copy-done' : ''}>
                   {copied === model.id ? <Check size={16} /> : <Copy size={16} />}
                 </Button>
-                <CopyConfigButton host={host} summary={summary} model={model.id} />
                 <Button variant="outline" disabled={!!toggling && toggling !== model.id}
                   title={model.disabled ? `重新启用 ${model.name}` : `关闭 ${model.name}，关闭后从清单默认视图隐藏`}
                   aria-label={`${model.disabled ? '启用' : '关闭'}模型：${model.id}`} onClick={() => toggleModel(model)}

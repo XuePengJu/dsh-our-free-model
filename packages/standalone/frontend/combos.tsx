@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input, Switch } from './components/ui'
-import { CopyConfigButton } from './components/copy-config'
+import { EndpointCopyButtons } from './components/endpoint-copy'
 import { resolveEndpointBase } from './endpoint-origin'
 import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary, WorkbuddyBackup } from './types'
 import './combos.css'
@@ -176,6 +176,7 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
         <Button disabled={draft !== undefined || saving} onClick={() => { setDraft({ ...emptyDraft }); setDraftError(''); setMessage('') }}>
           <Plus size={15} />新建模型组
         </Button>
+        <EndpointCopyButtons host={host} summary={summary} />
       </div>
     </header>
     {backupsOpen && <section className="workbuddy-backups" aria-label="WorkBuddy 配置备份">
@@ -282,8 +283,7 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
             <button className={`combo-copy${copiedId === combo.id ? ' is-copied' : ''}`} title={`复制 ${combo.id}`} aria-label={`复制模型组 ID：${combo.id}`}
               onClick={() => { void host.copy(combo.id).then(() => { if (activeRef.current) { setCopiedId(combo.id); setTimeout(() => { if (activeRef.current) setCopiedId(undefined) }, 1800) } }).catch(host.error) }}>
               {copiedId === combo.id ? <Check size={13} /> : <Copy size={13} />}
-            </button>
-            <CopyConfigButton host={host} summary={summary} model={combo.id} /></div>
+            </button></div>
           <div className="combo-card-tools">
             <Badge tone="blue">{strategyNames[combo.strategy] ?? combo.strategy}</Badge>
             {combo.strategy === 'round-robin' && <Badge>粘滞 {combo.stickyLimit} 轮</Badge>}
