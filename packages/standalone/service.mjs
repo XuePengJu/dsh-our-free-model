@@ -77,7 +77,11 @@ export async function startStandalone({
       ...row, contextWindow: row.context_window, maxOutput: row.max_tokens,
     }))
     const realRows = () => [...core.catalog.filter(entry => !isComboEntry(entry)), ...channelRows()]
-    const comboRows = () => buildComboCatalog(normalizeCombos(settings.get().combos), realRows())
+    // 用户主动关闭的模型（settings.disabledModels，行 ID 集合）：从公开清单、
+    // 推理路由、组合链成员与探测中统一剔除，但保留在目录里供「已关闭」页展示。
+    const disabledSet = () => new Set(Array.isArray(settings.get().disabledModels) ? settings.get().disabledModels : [])
+    const visibleRows = () => { const disabled = disabledSet(); return realRows().filter(row => !disabled.has(row.id)) }
+    const comboRows = () => buildComboCatalog(normalizeCombos(settings.get().combos), visibleRows())
     const completeCombo = async (entry, request, onChunk) => {
       // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
       // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
@@ -118,15 +122,22 @@ export async function startStandalone({
       get gatewayLatency() { return core.gatewayLatency },
       get catalog() { return [...realRows(), ...comboRows()] },
       state: () => ({ ...core.state(), catalog: [...realRows(), ...comboRows()] }),
-      publicModelRows: () => [
-        ...snapshotModelRows(core.state()).filter(row => !row.id.startsWith(COMBO_PREFIX)),
-        ...channels.publicModelRows(),
-        ...comboRows().map(entry => ({
-          id: entry.id, object: 'model', created: Math.floor(Date.now() / 1000), owned_by: 'our-free-model',
-          context_window: entry.contextWindow,
-        })),
-      ],
+      publicModelRows: () => {
+        const disabled = disabledSet()
+        return [
+          ...snapshotModelRows(core.state()).filter(row => !row.id.startsWith(COMBO_PREFIX) && !disabled.has(row.id)),
+          ...channels.publicModelRows().filter(row => !disabled.has(row.id)),
+          ...comboRows().map(entry => ({
+            id: entry.id, object: 'model', created: Math.floor(Date.now() / 1000), owned_by: 'our-free-model',
+            context_window: entry.contextWindow,
+          })),
+        ]
+      },
       complete: (request, onChunk) => {
+        // 已关闭的模型对推理一律 404：客户端看到的目录里根本没有它。
+        if (disabledSet().has(request.model)) {
+          return Promise.reject(Object.assign(new Error(`model "${request.model}" is disabled`), { statusCode: 404 }))
+        }
         if (channels.handles(request.model)) return channels.complete(request, onChunk)
         if (request.model.startsWith(COMBO_PREFIX)) {
           const entry = comboRows().find(row => row.id === request.model)
@@ -146,7 +157,9 @@ export async function startStandalone({
         // （手动“探测可用性”或开启自动探测后的周期轮）顺带覆盖账号渠道，
         // 判定写进同一个 availability 存储，管理页据此显示真实状态。
         if (options?.probe === true && !stopped) {
-          const rows = channels.publicModelRows()
+          // 已关闭的模型不再探测，避免白白消耗账号额度。
+          const disabled = disabledSet()
+          const rows = channels.publicModelRows().filter(row => !disabled.has(row.id))
           await probeChannelModels(channels, rows, { signal: lifetime.signal }, (id, result) => {
             if (stopped) return
             stores.availability.edit(value => ({

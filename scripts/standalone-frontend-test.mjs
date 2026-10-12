@@ -83,6 +83,12 @@ assert.ok(combined.every(model => model.channel === 'buddy' && model.reasoning &
 assert.equal(filterModels(catalog, { channel: 'buddy', availability: 'available' }).length, 0)
 assert.equal(filterModels(catalog, { access: 'hidden' }).length + filterModels(catalog, { access: 'routable' }).length, catalog.length)
 assert.equal(filterModels([{ id: 'unknown', name: '未知状态', routable: false }], { availability: 'unknown' }).length, 1)
+// 关闭的模型：默认视图（disabled: 'active'）排除，「已关闭」视图（'only'）只看它们。
+const withClosed = [...catalog, { id: 'provider/closed-model', name: '已关闭模型', channel: 'buddy', routable: false, disabled: true }]
+assert.equal(filterModels(withClosed, {}).length, 1000)
+assert.deepEqual(filterModels(withClosed, { disabled: 'only' }).map(row => row.id), ['provider/closed-model'])
+assert.equal(filterModels(withClosed, { disabled: 'all' }).length, 1001)
+assert.ok(!filterModels(withClosed, { access: 'routable' }).some(model => model.disabled))
 assert.deepEqual(catalog, baseline, '视图筛选不得改变目录、公开状态或模型开关')
 const usageRows = Array.from({ length: 47 }, (_, index) => ({
   model: `fixture/usage-${index}`, name: `用量模型 ${index}`, calls: index + 1, turns: index,

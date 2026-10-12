@@ -384,6 +384,38 @@ try {
     assert.ok(!service.runtime.publicModelRows().some(row => row.id === 'combo:深度求索'))
     assert.equal((await request('/api/management/combos/delete', { body: { id: 'combo:深度求索' } })).status, 404)
   })
+  await check('模型开关校验输入，关闭后从公开清单与推理路由剔除并落入「已关闭」，恢复后原样回归', async () => {
+    // 入参校验：ID 无效、disabled 非布尔、模型组 ID、不存在的模型。
+    assert.equal((await request('/api/management/models/disabled', { body: { id: '', disabled: true } })).status, 400)
+    assert.equal((await request('/api/management/models/disabled', { body: { id: model, disabled: 'yes' } })).status, 400)
+    assert.equal((await request('/api/management/models/disabled', { body: { id: 'combo:deepseek', disabled: true } })).status, 400)
+    assert.equal((await request('/api/management/models/disabled', { body: { id: 'ghost/not-a-model', disabled: true } })).status, 404)
+    // 关闭核心车道模型：summary 标注 disabled，公开清单与推理路由立即剔除。
+    const closed = await request('/api/management/models/disabled', { body: { id: model, disabled: true } })
+    assert.equal(closed.status, 200)
+    assert.deepEqual((await closed.json()).disabledModels, [model])
+    const summaryRows = (await (await request('/api/management/summary')).json()).catalog
+    assert.equal(summaryRows.find(row => row.id === model)?.disabled, true)
+    assert.ok(!service.runtime.publicModelRows().some(row => row.id === model), '关闭的模型不得出现在公开清单')
+    const blocked = await request('/v1/chat/completions', {
+      headers: { authorization: `Bearer ${key}` },
+      body: { model, messages: [{ role: 'user', content: 'hi' }] },
+    })
+    assert.equal(blocked.status, 404)
+    // 组合链成员被关闭后自动跳过：combo:deepseek（[kilo, model]）仍能用 kilo 成员完成推理。
+    const viaCombo = await request('/v1/chat/completions', {
+      headers: { authorization: `Bearer ${key}` },
+      body: { model: 'combo:deepseek', messages: [{ role: 'user', content: 'hi' }] },
+    })
+    assert.equal(viaCombo.status, 200)
+    // 重复关闭是幂等成功；恢复后公开清单与路由原样回归。
+    assert.equal((await request('/api/management/models/disabled', { body: { id: model, disabled: true } })).status, 200)
+    const reopened = await request('/api/management/models/disabled', { body: { id: model, disabled: false } })
+    assert.equal(reopened.status, 200)
+    assert.deepEqual((await reopened.json()).disabledModels, [])
+    assert.ok((await (await request('/api/management/summary')).json()).catalog.find(row => row.id === model)?.disabled === false)
+    assert.ok(service.runtime.publicModelRows().some(row => row.id === model))
+  })
   await check('设置变更重新安排周期任务且 --no-refresh 保持无自动请求', async () => {
     const nativeTimeout = globalThis.setTimeout
     let scheduled
