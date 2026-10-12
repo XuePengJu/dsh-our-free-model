@@ -3,7 +3,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/rea
 import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input } from './components/ui'
-import { EndpointCopyButtons } from './components/endpoint-copy'
+import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
 import { filterModels } from './models-data.mjs'
 import type { Host, Model, ModelTestResult, Summary } from './types'
@@ -176,9 +176,9 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
           {operation === 'probe' ? <LoaderCircle size={15} className="spinning" /> : <CircleCheck size={15} />}
           {operation === 'probe' ? '正在探测' : '探测可用性'}
         </Button>
-        <EndpointCopyButtons host={host} summary={summary} />
       </div>
     </header>
+    <EndpointStrip host={host} summary={summary} />
     <div className="model-summary">
       <span><span className={`status-dot ${summary.settings.enabled ? '' : 'paused'}`} />{summary.settings.enabled ? '推理已启用' : '推理已暂停'}</span>
       <span>清单更新：{summary.catalogSyncedAt ? new Date(summary.catalogSyncedAt).toLocaleString('zh-CN', { hour12: false }) : '尚未刷新'}</span>
