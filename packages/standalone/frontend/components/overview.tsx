@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, ArrowRight, ArrowUpRight, Boxes, Check, CircleCheck, Copy, Handshake, Layers3, Network, RefreshCw, Terminal, Zap } from 'lucide-react'
+import { Activity, ArrowRight, ArrowUpRight, Boxes, Check, CircleCheck, Copy, Handshake, KeyRound, Layers3, Network, RefreshCw, Terminal, Zap } from 'lucide-react'
 import { Badge, Button, Card } from './ui'
+import { CopyConfigButton } from './copy-config'
 import { resolveEndpointBase } from '../endpoint-origin'
+import { loadSavedModelId, resolveDefaultModelId, saveClientModelId } from '../client-config'
 import '../usage.css'
 import type { Host, Snapshot } from '../types'
 
@@ -13,6 +15,9 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current) }, [])
+  // 默认接入模型：初始解析一次（记住上次选择，否则优先模型组，再退首个可接入模型）。
+  const [modelId, setModelId] = useState(() => resolveDefaultModelId(summary.catalog, loadSavedModelId()))
+  const routableModels = summary.catalog.filter(model => model.routable)
 
   const metricRows = [
     { name: '可接入模型', value: number(summary.catalog.filter(model => model.routable).length), icon: Boxes, detail: '当前公开的模型清单' },
@@ -41,6 +46,12 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
       if (copyTimer.current) clearTimeout(copyTimer.current)
       copyTimer.current = setTimeout(() => setCopied(false), 2000)
     }).catch(host.error)
+  }
+
+  // 复制真实 API Key：Key 只在点击瞬间取出，界面常驻的是打码文本。
+  const copyApiKey = () => {
+    void host.getApiKey().then(key => host.copy(key))
+      .catch(() => host.error(new Error('API Key 获取失败，请先登录管理台')))
   }
 
   return <div className="dashboard" data-testid="overview-ready">
@@ -72,14 +83,31 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
       <Card className="quick-connect ov-quick">
         <div className="quick-icon ov-quick-icon"><Terminal size={20} /></div>
         <h2>API 接入</h2><p>OpenAI 兼容 · Chat Completions / Responses</p>
-        <label>API BASE URL</label>
-        <div className="quick-endpoint ov-endpoint"><code>{resolveEndpointBase(summary.baseUrl)}/v1</code>
-          <Button variant="ghost" aria-label="复制 API 地址" onClick={copyEndpoint} title="复制 API 地址"
-            className={copied ? 'ov-copied' : ''}>
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-          </Button>
+        <div className="ov-access-fields">
+          <label>API BASE URL</label>
+          <div className="quick-endpoint ov-endpoint"><code>{resolveEndpointBase(summary.baseUrl)}/v1</code>
+            <Button variant="ghost" aria-label="复制 API 地址" onClick={copyEndpoint} title="复制 API 地址"
+              className={copied ? 'ov-copied' : ''}>
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+            </Button>
+          </div>
+          {copied && <span className="copy-feedback" role="status">地址已复制</span>}
+          <label>API KEY</label>
+          <div className="quick-endpoint ov-endpoint ov-access-key"><code>ofm-****</code>
+            <Button variant="ghost" aria-label="复制 API Key" onClick={copyApiKey} title="复制 API Key">
+              <KeyRound size={16} />
+            </Button>
+          </div>
+          <label>默认模型</label>
+          <select className="ov-access-select" value={modelId} aria-label="默认接入模型"
+            onChange={event => { const id = event.target.value; setModelId(id); saveClientModelId(id) }}>
+            {routableModels.length ? routableModels.map(row =>
+              <option key={row.id} value={row.id}>{row.channel === 'combo' ? row.id : row.name}</option>)
+              : <option disabled value="">无可接入模型</option>}
+          </select>
+          <CopyConfigButton host={host} summary={summary} model={modelId} variant="default"
+            label="复制完整配置" className="ov-access-copy" disabled={!modelId} />
         </div>
-        {copied && <span className="copy-feedback" role="status">地址已复制</span>}
         <div className="connect-steps"><span>管理会话：本机独立会话</span><span>推理鉴权：Bearer API Key</span><span>监听范围：仅回环地址</span></div>
         <Button className="connect-button" onClick={() => host.navigate('connection')}>查看接入配置 <ArrowUpRight size={16} /></Button>
         <div className="connection-footnote"><span className={`status-dot ${summary.settings.enabled ? '' : 'paused'}`} />{summary.settings.enabled ? '推理服务已启用' : '推理服务已暂停'}</div>
