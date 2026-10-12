@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input, Switch } from './components/ui'
-import { EndpointCopyButtons } from './components/endpoint-copy'
+import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
 import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary, WorkbuddyBackup } from './types'
 import './combos.css'
@@ -176,9 +176,9 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
         <Button disabled={draft !== undefined || saving} onClick={() => { setDraft({ ...emptyDraft }); setDraftError(''); setMessage('') }}>
           <Plus size={15} />新建模型组
         </Button>
-        <EndpointCopyButtons host={host} summary={summary} />
       </div>
     </header>
+    <EndpointStrip host={host} summary={summary} />
     {backupsOpen && <section className="workbuddy-backups" aria-label="WorkBuddy 配置备份">
       <div className="workbuddy-backups-head">
         <strong>WorkBuddy 配置备份</strong>

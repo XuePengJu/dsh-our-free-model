@@ -5246,9 +5246,56 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 [data-theme="dark"] .ov-access-select:focus { border-color: rgba(0, 208, 192, 0.45); }
 /* ==== 概览·接入卡扩展字段 END ==== */
 
-/* ==== 页头「复制地址 / 复制密钥」成组按钮（模型清单 / 模型组） ==== */
-.ep-copy { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-/* 复制成功反馈：短暂变成功色，2 秒后还原 */
-.ep-copy-copied { color: var(--success-ink) !important; }
-[data-theme="dark"] .ep-copy-copied { color: #4fe0b1 !important; }
-/* ==== 页头分项复制按钮 END ==== */
+/* ==== 页头下方「接入信息条」（模型清单 / 模型组）：完整 URL + 打码 Key，各自带复制图标 ==== */
+.ep-strip {
+  display: flex; align-items: center; max-width: 100%;
+  margin: 2px 0 18px; border-radius: 9px; overflow: hidden;
+}
+.ep-strip-tag {
+  flex: 0 0 auto; padding-left: 12px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+}
+.ep-strip-seg {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; min-width: 0;
+}
+.ep-strip-url { flex: 1 1 auto; }
+.ep-strip-key { flex: 0 0 auto; }
+.ep-strip code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ep-strip-divider { width: 1px; align-self: stretch; }
+/* 复制图标按钮：hover 才显边框；copied 态转主题成功色并带「已复制」小字 */
+.ep-strip-copy {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border-radius: 6px; border: 1px solid transparent;
+  background: transparent; cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.ep-strip-copy:hover { border-color: var(--line); }
+.ep-strip-copy.is-copied { color: var(--success-ink); }
+/* 暗色主题：青色科技风 */
+[data-theme="dark"] .ep-strip {
+  border: 1px solid var(--cp-cyan-line); background: rgba(0, 208, 192, 0.05);
+}
+[data-theme="dark"] .ep-strip-tag { color: var(--cp-cyan); }
+[data-theme="dark"] .ep-strip code { color: #c9d6e0; }
+[data-theme="dark"] .ep-strip-key code { color: var(--dsw-alias-label-tertiary); }
+[data-theme="dark"] .ep-strip-copy { color: var(--cp-cyan); }
+[data-theme="dark"] .ep-strip-copy:hover { border-color: var(--cp-cyan-line); }
+[data-theme="dark"] .ep-strip-copy.is-copied { color: #4fe0b1; }
+[data-theme="dark"] .ep-strip-divider { background: var(--cp-cyan-line); }
+/* 亮色主题：羊皮纸暖色风 */
+:root:not([data-theme="dark"]) .ep-strip {
+  border: 1px solid #e3d5b8; background: #fffdf8;
+}
+:root:not([data-theme="dark"]) .ep-strip-tag { color: var(--amber, #b8860b); }
+:root:not([data-theme="dark"]) .ep-strip code { color: #4a3b1a; }
+:root:not([data-theme="dark"]) .ep-strip-key code { color: #a08c60; }
+:root:not([data-theme="dark"]) .ep-strip-copy { color: var(--amber, #b8860b); }
+:root:not([data-theme="dark"]) .ep-strip-copy:hover { border-color: #e3d5b8; }
+:root:not([data-theme="dark"]) .ep-strip-copy.is-copied { color: var(--success-ink); }
+:root:not([data-theme="dark"]) .ep-strip-divider { background: #e3d5b8; }
+/* ==== 接入信息条 END ==== */
