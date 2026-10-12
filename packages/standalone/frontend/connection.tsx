@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Cable, Check, CircleCheck, Copy, Eye, EyeOff, KeyRound, Link2, LockKeyhole, RotateCcw, ShieldAlert, Terminal } from 'lucide-react'
 import { Button, Card } from './components/ui'
+import { loadEndpointOriginChoice, saveEndpointOriginChoice, resolveEndpointBase } from './endpoint-origin'
+import type { EndpointOriginChoice } from './endpoint-origin'
 import type { Host, Summary } from './types'
 
 export function Connection({ summary, host, active }: { summary: Summary; host: Host; active: boolean }) {
@@ -9,13 +11,22 @@ export function Connection({ summary, host, active }: { summary: Summary; host: 
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
+  const [originChoice, setOriginChoice] = useState<EndpointOriginChoice>(loadEndpointOriginChoice)
   if (!active) return null
-  const endpoint = `${summary.baseUrl}/v1`
+  const pageBase = window.location.origin
+  const localBase = summary.baseUrl
+  const hasAlternate = pageBase !== localBase
+  const base = resolveEndpointBase(localBase)
+  const endpoint = `${base}/v1`
   const model = summary.catalog.find(row => row.routable)?.id ?? 'MODEL_ID'
-  const example = `curl ${summary.baseUrl}/v1/chat/completions \\
+  const example = `curl ${base}/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify({ model, messages: [{ role: 'user', content: '你好' }] })}'`
+  const originLabel = (value: string, fallback: string) => {
+    try { return new URL(value).hostname } catch { return fallback }
+  }
+  const changeOrigin = (choice: EndpointOriginChoice) => { setOriginChoice(choice); saveEndpointOriginChoice(choice) }
   const run = async (action: () => Promise<void>, message = '') => {
     setBusy(true); setNotice(''); setError('')
     try { await action(); if (message) setNotice(message) }
@@ -44,6 +55,11 @@ export function Connection({ summary, host, active }: { summary: Summary; host: 
     <Card className="connection-card"><div className="connection-card-heading"><span className="cx-icon"><KeyRound size={16} /></span><div><h2>连接凭据</h2><p>管理会话与推理密钥相互独立。</p></div></div>
       <label className="field-label" htmlFor="connection-endpoint">API Base URL</label>
       <div className="copy-field"><div className="cx-field"><Link2 size={14} /><input id="connection-endpoint" readOnly value={endpoint} /></div>
+        {hasAlternate && <select className="cx-endpoint-select" aria-label="选择接入地址" value={originChoice}
+          onChange={event => changeOrigin(event.target.value as EndpointOriginChoice)}>
+          <option value="page">当前访问 · {originLabel(pageBase, '当前域名')}</option>
+          <option value="local">本机 · {originLabel(localBase, '127.0.0.1')}</option>
+        </select>}
         <Button variant="outline" className={copied === 'endpoint' ? 'cx-copied' : undefined} disabled={busy} onClick={() => void copy('endpoint', endpoint, '地址已复制。')}>{copied === 'endpoint' ? <Check size={14} /> : <Copy size={14} />}复制地址</Button></div>
       <label className="field-label" htmlFor="connection-key">API Key</label>
       <div className="copy-field"><div className={`cx-field${apiKey ? ' cx-revealed' : ''}`}><LockKeyhole size={14} /><input id="connection-key" type={apiKey ? 'text' : 'password'} readOnly value={apiKey} placeholder="点击查看后显示" /></div>

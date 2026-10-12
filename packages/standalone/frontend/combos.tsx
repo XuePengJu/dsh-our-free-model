@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input, Switch } from './components/ui'
+import { resolveEndpointBase } from './endpoint-origin'
 import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary, WorkbuddyBackup } from './types'
 import './combos.css'
 
@@ -71,7 +72,7 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
   // 幂等全量同步：无需二次确认；成功文案带 added/updated/removed/total 计数。
   const syncWorkbuddy = () => {
     void run(async () => {
-      const result = await host.syncCombosToWorkbuddy()
+      const result = await host.syncCombosToWorkbuddy(resolveEndpointBase(summary.baseUrl))
       return `已同步到 WorkBuddy：新增 ${number(result.added)}、更新 ${number(result.updated)}、清理 ${number(result.removed)}，共 ${number(result.total)} 条。重启 WorkBuddy 后生效。`
     })
   }

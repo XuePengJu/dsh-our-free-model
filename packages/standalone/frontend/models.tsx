@@ -3,6 +3,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/rea
 import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, Input } from './components/ui'
+import { resolveEndpointBase } from './endpoint-origin'
 import { filterModels } from './models-data.mjs'
 import type { Host, Model, ModelTestResult, Summary } from './types'
 import './models.css'
@@ -144,7 +145,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const exportModel = (model: Model) => {
     if (operation || exportingId !== undefined) return
     setOperation('export'); setExportingId(model.id); setError(''); setMessage('')
-    void host.writeModelToWorkbuddy(model.id)
+    void host.writeModelToWorkbuddy(model.id, resolveEndpointBase(summary.baseUrl))
       .then(result => {
         if (activeRef.current) {
           setMessage(`已写入 WorkBuddy：${model.name}（${result.updated > 0 ? '已更新' : '首次新增'}），重启 WorkBuddy 后生效`)

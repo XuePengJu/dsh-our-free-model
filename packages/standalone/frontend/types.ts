@@ -98,8 +98,8 @@ export interface Host {
   listCombos(): Promise<Combo[]>
   saveCombo(combo: ComboDraft): Promise<Combo[]>
   deleteCombo(id: string): Promise<Combo[]>
-  syncCombosToWorkbuddy(): Promise<WorkbuddySyncResult>
-  writeModelToWorkbuddy(id: string): Promise<WorkbuddyWriteResult>
+  syncCombosToWorkbuddy(baseUrl?: string): Promise<WorkbuddySyncResult>
+  writeModelToWorkbuddy(id: string, baseUrl?: string): Promise<WorkbuddyWriteResult>
   listWorkbuddyBackups(): Promise<WorkbuddyBackup[]>
   restoreWorkbuddyBackup(file: string): Promise<{ restored: boolean; total: number; at: number }>
 }
