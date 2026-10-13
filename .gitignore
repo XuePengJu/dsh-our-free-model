@@ -43,3 +43,10 @@ packages/desktop/src-tauri/.node-license-cache/
 packages/desktop/node_modules/
 
 _audit/
+
+# 非代码/本地产物，不进入仓库（2026-10-13 加）：项目记忆、桌面基准、临时设计文档
+.workbuddy/
+desktop-bench/
+docs/class-diagram.mermaid
+docs/sequence-diagram.mermaid
+docs/system_design.md
