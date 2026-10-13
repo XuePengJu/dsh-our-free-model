@@ -50,3 +50,6 @@ desktop-bench/
 docs/class-diagram.mermaid
 docs/sequence-diagram.mermaid
 docs/system_design.md
+
+# 本地备份（README 原件、移除的图片），不进入仓库
+backup/
