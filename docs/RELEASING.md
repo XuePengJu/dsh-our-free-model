@@ -195,7 +195,7 @@ CDN 上 `…@main/index.js` 仍返回 v1.3.0 的 56 999 字节——清单声明
 
 This document is for maintainers and is not part of the release: `package.json`'s
 `files` does not include `docs/`, so it never reaches an installed copy and never
-appears in [`README_EN.md`](../README_EN.md). Everything lives in the repository's
+appears in [`README.md`](../README.md). Everything lives in the repository's
 `feed/` directory — **pushing is publishing**.
 
 See [`contributor-ci-signing.md`](contributor-ci-signing.md) for contributor
