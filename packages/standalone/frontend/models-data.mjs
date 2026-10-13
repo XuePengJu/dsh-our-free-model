@@ -1,4 +1,4 @@
-/** 筛选只影响当前视图，不改变服务端目录。disabled: 'active' 排除已关闭模型，'only' 只看已关闭。 */
+/** 筛选只影响当前视图，不改变服务端目录。disabled: 'active' 排除已禁用模型，'only' 只看已禁用。 */
 export function filterModels(catalog, { search = '', channel = 'all', capability = 'all', availability = 'all', access = 'all', disabled = 'active' }) {
   const query = search.trim().toLocaleLowerCase()
   return catalog.filter(model =>

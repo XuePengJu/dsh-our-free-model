@@ -101,7 +101,7 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
       <div className="channel-results-meta"><span>{rows.length} 个渠道</span><span><SlidersHorizontal size={13} />按供应商管理独立账号与额度</span></div>
       <div className="provider-grid">{rows.map(provider => {
         const status = statuses?.[provider.id]
-        const state = status === undefined ? '读取中' : status.closed ? '已关闭' : (status.accounts?.enabled ?? 0) > 0 ? '已接入' : '待接入'
+        const state = status === undefined ? '读取中' : status.closed ? '已禁用' : (status.accounts?.enabled ?? 0) > 0 ? '已接入' : '待接入'
         return <Card className="provider-card" key={provider.id}>
           <div className="provider-card-top"><span className="provider-logo" style={{ color: provider.accent, backgroundColor: `${provider.accent}0d` }}>{provider.name.slice(0, 2).toUpperCase()}</span>
             <Badge tone={state === '已接入' ? 'success' : 'neutral'}>{state === '已接入' && <span className="status-dot" />}{state}</Badge></div>
