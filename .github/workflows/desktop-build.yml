@@ -142,10 +142,10 @@ jobs:
           pattern: ofm-desktop-*
           merge-multiple: true
 
-      - name: Publish draft release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           tag_name: desktop-${{ github.run_number }}
           name: '桌面安装包（构建 #${{ github.run_number }}，开发验证用）'
           files: artifacts/*
