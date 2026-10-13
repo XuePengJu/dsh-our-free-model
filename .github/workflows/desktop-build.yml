@@ -3,11 +3,11 @@ name: desktop-build
 # Build the desktop installers on GitHub-hosted runners. NSIS (Windows) and
 # DMG (macOS) packages cannot be cross-compiled, so each platform builds on
 # its own runner. Manual trigger only: the desktop bundle is still
-# dev-validated, not part of the signed plugin release flow.
+# trunk-validated, not part of the signed plugin release flow.
 #
 # Note: GitHub only registers workflow_dispatch for files on the default
-# branch (main). Trigger it against dev with:
-#   gh workflow run desktop-build.yml --repo XuePengJu/dsh-our-free-model --ref dev
+# branch (master). Trigger it against master with:
+#   gh workflow run desktop-build.yml --repo XuePengJu/dsh-our-free-model --ref master
 
 on:
   workflow_dispatch:
