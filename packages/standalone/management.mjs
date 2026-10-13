@@ -228,6 +228,32 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       })
       return
     }
+    if (method === 'GET' && pathname === `${PREFIX}/local-key`) {
+      // 登录前自动读取本机令牌：仅允许“本机直连回环服务”的登录页。两层判据：
+      // ① 显式部署声明：反代环境（如阿里云 systemd 单元）设 OFM_BEHIND_PROXY=1，
+      //    本机令牌自动登录整体关闭，一律手动填 Key——不依赖任何请求头，代理配置
+      //    变化也骗不动它，是最稳的一道；任意非空值都视为“已声明”（宁可更严不误放）。
+      // ② 转发头兜底：Host 经反代会被改写回 127.0.0.1，光看 Host 分不出本机与远程；
+      //    可靠的区分信号是反代注入的 X-Forwarded-For / X-Real-IP / X-Forwarded-Proto
+      //    ——nginx 用 proxy_set_header 强制覆盖，远程调用者伪造不出“缺失”，
+      //    本机直连则天然没有这些头，不会误拒。
+      // 另保留 ③ sec-fetch-site=same-origin（页面自身发起）与 ④ Host 为回环名
+      // （防 DNS rebinding 把恶意页面变成“同源”）。
+      if (String(process.env.OFM_BEHIND_PROXY ?? '').trim() !== '') throw fail(403, '部署已声明位于反向代理之后，请手动输入 API Key 登录')
+      for (const header of ['x-forwarded-for', 'x-real-ip', 'x-forwarded-proto']) {
+        if (req.headers[header] !== undefined) throw fail(403, '经反向代理的请求不允许自动读取本机令牌')
+      }
+      if (req.headers['sec-fetch-site'] !== 'same-origin') throw fail(403, '仅限本机登录页面读取令牌')
+      const hostHeader = String(req.headers.host ?? '')
+      const hostname = hostHeader.startsWith('[')
+        ? hostHeader.slice(1, hostHeader.indexOf(']'))
+        : hostHeader.replace(/:\d+$/, '')
+      if (!(hostname === '127.0.0.1' || hostname === '::1' || hostname === 'localhost')) {
+        throw fail(403, '仅限回环地址访问')
+      }
+      json(res, 200, { key: stores.settings.get().forwardKey })
+      return
+    }
     if (!authenticated(req)) throw fail(401, '请先登录管理页面')
     if (method === 'POST' && pathname === `${PREFIX}/logout`) {
       await readBody(req)

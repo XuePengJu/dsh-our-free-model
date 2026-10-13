@@ -184,10 +184,29 @@ try {
     assert.equal(response.status, 200)
     assert.equal(response.headers.get('access-control-allow-origin'), null)
   })
-  await check('部署分支撤回登录前令牌自动读取，未登录访问 local-key 一律被登录门槛拦下', async () => {
-    const response = await request('/api/management/local-key', { cookie: '' })
-    assert.equal(response.status, 401)
-    assert.notEqual((await response.json()).error, undefined)
+  await check('登录前令牌自动读取仅限同源回环页面，跨站与伪造 Host 一律拒绝', async () => {
+    const ok = await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin' } })
+    assert.equal(ok.status, 200)
+    assert.equal((await ok.json()).key, key)
+    // 同站跨端口的本机应用（same-site）、跨站脚本、无浏览器标记的调用都不算登录页自身。
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': site } })).status, 403, site)
+    }
+    assert.equal((await request('/api/management/local-key', { cookie: '' })).status, 403)
+    // DNS rebinding：sec-fetch-site 是 same-origin 但 Host 不是回环名。
+    assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin', host: 'evil.example' } })).status, 403)
+    // 反向代理经转发头识别：nginx proxy_set_header 强制注入，远程域名访问即使
+    // Host 被改写回 127.0.0.1 且 sec-fetch-site=same-origin 也拿不到本机令牌。
+    for (const header of ['x-forwarded-for', 'x-real-ip', 'x-forwarded-proto']) {
+      assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin', [header]: '203.0.113.9' } })).status, 403, header)
+    }
+    // 显式部署声明：OFM_BEHIND_PROXY 非空时自动令牌整体关闭（请求不带任何转发头也拒绝）。
+    process.env.OFM_BEHIND_PROXY = '1'
+    try {
+      assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin' } })).status, 403)
+    } finally { delete process.env.OFM_BEHIND_PROXY }
+    // 开关撤除后恢复放行，防止判据被环境残留误伤。
+    assert.equal((await request('/api/management/local-key', { cookie: '', headers: { 'sec-fetch-site': 'same-origin' } })).status, 200)
   })
   await check('设置严格校验字段类型范围和请求体，不发生部分保存', async () => {
     for (const body of [
