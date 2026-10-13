@@ -5299,3 +5299,19 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 :root:not([data-theme="dark"]) .ep-strip-copy.is-copied { color: var(--success-ink); }
 :root:not([data-theme="dark"]) .ep-strip-divider { background: #e3d5b8; }
 /* ==== 接入信息条 END ==== */
+
+/* ==== 修复：深色主题侧边栏 sticky 被覆盖 ==== */
+/* 866 行的 [data-theme="dark"] .sidebar, ... , [data-theme="dark"] .app-shell > *
+   会把 aside.sidebar 的 position 强制改成 relative（属性选择器优先级 0,2,0 且位置靠后），
+   导致深色主题下侧边栏退化成普通 flex 子项、跟随页面滚动。
+   此处在文件末尾追加同优先级规则并显式写回 sticky，依靠"同优先级后者胜出"夺回定位；
+   z-index 保持 1，确保侧边栏仍压在 body::after 装饰层之上。
+   限定 min-width: 701px 与移动端 @media(max-width:700px) 互斥隔离：
+   移动端本就要求侧边栏不固定、改为横向导航条，若不加此限定，本规则 0,2,0 的优先级
+   会压过 356 行 .sidebar{position:static}，把移动端布局搞坏。
+   （注：移动端深色下 866 行同样以 0,2,0 压过 356 行，计算值为 relative——
+     与 static 视觉/功能等价：无偏移的全宽块，属既有行为，非本规则引入。） */
+@media (min-width: 701px) {
+  [data-theme="dark"] .sidebar { position: sticky; top: 0; z-index: 1; }
+}
+/* ==== 修复：深色主题侧边栏 sticky 被覆盖 END ==== */

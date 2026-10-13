@@ -383,7 +383,18 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       try {
         const outcome = await runtime.complete({
           model: body.model, signal: controller.signal,
-          openAi: { messages: [{ role: 'user', content: 'Reply with OK.' }], max_tokens: 64 },
+          // WorkBuddy 国际版网关硬性要求：请求第一条消息必须是 system，
+          // 否则返回 400 code 11128「first message is not system prompt」
+          // （并伪装成"安全策略拦截"），导致模型/模型组测试恒失败。
+          // 这里前置一条轻量 system，让连通性测试能真实打到上游。
+          // 对其他 OpenAI 兼容渠道无影响：standard 客户端本就以 system 开头。
+          openAi: {
+            messages: [
+              { role: 'system', content: 'You are a connectivity test endpoint. Reply briefly with the requested word.' },
+              { role: 'user', content: 'Reply with OK.' },
+            ],
+            max_tokens: 64,
+          },
         })
         if (outcome.error) throw fail(502, outcome.error)
         json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })

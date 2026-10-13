@@ -7,10 +7,11 @@
 | DSH 插件 | 在 DSH 内提供渠道与管理面板 | DSH；按 README 的插件安装说明安装 |
 | 独立本地服务 | 脱离 DSH，通过浏览器管理并提供 API | Node.js 22.19+ 或 24+ |
 | Windows 桌面壳 | 启动同一套独立服务，通过 Tauri 窗口管理 | WebView2；安装包包含 Node，无需另装 Node 或 Rust |
+| macOS 桌面壳 | 同上，产物为 .app / DMG | macOS 11+；安装包包含对应架构的 Node，使用系统 WebView，无需额外运行时 |
 
 插件与独立服务分别有自己的入口。桌面壳是独立服务的另一种启动方式，复用现有渠道、管理 API 与前端，不把独立服务合并为 DSH 插件。
 
-当前桌面代码用于开发和验证，构建安装包不等于发布正式 release。
+当前桌面代码用于开发和验证，构建安装包不等于发布正式 release。Tauri 不能交叉编译：NSIS 包必须在 Windows 上构建，DMG 必须在 macOS 上构建，且内置 Node 必须与构建机的平台和架构一致。
 
 ## 独立服务
 
@@ -59,6 +60,40 @@ packages/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
 ```
 
 `resources/`、Node 许可证缓存、`target/`、`dist/` 都是生成产物，不提交到 Git。最终分发目录可单独整理到 `dist/`，无需改变 Tauri 默认输出目录。
+
+## macOS 桌面构建
+
+构建机需要：
+
+- macOS 与对应架构的 Node.js 22.19+ 或 24+（arm64 机器产出 arm64 包；Intel 支持需 macos-13 构建机另行验证）。
+- Xcode 命令行工具（`xcode-select --install`）与 stable Rust 工具链。
+- 首次构建需要网络下载 Cargo 依赖与 Node LICENSE（缓存命中后离线可用）。
+
+在仓库根目录执行：
+
+```bash
+npm --prefix packages/standalone ci
+node scripts/build-standalone-ui.mjs
+npm --prefix packages/desktop ci --ignore-scripts
+npm --prefix packages/desktop run build -- --bundles dmg
+```
+
+构建钩子与 Windows 相同：把当前 Node 二进制复制为 `runtime/node`（Windows 为 `runtime/node.exe`），Rust 壳按编译平台读取对应文件名。产物位置：
+
+```text
+packages/desktop/src-tauri/target/release/bundle/macos/Our Free Model.app
+packages/desktop/src-tauri/target/release/bundle/macos/*_aarch64.dmg
+```
+
+macOS 专属交互约定：
+
+- 关闭面板同样隐藏；点击 Dock 图标（或托盘菜单"打开面板"）唤回窗口。
+- 应用菜单栏提供"退出"（Cmd+Q）与编辑菜单（复制粘贴快捷键走系统实现）；退出路径与 Windows 一致，正常关闭自有服务并释放数据锁。
+- 自定义标题栏在 macOS 上保留自绘按钮（窗口无系统红绿灯），双击标题栏最大化行为与 Windows 相同。
+
+签名现状：DMG 未经 Developer ID 签名与公证。自己构建后本机可直接运行；分发给其他 Mac 用户时会被 Gatekeeper 拦截，需右键→打开一次，或接收方执行 `xattr -dr com.apple.quarantine "/Applications/Our Free Model.app"`。正式对外分发前需 Apple 开发者账号完成 codesign 与 notarytool 公证（嵌套的 `runtime/node` 会随 bundle 一并签名）。
+
+验证与回退规则与 Windows 一节相同；`node scripts/desktop-test.mjs` 在 macOS 上可直接运行。
 
 ## 启动、登录与退出
 
