@@ -1,0 +1,81 @@
+name: desktop-build
+
+# Build the Windows desktop installer (Tauri + NSIS) on a GitHub-hosted
+# Windows runner, since NSIS packages cannot be cross-compiled from macOS.
+# Manual trigger only: the desktop bundle is still dev-validated, not part
+# of the signed plugin release flow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: 'Also publish a draft GitHub Release with the installer attached'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      # prepare-desktop.mjs refuses any Node that is not 22.19+ / 24+, and
+      # stages that exact Node binary into the installer's runtime/.
+      - name: Check Node version
+        shell: pwsh
+        run: |
+          $v = (node -p "process.versions.node").Split(".")
+          $ok = ([int]$v[0] -eq 22 -and [int]$v[1] -ge 19) -or [int]$v[0] -ge 24
+          if (-not $ok) { throw "Node must be 22.19+ or 24+, got $($v -join '.')" }
+
+      - name: Install Rust MSVC toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix packages/standalone ci
+          npm --prefix packages/desktop ci --ignore-scripts
+
+      - name: Build standalone UI
+        run: node scripts/build-standalone-ui.mjs
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\registry
+            packages\desktop\src-tauri\target
+          key: cargo-${{ runner.os }}-${{ hashFiles('packages/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build Tauri installer
+        working-directory: packages/desktop
+        run: npm run build
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofm-desktop-windows
+          path: packages/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
+      - name: Publish draft release
+        if: ${{ inputs.draft_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: desktop-${{ github.run_number }}
+          name: 'Windows 桌面安装包（构建 #${{ github.run_number }}，开发验证用）'
+          files: packages/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
