@@ -11,7 +11,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
-
 #[derive(Default)]
 struct ServiceState {
     process: Mutex<Option<ServiceProcess>>,
@@ -35,7 +34,7 @@ fn start_service(app: &tauri::AppHandle) -> Result<String, String> {
     } else {
         app.path().resource_dir().map_err(|_| "无法定位安装资源")?
     };
-    let node = resources.join("runtime/node.exe");
+    let node = resources.join("runtime").join(if cfg!(windows) { "node.exe" } else { "node" });
     let host = resources.join("service/packages/desktop/service-host.mjs");
     if !node.is_file() || !host.is_file() {
         return Err("安装资源不完整，请重新安装桌面程序".into());
@@ -115,6 +114,33 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_existing(app)))
         .setup(|app| {
             app.manage(ServiceState::default());
+            #[cfg(target_os = "macos")]
+            {
+                // macOS 菜单栏：预定义项自带 Cmd+Q/Cmd+H 与剪贴板快捷键，退出会走 ExitRequested 清理服务。
+                use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                let app_menu = SubmenuBuilder::new(app, "Our Free Model")
+                    .about(None)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+                let edit_menu = SubmenuBuilder::new(app, "编辑")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+                let menu_bar = MenuBuilder::new(app).items(&[&app_menu, &edit_menu]).build()?;
+                app.set_menu(menu_bar)?;
+            }
             WebviewWindowBuilder::new(app, "splash", WebviewUrl::App("splash.html".into()))
                 .title("Our Free Model").inner_size(400.0, 300.0).center()
                 .resizable(false).decorations(false).always_on_top(true).skip_taskbar(true)
@@ -166,6 +192,11 @@ pub fn run() {
         })
         .build(tauri::generate_context!()).expect("无法构建桌面应用")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            // 点击 Dock 图标时唤回隐藏的面板；窗口尚不存在说明服务还没就绪或启动失败，交给托盘/错误窗口。
+            if matches!(event, tauri::RunEvent::Reopen { has_visible_windows: false, .. }) {
+                show_existing(app);
+            }
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 app.state::<ServiceState>().stopping.store(true, Ordering::SeqCst);
                 stop_service(app);
