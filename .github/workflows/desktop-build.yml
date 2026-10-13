@@ -47,10 +47,11 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Install dependencies
+        shell: pwsh
         run: |
-          npm ci
-          npm --prefix packages/standalone ci
-          npm --prefix packages/desktop ci --ignore-scripts
+          npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix packages/standalone ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix packages/desktop ci --ignore-scripts; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build standalone UI
         run: node scripts/build-standalone-ui.mjs
