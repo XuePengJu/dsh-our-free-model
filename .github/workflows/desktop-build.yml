@@ -1,15 +1,19 @@
 name: desktop-build
 
-# Build the Windows desktop installer (Tauri + NSIS) on a GitHub-hosted
-# Windows runner, since NSIS packages cannot be cross-compiled from macOS.
-# Manual trigger only: the desktop bundle is still dev-validated, not part
-# of the signed plugin release flow.
+# Build the desktop installers on GitHub-hosted runners. NSIS (Windows) and
+# DMG (macOS) packages cannot be cross-compiled, so each platform builds on
+# its own runner. Manual trigger only: the desktop bundle is still
+# dev-validated, not part of the signed plugin release flow.
+#
+# Note: GitHub only registers workflow_dispatch for files on the default
+# branch (main). Trigger it against dev with:
+#   gh workflow run desktop-build.yml --repo XuePengJu/dsh-our-free-model --ref dev
 
 on:
   workflow_dispatch:
     inputs:
       draft_release:
-        description: 'Also publish a draft GitHub Release with the installer attached'
+        description: 'Also publish a draft GitHub Release with both installers attached'
         type: boolean
         default: false
 
@@ -71,11 +75,77 @@ jobs:
           path: packages/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
 
+  macos-dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      # prepare-desktop.mjs stages the exact Node binary that runs the build
+      # (must be 22.19+ / 24+ and match the runner platform/arch).
+      - name: Check Node version
+        run: |
+          V=$(node -p "process.versions.node")
+          MAJ=$(echo "$V" | cut -d. -f1)
+          MIN=$(echo "$V" | cut -d. -f2)
+          if { [ "$MAJ" -eq 22 ] && [ "$MIN" -ge 19 ]; } || [ "$MAJ" -ge 24 ]; then
+            echo "Node $V OK"
+          else
+            echo "Node must be 22.19+ or 24+, got $V" >&2
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix packages/standalone ci
+          npm --prefix packages/desktop ci --ignore-scripts
+
+      - name: Build standalone UI
+        run: node scripts/build-standalone-ui.mjs
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            packages/desktop/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('packages/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build Tauri DMG
+        working-directory: packages/desktop
+        run: npm run build
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofm-desktop-macos
+          path: packages/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  publish-release:
+    needs: [windows-installer, macos-dmg]
+    if: ${{ inputs.draft_release }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: ofm-desktop-*
+          merge-multiple: true
+
       - name: Publish draft release
-        if: ${{ inputs.draft_release }}
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           tag_name: desktop-${{ github.run_number }}
-          name: 'Windows 桌面安装包（构建 #${{ github.run_number }}，开发验证用）'
-          files: packages/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: '桌面安装包（构建 #${{ github.run_number }}，开发验证用）'
+          files: artifacts/*
