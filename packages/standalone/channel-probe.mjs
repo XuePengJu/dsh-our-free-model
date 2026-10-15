@@ -13,8 +13,16 @@
  * - 429 是容量窗口 → throttled
  * - 其余（5xx、网络、超时、取消）一律 unknown，不移动状态
  *
+ * 探测请求必须自带一条 system 前置消息：腾讯系网关（buddy / workbuddy）硬性
+ * 要求首条消息是 system，否则返回 400 code 11128「first message is not system
+ * prompt」（并伪装成"安全策略拦截"）。缺了它，探测对这类渠道恒拿 5xx，判定
+ * 落到 unknown，管理页因此永远停在「未探测」。对其他 OpenAI 兼容渠道无影响。
+ *
  * @module packages/standalone/channel-probe
  */
+
+/** 探测用的最小 system 前置，与桌面端连通性测试保持同一口径。 */
+const PROBE_SYSTEM = 'You are a helpful assistant.'
 
 /**
  * 探测一批渠道模型行，并发与核心探测保持同样的小扇出。
@@ -52,7 +60,13 @@ async function probeChannelModel(channels, row, { timeoutMs, signal }) {
   try {
     const outcome = await channels.complete({
       model: row.id, signal: controller.signal,
-      openAi: { messages: [{ role: 'user', content: 'ping' }], max_tokens: 16 },
+      openAi: {
+        messages: [
+          { role: 'system', content: PROBE_SYSTEM },
+          { role: 'user', content: 'ping' },
+        ],
+        max_tokens: 16,
+      },
     }, () => { if (!first) first = Date.now() })
     if (outcome.error !== undefined) return verdictFrom(outcome.error, started)
     return {
