@@ -251,9 +251,11 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
               <div role="cell" className="model-state" title={model.availabilityDetail ?? undefined}><Badge tone={state === 'available' ? 'success' : warningStates.includes(state) ? 'warning' : 'neutral'}>
                 {model.disabled ? '已禁用' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>未公开</small>}
                 {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}
-                {/* 判定原文：徽章只放得下状态名，失败原因（限流何时解禁 / 需重新登录）
-                    在这里露出；CSS 截断两行，完整内容挂在单元格的 title 上。 */}
-                {!model.disabled && warningStates.includes(state) && model.availabilityDetail
+                {/* 判定原文：徽章只放得下状态名，失败原因（限流何时解禁 / 需重新登录 /
+                    探测超时）在这里露出；只要状态不是「已探测可用」且确实带了原因就显示，
+                    因为用户点开「未探测」视图最想知道的正是它为什么还没通过。
+                    CSS 截断两行，完整内容挂在单元格的 title 上。 */}
+                {!model.disabled && state !== 'available' && model.availabilityDetail
                   ? <small className="model-state-detail">{model.availabilityDetail}</small> : null}</div>
               <div role="cell" className="model-row-actions">
                 <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
