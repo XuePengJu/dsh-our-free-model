@@ -57,10 +57,13 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
   useEffect(() => () => { pending.current?.abort(); pending.current = undefined }, [])
 
   const byId = useMemo(() => new Map(summary.catalog.map(model => [model.id, model])), [summary.catalog])
-  // 模型组成员只能是真实模型：排除组合行自身。
+  // 模型组成员只能是真实模型：排除组合行自身；只列「已探测可用」且未禁用的模型，
+  // 禁用或未探测通过的模型进链只会拖垮调用链，不进候选列表。
   const picker = useMemo(() => {
     const query = search.trim().toLowerCase()
     return summary.catalog.filter(model => model.channel !== 'combo'
+      && model.disabled !== true
+      && (model.availability ?? 'unknown') === 'available'
       && (query === '' || model.name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query)))
   }, [summary.catalog, search])
 
@@ -239,7 +242,9 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
               return <li key={id}>
                 <span className="combo-order" aria-hidden="true">{index + 1}</span>
                 <span className="combo-chain-model"><strong>{model?.name ?? id}</strong><code>{id}</code></span>
-                {model !== undefined ? <Badge>{channelName(model.channel)}</Badge> : <Badge tone="warning">暂不可用</Badge>}
+                {model === undefined
+                  ? <Badge tone="warning">暂不可用</Badge>
+                  : model.disabled === true ? <Badge tone="warning">已禁用</Badge> : <Badge>{channelName(model.channel)}</Badge>}
                 <span className="combo-chain-actions">
                   <Button variant="ghost" size="icon" aria-label={`上移 ${model?.name ?? id}`} disabled={index === 0}
                     onClick={() => move(index, -1)}><ArrowUp size={14} /></Button>
@@ -296,7 +301,9 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
           return <li key={id}>
             <span className="combo-order" aria-hidden="true">{index + 1}</span>
             <span className="combo-chain-model"><strong>{model?.name ?? id}</strong><code>{id}</code></span>
-            {model !== undefined ? <Badge>{channelName(model.channel)}</Badge> : <Badge tone="warning">暂不可用</Badge>}
+            {model === undefined
+              ? <Badge tone="warning">暂不可用</Badge>
+              : model.disabled === true ? <Badge tone="warning">已禁用</Badge> : <Badge>{channelName(model.channel)}</Badge>}
           </li>
         })}</ol>
         <div className="combo-card-actions">
