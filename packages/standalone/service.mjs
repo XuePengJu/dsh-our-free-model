@@ -191,6 +191,7 @@ export async function startStandalone({
         capabilities: { anonymous: true, kilo: true, eac: true, accountChannels: true, webUi: true },
       }),
       onSettingsChanged: () => { if (!refreshInFlight) scheduleRefresh() },
+      log: message => logger.warn?.(`our-free-model standalone: ${message}`),
     })
     listener = await startForwardServer({
       config: () => ({ host, port: requestedPort, enabled: settings.get().enabled !== false, key: settings.get().forwardKey }),

@@ -115,7 +115,7 @@ export function managementSettings(value) {
 }
 
 /** 管理读写要求鉴权；登录恢复仅允许同源页面触发固定本机动作。 */
-export function createManagement({ stores, runtime, channels, eac, info, onSettingsChanged, loginTerminal = openLoginTerminal }) {
+export function createManagement({ stores, runtime, channels, eac, info, onSettingsChanged, loginTerminal = openLoginTerminal, log = () => {} }) {
   let bootstrap = { token: crypto.randomBytes(32).toString('base64url'), until: Date.now() + BOOTSTRAP_MS }
   const sessions = new Map()
   let cookieName
@@ -449,6 +449,15 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
           ...first ? { ttftMs: first - started } : {},
         })
         json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })
+      } catch (error) {
+        // 渠道层抛的是 LlmError（只有 code 没有 statusCode）：凭据失效、限流、
+        // 配额耗尽等业务性失败不该变成 500「管理操作失败」——那会把真实原因
+        // 吞进日志，用户在页面上完全看不到为什么测试失败。这里把带错误码的
+        // 业务失败按 502 透传给前端，其余错误维持原样上抛走全局兜底。
+        if (error?.name === 'LlmError' && typeof error.code === 'string' && !error.statusCode) {
+          throw fail(502, error.message)
+        }
+        throw error
       } finally {
         clearTimeout(deadline)
         res.removeListener('close', abort)
@@ -480,7 +489,12 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         }
       } else {
         try { await route(req, res, pathname) } catch (error) {
-          if (!res.destroyed && !res.headersSent) json(res, error.statusCode ?? 500, {
+          // 管理路由此前完全不落日志：测试/探测失败只回一句「管理操作失败」，
+          // 真实原因（凭据失效、配额耗尽、上游拒绝）彻底消失，排障只能靠猜。
+          // 5xx 与服务端异常一律留痕；4xx 是正常的输入校验，不写日志免得刷屏。
+          const status = Number(error?.statusCode) || 500
+          if (status >= 500) log(`${req.method ?? 'GET'} ${pathname} 失败: ${error?.message ?? error}`)
+          if (!res.destroyed && !res.headersSent) json(res, status, {
             error: error.statusCode ? error.message : '管理操作失败，请查看服务日志',
           })
         }
