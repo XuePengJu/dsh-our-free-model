@@ -400,8 +400,8 @@
    1. 服务设置（settings-*）
    ========================================================================== */
 
-/* 1.1 表单栏宽：与「API 接入」同栏宽，避免 1440px 下每行两端被拉开 */
-.settings-browser { max-width: 900px; }
+/* 1.1 表单栏宽：窄栏宽已统一到 app.css 内容栅格 token
+   （.connection-browser, .settings-browser → --ofm-content-max-narrow），此处不再重复声明 */
 
 /* 1.2 分组卡片标题：图标块几何稳定 + 说明文案排版 */
 .settings-card { min-width: 0; }

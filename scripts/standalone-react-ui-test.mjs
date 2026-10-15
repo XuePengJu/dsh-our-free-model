@@ -94,10 +94,92 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name} 不应溢出视口`)
     if (imageDir) await page.screenshot({ path: path.join(imageDir, `react-connection-${name}.png`), fullPage: true })
   }
+  // ===== 布局回归：内容列宽度一致性 / 1280 收敛居中 / 两主题一致 / 页脚落底 / 窄栏居中 =====
+  // 断言基线：视口 1512（main=1274 未达上限）→ section.page 同 x 同宽 x=238/w=1274；
+  // 视口 1920（main=1682>1280）→ 收敛 w=1280 且居中 x=238+(1682-1280)/2=439；浅深主题完全一致。
+  const layoutMenus = [
+    ['概览', 'overview-ready'], ['模型组', 'combos-ready'], ['免费账号渠道', null],
+    ['用量统计', 'usage-ready'], ['模型清单', 'models-ready'], ['API 接入', 'connection-ready'],
+    ['服务设置', 'settings-ready'],
+  ]
+  const measureLayout = () => page.evaluate(() => {
+    const rect = el => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: +r.x.toFixed(2), width: +r.width.toFixed(2), right: +r.right.toFixed(2), bottom: +r.bottom.toFixed(2) } }
+    const main = document.querySelector('main'), pageEl = document.querySelector('section.page')
+    const cs = pageEl ? getComputedStyle(pageEl) : null, pad = cs ? parseFloat(cs.paddingLeft) : 0
+    return {
+      theme: document.documentElement.dataset.theme,
+      mainDisplay: main ? getComputedStyle(main).display : null,
+      innerHeight: window.innerHeight, scrollWidth: document.documentElement.scrollWidth,
+      main: rect(main), page: rect(pageEl), footer: rect(document.querySelector('main > footer')),
+      contentLeft: pageEl ? +(pageEl.getBoundingClientRect().x + pad).toFixed(2) : null,
+      contentRight: pageEl ? +(pageEl.getBoundingClientRect().right - pad).toFixed(2) : null,
+      notice: rect(document.querySelector('main > .notice')),
+      connection: rect(document.querySelector('.connection-browser')), settings: rect(document.querySelector('.settings-browser')),
+    }
+  })
+  const navTo = async (name, ready) => {
+    await page.locator('.console-nav-item').filter({ hasText: name }).click()
+    if (ready) await page.getByTestId(ready).waitFor()
+    else if (name === '免费账号渠道') await page.getByLabel('搜索渠道').waitFor()
+    await page.waitForTimeout(120)
+  }
+  const layout = {}
+  for (const [vpName, viewport] of [['wide-1512', { width: 1512, height: 900 }], ['wide-1920', { width: 1920, height: 900 }]]) {
+    await page.setViewportSize(viewport)
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; localStorage.setItem('ofm-theme', t) }, theme)
+      await page.waitForTimeout(120)
+      const entries = []
+      for (const [name, ready] of layoutMenus) {
+        await navTo(name, ready)
+        const m = await measureLayout()
+        assert.equal(m.theme, theme, `${vpName}/${theme}/${name} 主题应真正生效（dataset.theme）`)
+        assert.equal(m.mainDisplay, 'flex', `${vpName}/${theme}/${name} main 计算值应为 flex`)
+        assert.equal(m.page.width, Math.min(m.main.width, 1280), `${vpName}/${theme}/${name} 内容列宽应为 min(main,1280)`)
+        assert.ok(Math.abs(m.page.x - (m.main.x + (m.main.width - m.page.width) / 2)) < 0.5, `${vpName}/${theme}/${name} 内容列应水平居中`)
+        entries.push({ name, ...m })
+      }
+      layout[`${vpName}-${theme}`] = entries
+      const xs = entries.map(e => e.page.x), ws = entries.map(e => e.page.width)
+      assert.equal(new Set(xs).size, 1, `${vpName}/${theme} 七菜单 section.page 的 x 应唯一，实际 ${JSON.stringify(xs)}`)
+      assert.equal(new Set(ws).size, 1, `${vpName}/${theme} 七菜单 section.page 的宽应唯一，实际 ${JSON.stringify(ws)}`)
+      // 页脚落底：任何页面页脚都不得悬在视口中间（不得出现 >5px 的空档）
+      for (const e of entries) assert.ok(e.innerHeight - e.footer.bottom < 5, `${vpName}/${theme}/${e.name} 页脚不得上浮，gap=${(e.innerHeight - e.footer.bottom).toFixed(2)}`)
+      // 真·短页（本 fixture 下模型组不产生纵向滚动）：页脚必须贴视口底
+      const short = entries.find(e => e.name === '模型组')
+      assert.ok(short.innerHeight - short.footer.bottom < 5 && short.innerHeight - short.footer.bottom > -2, `${vpName}/${theme} 短页（模型组）页脚应贴视口底，gap=${(short.innerHeight - short.footer.bottom).toFixed(2)}`)
+      // 窄栏（API 接入 / 服务设置）：≤900 且左右留白差 <2px（居中）
+      for (const key of ['connection', 'settings']) {
+        const owner = entries.find(e => e[key]); if (!owner) continue
+        assert.ok(owner[key].width <= 900.5, `${vpName}/${theme}/${key} 宽度应 ≤900，实际 ${owner[key].width}`)
+        const left = owner[key].x - owner.contentLeft, right = owner.contentRight - owner[key].right
+        assert.ok(Math.abs(left - right) < 2, `${vpName}/${theme}/${key} 应在内容列内居中，左留白=${left.toFixed(2)} 右留白=${right.toFixed(2)}`)
+      }
+      // 通知条与内容列左右边界对齐
+      const first = entries[0]
+      if (first.notice) assert.ok(Math.abs(first.notice.x - first.contentLeft) < 2 && Math.abs(first.notice.right - first.contentRight) < 2, `${vpName}/${theme} 通知条应与内容列对齐`)
+    }
+    const light = layout[`${vpName}-light`], dark = layout[`${vpName}-dark`]
+    assert.deepEqual(light.map(e => [e.page.x, e.page.width]), dark.map(e => [e.page.x, e.page.width]), `${vpName} 浅色与深色 section.page 位置/宽度应完全一致`)
+    if (vpName === 'wide-1512') {
+      assert.equal(light[0].page.x, 238, '视口 1512 内容列 x 应为 238')
+      assert.equal(light[0].page.width, 1274, '视口 1512 内容列宽应为 1274')
+    }
+    if (vpName === 'wide-1920') {
+      assert.equal(light[0].page.x, 439, '视口 1920 内容列应居中于 x=439')
+      assert.equal(light[0].page.width, 1280, '视口 1920 内容列宽应收敛到 1280')
+    }
+  }
+  // 窄断点不得横向溢出
+  for (const [name, viewport] of [['≤700', { width: 700, height: 800 }], ['≤430', { width: 430, height: 800 }], ['≤320', { width: 320, height: 740 }]]) {
+    await page.setViewportSize(viewport)
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name} 不应横向溢出视口`)
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('button', { name: '退出管理', exact: true }).click()
   await page.getByTestId('login-screen').waitFor()
   assert.deepEqual(errors, [])
-  console.log('react UI: 登录失败/成功、七页面导航、草稿保留/保存、密钥显隐/复制/轮换、轮询保持子页、三种视口、退出通过')
+  console.log('react UI: 登录失败/成功、七页面导航、草稿保留/保存、密钥显隐/复制/轮换、轮询保持子页、三种视口、内容列宽度一致性/1280 收敛居中/两主题一致/页脚落底/窄栏居中、退出通过')
 } finally {
   await browser.close(); management.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve))
 }
