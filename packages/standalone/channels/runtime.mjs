@@ -48,7 +48,13 @@ export async function createChannelRuntime({ dataDir, logger = console, stats })
     if (!entry) return
     if (message.type === 'chunk') {
       try { entry.onChunk?.(message.chunk) } catch (error) { entry.reject(error); worker.postMessage({ type: 'cancel', id: message.id }) }
-    } else if (message.type === 'error') entry.reject(Object.assign(new Error(message.message), { statusCode: message.statusCode }))
+    } else if (message.type === 'error') entry.reject(Object.assign(new Error(message.message), {
+      statusCode: message.statusCode,
+      // 渠道层判定（凭据失效/配额耗尽/上游拒绝）在跨 worker 后只剩 message，
+      // 这里显式补回 code 并打上标记，供管理端把真实原因透传给用户。
+      ...(typeof message.code === 'string' ? { code: message.code } : {}),
+      channelVerdict: true,
+    }))
     else entry.resolve(message.value)
   })
   function call(type, payload = {}, signal, onChunk, timeoutMs = 120000) {

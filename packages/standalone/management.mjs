@@ -450,11 +450,11 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         })
         json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })
       } catch (error) {
-        // 渠道层抛的是 LlmError（只有 code 没有 statusCode）：凭据失效、限流、
-        // 配额耗尽等业务性失败不该变成 500「管理操作失败」——那会把真实原因
-        // 吞进日志，用户在页面上完全看不到为什么测试失败。这里把带错误码的
-        // 业务失败按 502 透传给前端，其余错误维持原样上抛走全局兜底。
-        if (error?.name === 'LlmError' && typeof error.code === 'string' && !error.statusCode) {
+        // 渠道层抛出的错误（凭据失效、限流、配额耗尽、上游拒绝）不该变成 500
+        // 「管理操作失败」——那会把真实原因吞掉，用户在页面上完全看不到为什么
+        // 测试失败。凡是在渠道边界标记过的判定，按 502 透传原始消息；其余错误
+        // 维持原样上抛，走全局兜底，避免把内部异常细节暴露到页面。
+        if (!error?.statusCode && (error?.name === 'LlmError' || error?.channelVerdict === true)) {
           throw fail(502, error.message)
         }
         throw error

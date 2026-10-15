@@ -130,7 +130,10 @@ parentPort.on('message', async message => {
     else if (type === 'complete') { await complete(message.request, id, controller.signal); send({ type: 'result', id }) }
     else throw new Error('未知渠道操作')
   } catch (error) {
-    send({ type: 'error', id, message: error.message, statusCode: error.statusCode ?? error.status })
+    // code 必须一起过界：渠道错误码（MISSING_CREDENTIAL/QUOTA_EXCEEDED…）是判断
+    // 「凭据失效 / 配额耗尽 / 上游拒绝」的唯一依据，丢了它管理端只能回笼统 500。
+    send({ type: 'error', id, message: error.message, statusCode: error.statusCode ?? error.status,
+      ...(typeof error.code === 'string' ? { code: error.code } : {}) })
   } finally { controllers.delete(id) }
 })
 
