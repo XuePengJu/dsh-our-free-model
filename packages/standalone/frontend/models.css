@@ -243,6 +243,10 @@
   font-variant-numeric: tabular-nums;
 }
 .model-state > small { font-size: 11px; color: var(--md-ink-muted); line-height: 1.4; overflow-wrap: anywhere; }
+/* 判定原文（限流解禁时间 / 需重新登录）最长两行，超出截断；完整内容在该单元格的 title 上。 */
+.model-state > small.model-state-detail {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 
 /* ---- 行内操作按钮 ---- */
 /* 四个操作按钮一行放平并整体居中：列宽已放宽到 264px，nowrap 兜底防止再被挤成两行。 */

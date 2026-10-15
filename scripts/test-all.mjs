@@ -54,6 +54,7 @@ const suites = [
   ['standalone-management', 'standalone-management-test.mjs', []],
   ['standalone-frontend', 'standalone-frontend-test.mjs', []],
   ['standalone-channels', 'standalone-channels-test.mjs', []],
+  ['standalone-channel-failure', 'standalone-channel-failure-test.mjs', []],
   ['egress', 'egress-test.mjs', []],
   ['effort', 'effort-test.mjs', []],
   ['projection', 'projection-test.mjs', []],
