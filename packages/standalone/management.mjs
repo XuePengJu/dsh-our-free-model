@@ -166,6 +166,23 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       throw fail(500, '无法保存设置，请检查数据目录权限和磁盘空间')
     }
   }
+  // 一次显式测试/探测的判定写回 availability 存储：页面徽章与探测链路读的是
+  // 同一份数据，写在这里就不会出现「测试成功但徽章不动」的两套口径。
+  const recordVerdict = (id, verdict) => {
+    stores.availability.edit(value => ({
+      ...value,
+      results: {
+        ...value.results,
+        [id]: {
+          state: verdict.state,
+          ...verdict.detail === undefined ? {} : { detail: verdict.detail },
+          ...verdict.ttftMs === undefined ? {} : { ttftMs: verdict.ttftMs },
+          latencyMs: verdict.latencyMs, at: Date.now(),
+        },
+      },
+    }))
+    stores.availability.flush()
+  }
   const summary = () => {
     const state = runtime.state()
     const available = stores.availability.get()
@@ -406,6 +423,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       const deadline = setTimeout(abort, 60_000)
       deadline.unref?.()
       const started = Date.now()
+      let first = 0
       try {
         const outcome = await runtime.complete({
           model: body.model, signal: controller.signal,
@@ -421,8 +439,15 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
             ],
             max_tokens: 64,
           },
-        })
+        }, () => { if (!first) first = Date.now() })
         if (outcome.error) throw fail(502, outcome.error)
+        // 一次成功的显式测试就是「可用」的强证据，写回与探测同一份 availability
+        // 存储，页面上的状态徽章随之从「未探测」变为「已探测可用」——否则用户点
+        // 了测试看到成功，徽章却纹丝不动，与探测链路各说各话。
+        recordVerdict(body.model, {
+          state: 'available', latencyMs: Date.now() - started,
+          ...first ? { ttftMs: first - started } : {},
+        })
         json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })
       } finally {
         clearTimeout(deadline)
