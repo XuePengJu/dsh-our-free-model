@@ -30582,7 +30582,21 @@ var AccountPool = class {
       const resetAt = a.modelRateLimits[modelId];
       return resetAt === void 0 || resetAt === 0 || Date.now() >= resetAt;
     });
-    if (candidates.length === 0) return null;
+    if (candidates.length === 0) {
+      if (modelId.length > 0) {
+        const limited = allAccountsRateLimitedForModel(
+          this.readAccounts().filter((a) => a.provider === provider && a.enabled),
+          modelId
+        );
+        if (limited !== void 0) {
+          throw new LlmError20(
+            `${provider}：模型 ${modelId} 的可用账号均在限流中，最近一个将于 ${new Date(limited.resetAtMs).toLocaleString("zh-CN")} 解禁。可改用其它 provider / 模型，或等待解禁后再试（无需重新登录）。`,
+            "QUOTA_EXCEEDED"
+          );
+        }
+      }
+      return null;
+    }
     const failures = [];
     for (const entry of candidates) {
       let resolved;

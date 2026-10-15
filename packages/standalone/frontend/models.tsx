@@ -12,7 +12,10 @@ import './models.css'
 const availabilityNames: Record<string, string> = {
   available: '已探测可用', listed: '清单已收录', unknown: '未探测',
   unavailable: '不可用', throttled: '限流中', 'region-blocked': '地区受限',
+  'needs-login': '需重新登录',
 }
+/** 需要用户动作/会挡住调用的状态：徽章用警示色。 */
+const warningStates = ['unavailable', 'throttled', 'region-blocked', 'needs-login']
 const sourceNames: Record<string, string> = { anonymous: '匿名模型', kilo: 'Kilo 免费池', eac: 'EAC 协付', combo: '模型组' }
 const channelName = (id: string) => sourceNames[id]
   ?? providers.find(provider => provider.id === id)?.name ?? id
@@ -245,9 +248,13 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                 <Badge>{model.vision ? '视觉' : '纯文本'}</Badge>{model.reasoning && <Badge tone="blue">思考</Badge>}</div></div>
               <div role="cell" className="model-limits"><span title={model.contextWindow ? `${model.contextWindow} Token` : undefined}>{capacity(model.contextWindow)} <small>上下文</small></span>
                 <span title={model.maxOutput ? `${model.maxOutput} Token` : undefined}>{capacity(model.maxOutput)} <small>输出</small></span></div>
-              <div role="cell" className="model-state"><Badge tone={state === 'available' ? 'success' : ['unavailable', 'throttled', 'region-blocked'].includes(state) ? 'warning' : 'neutral'}>
+              <div role="cell" className="model-state" title={model.availabilityDetail ?? undefined}><Badge tone={state === 'available' ? 'success' : warningStates.includes(state) ? 'warning' : 'neutral'}>
                 {model.disabled ? '已禁用' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>未公开</small>}
-                {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}</div>
+                {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}
+                {/* 判定原文：徽章只放得下状态名，失败原因（限流何时解禁 / 需重新登录）
+                    在这里露出；CSS 截断两行，完整内容挂在单元格的 title 上。 */}
+                {!model.disabled && warningStates.includes(state) && model.availabilityDetail
+                  ? <small className="model-state-detail">{model.availabilityDetail}</small> : null}</div>
               <div role="cell" className="model-row-actions">
                 <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
                   className={copied === model.id ? 'md-copy-done' : ''}>

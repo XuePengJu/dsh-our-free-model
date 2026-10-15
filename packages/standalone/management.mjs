@@ -4,6 +4,7 @@ import { buildStats } from '../../src/core/stats.js'
 import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
+import { classifyChannelFailure } from './channel-probe.mjs'
 import { openLoginTerminal } from './login-terminal.mjs'
 import {
   listWorkbuddyBackups,
@@ -205,6 +206,9 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         // 渠道行探测前保持「清单已收录」的原状；一旦有真实探测判定（核心轮或
         // 渠道轮写入 availability），如实显示，不再一律盖成 listed。
         availability: available.results?.[entry.id]?.state ?? (entry.channel ? 'listed' : 'unknown'),
+        // 判定原文（如「…均在限流中，最近一个将于 … 解禁」）：徽章只放得下状态名，
+        // 失败原因靠它在页面上以 title 展开，用户才知道该等解禁还是该去重新登录。
+        availabilityDetail: available.results?.[entry.id]?.detail ?? null,
         ttftMs: available.results?.[entry.id]?.ttftMs ?? null,
       })),
     }
@@ -450,6 +454,11 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         })
         json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })
       } catch (error) {
+        // 失败的显式测试同样把归类写回存储：否则用户点「测试」看到报错，徽章
+        // 却停在「未探测」，无从分辨是限流、凭据失效还是模型真不存在。`unknown`
+        // 不写——那是「没问到答案」，拿它覆盖已有的「可用」会把好模型降级。
+        const verdict = classifyChannelFailure(error, started)
+        if (verdict.state !== 'unknown') recordVerdict(body.model, verdict)
         // 渠道层抛出的错误（凭据失效、限流、配额耗尽、上游拒绝）不该变成 500
         // 「管理操作失败」——那会把真实原因吞掉，用户在页面上完全看不到为什么
         // 测试失败。凡是在渠道边界标记过的判定，按 502 透传原始消息；其余错误

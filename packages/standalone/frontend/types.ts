@@ -9,6 +9,8 @@ export interface Model {
   contextWindow?: number
   maxOutput?: number
   availability?: string
+  /** 判定原文（探测/测试失败的具体原因，用于徽章的 title 展开）。 */
+  availabilityDetail?: string | null
   ttftMs?: number | null
   disabled?: boolean
 }
