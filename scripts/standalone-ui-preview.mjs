@@ -151,15 +151,21 @@ if (usageFixture && !fs.existsSync(usageFile)) {
     const day = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
     const model = `fixture/usage-${index}`
     const input = 720 * (index + 1), output = 280 * (index + 1)
-    return [day, { total: input + output, models: { [model]: { input, output, reasoning: 35 * index, cacheRead: 0,
-      calls: 3, failed: 0, ttftMs: 300 + index * 10, ttftSamples: 1, decodeMs: 2000, decodeTokens: 100 + index } } }]
+    return [day, {
+      total: input + output,
+      models: { [model]: { input, output, reasoning: 35 * index, cacheRead: 0,
+        calls: 3, failed: 0, ttftMs: 300 + index * 10, ttftSamples: 1, decodeMs: 2000, decodeTokens: 100 + index } },
+      turns: index + 1, failedTurns: index % 3, recoveredTurns: index % 4,
+      modelsTurns: { [model]: { turns: index + 1, failed: index % 3, recovered: index % 4 } },
+    }]
   }))
   const sum = (values, key) => Object.values(values).reduce((total, row) => total + row[key], 0)
   fs.writeFileSync(usageFile, JSON.stringify({
-    version: 3, days, models, samples: [], requests: sum(models, 'calls'), failedRequests: sum(models, 'failed'),
+    version: 4, days, models, samples: [], requests: sum(models, 'calls'), failedRequests: sum(models, 'failed'),
     failedRequestsEstimated: true,
     logical: { turns: sum(logicalModels, 'turns'), failed: sum(logicalModels, 'failed'),
       recovered: sum(logicalModels, 'recovered'), estimated: true, models: logicalModels },
+    logicalDailySince: '',
   }))
 }
 const { startStandalone } = await import('../packages/standalone/service.mjs')
