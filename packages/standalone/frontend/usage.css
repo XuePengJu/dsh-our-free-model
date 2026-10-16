@@ -1673,3 +1673,43 @@
 }
 
 /* ==== V5 NIGHT · usage 补丁 END ==== */
+
+/* ==========================================================================
+   四档时间范围统计 · 分段控件与趋势图弱化态（只新增选择器，不改上方任何内容）
+   ========================================================================== */
+
+/* 档位控件独占一行：左分段按钮 + 右周期起止文案 */
+.usage-period-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.usage-period-filters { flex-shrink: 0; }
+.usage-period-filters button { font-size: 12px; padding: 6px 12px; }
+.usage-period-label {
+  color: var(--us-ink-tertiary); font-size: 12px;
+  font-variant-numeric: tabular-nums; text-align: right;
+  min-width: 0;
+}
+.usage-period-label-short { display: none; }
+
+/* 未来日 / 边界月柱子的弱化态 */
+.usage-day.muted .usage-day-bar { opacity: 0.35; }
+.usage-day.muted span { opacity: 0.6; }
+
+/* 表格性能列表头 ⓘ（保留期口径说明） */
+.usage-col-hint {
+  margin-left: 3px; font-size: 10px; cursor: help;
+  color: var(--us-ink-muted); font-style: normal;
+}
+
+/* 窄屏适配 */
+@media (max-width: 700px) {
+  .usage-period-bar { gap: 8px; }
+  .usage-period-filters button { font-size: 11px; padding: 5px 9px; }
+  .usage-period-label { font-size: 11px; }
+}
+@media (max-width: 420px) {
+  .usage-period-label { text-align: left; }
+  .usage-period-label-full { display: none; }
+  .usage-period-label-short { display: inline; }
+}
