@@ -32,7 +32,6 @@ const BACKUP_KEEP = 20
 const BACKUP_NAME = /^models-\d{8}-\d{6}(-\d+)?\.json$/
 const DEFAULT_CONTEXT_WINDOW = 131072
 const DEFAULT_MAX_OUTPUT = 32768
-const REASONING_EFFORTS = ['high', 'xhigh']
 
 /**
  * 带状态码的错误：管理路由的统一 catch 按 `statusCode` 原样把具体原因
@@ -75,13 +74,78 @@ export function isOwnedByOfm(entry) {
 }
 
 /**
+ * 模型行自己声明的思考档位表与默认档，读不到的部分不写。
+ *
+ * 两者都必须以模型行的声明为准，绝不写死：写死会在客户端列出模型根本不接受的
+ * 档位，用户选中后要么被网关就近落档（UI 上的档位成了摆设），要么整轮 400；
+ * 而**漏掉默认档**会让客户端在用户没手动选档时不下发 `reasoning_effort`，
+ * 对「不带档位就不思考」的模型（deepseek 系）表现成「思考一直是关的」。
+ *
+ * 三种行形态各读一处，都是各自产物的既有字段，不新增推断：
+ *
+ * - 渠道行（workbuddy/codearts/…）：`reasoning.efforts[].canonical` 就是「这个
+ *   私有档位在客户端里该写成哪个规范名」，`openai_efforts` 只是它的机械投影
+ *   （见 vendor/channel-pack/src/openai-gateway/effort-view.ts），故直接按行读，
+ *   顺带用同一张表把 `reasoning.default` 反查成规范名。
+ * - EAC / Kilo 行：`reasoning` 是布尔，档位在同级 `efforts` 里，值是上游私有
+ *   id；其中 `disabled` 是「关闭思考」，在规范词汇里对应 `none`
+ *   （见 vendor/channel-pack/src/reasoning-ladder.ts 的强度序）。
+ * - 免费车道与组合行：只声明「能不能思考」，没有档位表。免费车道的档位是本地
+ *   token 阶梯（src/effort.js），网关根本不下发 effort 字段，写成任何档位都是
+ *   虚构 —— 故整个字段都不写，客户端按「只有思考开关」处理。
+ *
+ * 规范名照原样透传（含 `none`/`ultra`）：客户端只渲染它认识的那几档，多写的
+ * 值不会误发；而一旦客户端日后补上标签，文件里已有正确值，无需再同步一次。
+ *
+ * 返回 `undefined` 表示该行没声明档位表（不写 `reasoning`）；
+ * 否则返回 `{ supported, defaultEffort }`，其中 `defaultEffort` 仍可能缺省
+ * （声明值不在自己的档位表内时，宁可留空交给请求层，也不写一个会被网关就近
+ * 落档的档位）。
+ */
+function reasoningDeclarationFor(model) {
+  const reasoning = model?.reasoning
+  if (reasoning !== null && typeof reasoning === 'object') {
+    const rows = (Array.isArray(reasoning.efforts) ? reasoning.efforts : [])
+      .filter(row => row !== null && typeof row === 'object' && typeof row.id === 'string' && row.id !== '')
+    const canonical = new Map()
+    for (const row of rows) {
+      if (typeof row.canonical === 'string' && row.canonical !== '') canonical.set(row.id, row.canonical)
+    }
+    const supported = [...new Set(rows.map(row => canonical.get(row.id)).filter(effort => effort !== undefined))]
+    if (supported.length === 0) return undefined
+    const declaredDefault = typeof reasoning.default === 'string' ? canonical.get(reasoning.default) : undefined
+    return {
+      supported,
+      defaultEffort: supported.includes(declaredDefault) ? declaredDefault : undefined,
+    }
+  }
+  if (Array.isArray(model?.efforts) && model.efforts.length > 0) {
+    const name = effort => (effort === 'disabled' ? 'none' : effort)
+    const supported = [...new Set(model.efforts
+      .filter(effort => typeof effort === 'string' && effort !== '')
+      .map(name))]
+    if (supported.length === 0) return undefined
+    const declaredDefault = typeof model.effortDefault === 'string' ? name(model.effortDefault) : undefined
+    return {
+      supported,
+      defaultEffort: supported.includes(declaredDefault) ? declaredDefault : undefined,
+    }
+  }
+  return undefined
+}
+
+/**
  * 单个模型目录行 → WorkBuddy 条目。模型组（combo 虚拟行）与真实模型行共用：
  * combo 行的 vision/reasoning/contextWindow/maxOutput 已由 buildComboCatalog
  * 算好交集，字段形状与真实模型行一致。
+ *
+ * `reasoning` 子对象只在拿得到模型自己的档位声明时才写：写一个空档位表等于
+ * 宣称「有档位可选」，客户端的选择器会因此空转。
  */
 export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
   const supportsReasoning = model.reasoning === true ||
     (model.reasoning !== null && typeof model.reasoning === 'object')
+  const declaration = reasoningDeclarationFor(model)
   return {
     id: String(model.id),
     name: String(model.name ?? model.id),
@@ -94,7 +158,12 @@ export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
     useCustomProtocol: false,
     maxInputTokens: positiveInt(model.contextWindow ?? model.context_window) ?? DEFAULT_CONTEXT_WINDOW,
     maxOutputTokens: positiveInt(model.maxOutput ?? model.max_tokens) ?? DEFAULT_MAX_OUTPUT,
-    ...(supportsReasoning ? { reasoning: { supportedEfforts: [...REASONING_EFFORTS] } } : {}),
+    ...(declaration === undefined ? {} : {
+      reasoning: {
+        supportedEfforts: declaration.supported,
+        ...(declaration.defaultEffort === undefined ? {} : { defaultEffort: declaration.defaultEffort }),
+      },
+    }),
   }
 }
 
