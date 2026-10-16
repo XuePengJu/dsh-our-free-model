@@ -30,7 +30,7 @@ export function resolveDshHome() {
 export const DATA_DIR_NAME = 'our-free-model'
 
 /** Bumped when the shape or the meaning of a stored field changes. */
-export const STATS_VERSION = 3
+export const STATS_VERSION = 4
 
 export class JsonStore {
   /**
@@ -247,6 +247,9 @@ export const STATS_INITIAL = {
   failedRequests: 0,
   samples: [],
   logical: { turns: 0, failed: 0, recovered: 0, models: {} },
+  /** 日级回合统计上线日（`YYYY-MM-DD`）。全新安装为 ''（自始完整）；旧数据
+   *  迁移时置为迁移当日。此前的日/周/月档没有回合记录，前端据此显示 `—`。 */
+  logicalDailySince: '',
   /** Lifetime token-saver totals; `calls` counts every request the pipeline ran
    *  on, including the ones where nothing was compressible. */
   savings: { bytesBefore: 0, bytesAfter: 0, saved: 0, blocks: 0, calls: 0, promptCalls: 0 },
@@ -397,24 +400,50 @@ function savingsSample(savings) {
 /** Record one user-visible turn, separately from its physical upstream attempts. */
 export function recordTurn(stats, record) {
   return stats.edit(state => {
-    const previous = state.logical ?? {}
-    const models = { ...(previous.models ?? {}) }
-    const row = models[record.model] ?? { turns: 0, failed: 0, recovered: 0 }
+    // 兜底：channels/runtime.mjs 的调用点不传 `at`；统一在此回填，与
+    // dayKey(at = Date.now()) 的默认语义一致。
+    const at = Number.isFinite(record.at) ? record.at : Date.now()
+    const day = dayKey(at)
     const failed = record.ok === true ? 0 : 1
     const recovered = record.recovered === true ? 1 : 0
-    models[record.model] = {
-      turns: row.turns + 1,
-      failed: row.failed + failed,
-      recovered: row.recovered + recovered,
+
+    // —— logical（lifetime，逻辑不变）——
+    const previous = state.logical ?? {}
+    const logicalModels = { ...(previous.models ?? {}) }
+    const lrow = logicalModels[record.model] ?? { turns: 0, failed: 0, recovered: 0 }
+    logicalModels[record.model] = {
+      turns: lrow.turns + 1,
+      failed: lrow.failed + failed,
+      recovered: lrow.recovered + recovered,
     }
+
+    // —— 日桶（新增：按 record.at 所属自然日归档回合计数）——
+    const days = { ...(state.days ?? {}) }
+    const bucket = days[day] ?? { total: 0, models: {} }
+    const turnModels = { ...(bucket.modelsTurns ?? {}) }
+    const trow = turnModels[record.model] ?? { turns: 0, failed: 0, recovered: 0 }
+    turnModels[record.model] = {
+      turns: trow.turns + 1,
+      failed: trow.failed + failed,
+      recovered: trow.recovered + recovered,
+    }
+    days[day] = {
+      ...bucket,
+      turns: (bucket.turns ?? 0) + 1,
+      failedTurns: (bucket.failedTurns ?? 0) + failed,
+      recoveredTurns: (bucket.recoveredTurns ?? 0) + recovered,
+      modelsTurns: turnModels,
+    }
+
     return {
       ...state,
+      days,
       logical: {
         ...previous,
         turns: (previous.turns ?? 0) + 1,
         failed: (previous.failed ?? 0) + failed,
         recovered: (previous.recovered ?? 0) + recovered,
-        models,
+        models: logicalModels,
       },
     }
   })
@@ -432,6 +461,7 @@ export function migrateStats(value) {
   if (value?.version === STATS_VERSION) return value
   const version = Number.isSafeInteger(value?.version) ? value.version : 0
   const resetSpeedTotals = version < 2
+  const needsTurnFields = version < 4
   const days = {}
   for (const [day, bucket] of Object.entries(value?.days ?? {})) {
     const models = {}
@@ -440,7 +470,9 @@ export function migrateStats(value) {
         ? { ...row, decodeMs: 0, decodeTokens: 0, ttftMs: 0, ttftSamples: 0 }
         : { ...row }
     }
-    days[day] = { ...bucket, models }
+    days[day] = needsTurnFields
+      ? { ...bucket, models, turns: 0, failedTurns: 0, recoveredTurns: 0, modelsTurns: {} }
+      : { ...bucket, models }
   }
   const logicalModels = {}
   const modelFailures = {}
@@ -487,6 +519,8 @@ export function migrateStats(value) {
       models: logicalModels,
       estimated: true,
     },
+    // 日级回合自迁移当日起可用；已是 v4 则保留原值（幂等，不被二次覆盖）。
+    logicalDailySince: version >= 4 ? (value.logicalDailySince ?? '') : dayKey(),
     samples,
   }
 }
