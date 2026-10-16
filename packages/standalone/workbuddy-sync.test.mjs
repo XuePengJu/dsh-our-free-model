@@ -5,8 +5,9 @@
  *
  * - field mapping for combo rows (intersection via buildComboCatalog) and for
  *   single model rows (defaults at 131072/32768, conditional `reasoning`);
- * - the effort ladder is read from the row's own declaration, never hardcoded:
- *   channel rows project `reasoning.openai_efforts`, EAC/Kilo rows map their
+ * - the effort ladder and default rung are read from the row's own declaration,
+ *   never hardcoded: channel rows project `reasoning.efforts[].canonical` (plus
+ *   `reasoning.default` through the same table), EAC/Kilo rows map their
  *   `efforts` (`disabled` → `none`), and a row that only declares "reasoning
  *   yes/no" gets no ladder at all;
  * - ownership (`isOwnedByOfm`) and the "refresh but never clean single-model
@@ -118,7 +119,7 @@ test('buildWorkbuddyEntryFromModel: full mapping with defaults', () => {
   assert.equal('reasoning' in entry, false)
 })
 
-test('buildWorkbuddyEntryFromModel: channel row takes its ladder from openai_efforts', () => {
+test('buildWorkbuddyEntryFromModel: channel row projects ladder and default from its own declaration', () => {
   const entry = buildWorkbuddyEntryFromModel({
     id: 'think', name: 'Think', vision: true,
     reasoning: {
@@ -128,26 +129,51 @@ test('buildWorkbuddyEntryFromModel: channel row takes its ladder from openai_eff
     context_window: 4096, max_tokens: 1024,
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
   assert.equal(entry.supportsReasoning, true)
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['high', 'none'] })
+  assert.deepEqual(entry.reasoning, { supportedEfforts: ['high', 'none'], defaultEffort: 'high' })
   assert.equal(entry.supportsImages, true)
   assert.equal(entry.maxInputTokens, 4096)
   assert.equal(entry.maxOutputTokens, 1024)
 })
 
-test('buildWorkbuddyEntryFromModel: falls back to reasoning.efforts[].canonical when openai_efforts is absent', () => {
-  const entry = buildWorkbuddyEntryFromModel({
-    id: 'think',
-    reasoning: { efforts: [{ id: 'extra_high', canonical: 'xhigh' }, { id: 'light', canonical: 'low' }] },
+test('buildWorkbuddyEntryFromModel: private ladder ids are translated, order kept, dupes dropped', () => {
+  // TRAE 的 light/extra_high 与 Qoder 的关闭档：上游 id 与规范名不同名。
+  const trae = buildWorkbuddyEntryFromModel({
+    id: 'trae/glm-5.3-flash',
+    reasoning: {
+      efforts: [
+        { id: 'light', canonical: 'low' }, { id: 'high', canonical: 'high' },
+        { id: 'extra_high', canonical: 'xhigh' }, { id: 'light', canonical: 'low' },
+      ],
+      default: 'extra_high',
+    },
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['xhigh', 'low'] })
+  assert.deepEqual(trae.reasoning, { supportedEfforts: ['low', 'high', 'xhigh'], defaultEffort: 'xhigh' })
+
+  // 未登记强度的私有 id（无 canonical）不可表达 → 不进档位表。
+  const opaque = buildWorkbuddyEntryFromModel({
+    id: 'x', reasoning: { efforts: [{ id: 'weird' }, { id: 'high', canonical: 'high' }], default: 'weird' },
+  }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+  assert.deepEqual(opaque.reasoning, { supportedEfforts: ['high'] })
 })
 
-test('buildWorkbuddyEntryFromModel: EAC/Kilo efforts map disabled to none, order and dedupe kept', () => {
+test('buildWorkbuddyEntryFromModel: EAC/Kilo efforts map disabled to none, default follows', () => {
   const entry = buildWorkbuddyEntryFromModel({
-    id: 'z-ai/glm-5.3', reasoning: true, efforts: ['disabled', 'low', 'high', 'max', 'high'],
+    id: 'z-ai/glm-5.3', reasoning: true, efforts: ['disabled', 'low', 'high', 'max'], effortDefault: 'high',
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
   assert.equal(entry.supportsReasoning, true)
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['none', 'low', 'high', 'max'] })
+  assert.deepEqual(entry.reasoning, { supportedEfforts: ['none', 'low', 'high', 'max'], defaultEffort: 'high' })
+
+  // 声明值不在自己的档位表内 → 留空交给请求层，绝不写一个会被就近落档的档位。
+  const stale = buildWorkbuddyEntryFromModel({
+    id: 'x', reasoning: true, efforts: ['low', 'high'], effortDefault: 'ultra',
+  }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+  assert.deepEqual(stale.reasoning, { supportedEfforts: ['low', 'high'] })
+
+  // 关闭档为默认档时同样翻译。
+  const off = buildWorkbuddyEntryFromModel({
+    id: 'y', reasoning: true, efforts: ['disabled', 'high'], effortDefault: 'disabled',
+  }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+  assert.deepEqual(off.reasoning, { supportedEfforts: ['none', 'high'], defaultEffort: 'none' })
 })
 
 test('buildWorkbuddyEntryFromModel: a bare reasoning flag writes no ladder', () => {
