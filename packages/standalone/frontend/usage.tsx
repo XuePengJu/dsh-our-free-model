@@ -146,7 +146,7 @@ export function Usage({ stats, host, active }: { stats: Stats; host: Host; activ
         新记录沿用独立的请求与回合统计。</span></p>}
     {view?.note && <p className="usage-estimated" role="note"><CircleAlert size={15} /><span>{view.note}</span></p>}
     <Card className="usage-trend">
-      <div className="card-heading"><div><h2>{period === 'all' ? '累计 Token 用量' : '每日 Token 用量'}</h2><p>{trendSubtitle}</p></div></div>
+      <div className="card-heading"><div><h2>{period === 'all' ? '累计 Token 用量' : `${PERIOD_LABELS[period]} Token 用量`}</h2><p>{trendSubtitle}</p></div></div>
       <div className="usage-window-total"><strong data-testid="usage-window-total">{number(windowTotal)}</strong>
         <span>{period === 'all' ? 'Token / 累计' : 'Token / 所选周期'}</span></div>
       <p className="usage-scroll-hint">左右滑动查看完整日期。</p>
