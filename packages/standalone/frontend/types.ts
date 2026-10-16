@@ -51,6 +51,44 @@ export interface Summary {
   eacAuth?: { local?: boolean; authorized?: boolean; login?: string }
   catalog: Model[]
 }
+export type UsagePeriod = 'day' | 'week' | 'month' | 'all'
+export interface PeriodBounds {
+  period: UsagePeriod
+  start: string
+  end: string
+  days: string[]
+  label: string
+  ongoing: boolean
+  note?: string
+}
+export interface PeriodMetrics {
+  turns: number | null
+  requests: number
+  input: number
+  output: number
+  reasoning: number
+  failedTurns: number | null
+  recoveredTurns: number | null
+  failedRequests: number
+  avgTtftMs: number | null
+  tps: number | null
+}
+export interface ChartBar {
+  key: string
+  label: string
+  total: number
+  future?: boolean
+  partial?: boolean
+  title?: string
+}
+export interface UsagePeriodView {
+  bounds: PeriodBounds
+  metrics: PeriodMetrics
+  models?: UsageModel[]
+  chart: { bars: ChartBar[]; total: number; note: string; granularity: 'day' | 'month' }
+  turnsAvailable: boolean
+  note?: string
+}
 export interface Stats {
   requests: number
   requestFailures: number
@@ -60,9 +98,13 @@ export interface Stats {
   failedTurns: number
   recoveredTurns: number
   days: { day: string; total: number }[]
-  grand: { input: number; output: number; reasoning: number }
+  grand: {
+    input: number; output: number; reasoning: number
+    calls?: number; failed?: number; turns?: number; failedTurns?: number; recoveredTurns?: number
+  }
   models: UsageModel[]
   samples: { model?: string; ok?: boolean; error?: string; at?: number; ms?: number }[]
+  periods?: Partial<Record<UsagePeriod, UsagePeriodView>>
 }
 export interface UsageModel {
   model: string
@@ -72,6 +114,7 @@ export interface UsageModel {
   input: number
   output: number
   reasoning: number
+  cacheRead?: number
   failed: number
   failedTurns: number
   recoveredTurns: number

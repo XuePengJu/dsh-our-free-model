@@ -1,8 +1,11 @@
-import { MIN_DECODE_MS } from '../store.js'
+import { buildUsagePeriods, toModelRow } from './usage-periods.js'
 import { describeSavingsTotal, emptySavings, savingsPercent } from '../token-saver/index.js'
 
 export function buildStats(stats, catalog) {
   const days = stats.days ?? {}
+  // ① 先构建完整 series（保留 models 明细）→ 由它算出 totals → named → grand。
+  //    这段既有逻辑一字不动：totals/named 是 lifetime 缺失时的日桶回退源，
+  //    若在裁剪 days 之后再算，named 会静默回退成全 0、tps/avgTtftMs 变 null。
   const series = Object.keys(days).sort().map(day => ({
     day,
     total: days[day].total ?? 0,
@@ -40,28 +43,25 @@ export function buildStats(stats, catalog) {
   // link's, so a chain that never appears here would show its links in the panel
   // and be invisible itself — the one row a user configuring a chain looks for.
   const modelIds = new Set([...Object.keys(totals), ...Object.keys(lifetimeModels), ...Object.keys(logicalModels)])
+  // 模型行统一走 toModelRow（与 periods.*.models 同构；派生值只算一次、只舍入一次）。
   const named = [...modelIds].map(model => {
     const row = totals[model] ?? empty(model)
     const lifetime = lifetimeModels[model] ?? {}
-    const physical = {
-      ...row,
+    return toModelRow(model, {
       input: Number.isSafeInteger(lifetime.input) ? lifetime.input : row.input,
       output: Number.isSafeInteger(lifetime.output) ? lifetime.output : row.output,
       reasoning: Number.isSafeInteger(lifetime.reasoning) ? lifetime.reasoning : row.reasoning,
-      cacheRead: Number.isSafeInteger(lifetime.cacheRead) ? lifetime.cacheRead : row.cacheRead,
+      cacheRead: Number.isSafeInteger(lifetime.cacheRead) ? lifetime.cacheRead : (row.cacheRead ?? 0),
       calls: Number.isSafeInteger(lifetime.calls) ? lifetime.calls : row.calls,
       failed: Number.isSafeInteger(lifetime.failed) ? lifetime.failed : row.failed,
-    }
-    return {
-      ...physical,
+      ttftMs: row.ttftMs ?? 0,
+      ttftSamples: row.ttftSamples ?? 0,
+      decodeMs: row.decodeMs ?? 0,
+      decodeTokens: row.decodeTokens ?? 0,
       turns: logicalModels[model]?.turns ?? (logicalReady ? 0 : row.calls),
       failedTurns: logicalModels[model]?.failed ?? (logicalReady ? 0 : row.failed),
       recoveredTurns: logicalModels[model]?.recovered ?? 0,
-      name: catalog.find(entry => entry.id === model)?.name ?? model,
-      // A rate over too few measurable calls is a rounding error with a unit on it.
-      tps: row.decodeMs >= MIN_DECODE_MS ? Math.round(row.decodeTokens / (row.decodeMs / 1000)) : null,
-      avgTtftMs: row.ttftSamples > 0 ? Math.round(row.ttftMs / row.ttftSamples) : null,
-    }
+    }, catalog)
   })
   const physicalFailed = named.reduce((sum, row) => sum + row.failed, 0)
   const turns = logicalReady ? logical.turns : named.reduce((sum, row) => sum + row.turns, 0)
@@ -69,6 +69,14 @@ export function buildStats(stats, catalog) {
   const recoveredTurns = Number.isSafeInteger(logical.recovered) ? logical.recovered : named.reduce((sum, row) => sum + row.recoveredTurns, 0)
   const hasLifetimeFailures = Number.isSafeInteger(stats.failedRequests)
   const savings = { ...emptySavings(), ...(stats.savings ?? {}) }
+
+  // ② 再构建对外 days：只在此处裁剪 models（totals/named/grand 已算完）。
+  const daysOut = series.map(({ day, total }) => ({ day, total }))
+
+  // ③ 最后挂载 periods：传原始 stats（聚合层自行读 days/modelsTurns/logical），
+  //    绝不能传裁剪后的 daysOut 或 named。
+  const periods = buildUsagePeriods(stats, catalog, Date.now())
+
   return {
     requests: stats.requests ?? 0,
     requestFailures: hasLifetimeFailures ? stats.failedRequests : physicalFailed,
@@ -77,7 +85,7 @@ export function buildStats(stats, catalog) {
     turns,
     failedTurns,
     recoveredTurns,
-    days: series,
+    days: daysOut,
     models: named,
     samples: (stats.samples ?? []).slice(-200),
     // What the token savers measured. The percentage is computed here, from the
@@ -94,5 +102,6 @@ export function buildStats(stats, catalog) {
       failedTurns,
       recoveredTurns,
     },
+    periods,
   }
 }

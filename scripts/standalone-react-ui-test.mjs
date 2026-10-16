@@ -17,10 +17,35 @@ const baseUrl = `http://127.0.0.1:${server.address().port}`
 management.setPort(server.address().port)
 const browser = await chromium.launch({ headless: true })
 const settings = { enabled: true, exposeRegionModels: true, streamRecovery: true, standaloneProbe: false, defaultMaxTokens: 32768, probeIntervalMinutes: 15 }
-let loggedIn = false, key = 'ofm-ui-isolated-key', summaryReads = 0
+let loggedIn = false, key = 'ofm-ui-isolated-key', summaryReads = 0, legacyStats = false
 const summary = () => ({ version: 'test', baseUrl, dataDir: 'isolated', networkMode: 'fixture', automaticRefresh: false,
   catalogSyncedAt: 0, settings: { ...settings }, channels: { state: 'ready' }, eacAuth: { local: false },
   catalog: [{ id: 'fixture/model', name: '测试模型', channel: 'anonymous', routable: true, availability: 'available' }] })
+const catalog = () => summary().catalog
+const localDayKey = at => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+/** 带四档 periods 的用量夹具：lifetime 回合=10，今日回合=1，用于验证档位联动。 */
+const makeUsageStats = () => {
+  const days = {}
+  for (let i = 6; i >= 0; i -= 1) {
+    const at = new Date(); at.setDate(at.getDate() - i)
+    const day = localDayKey(at)
+    const input = i === 0 ? 100 : 10 + i
+    const output = i === 0 ? 50 : 5
+    days[day] = {
+      total: input + output,
+      models: { 'fixture/model': { input, output, reasoning: 0, cacheRead: 0, calls: 1, failed: 0, ttftMs: 100, ttftSamples: 1, decodeMs: 300, decodeTokens: 5 } },
+      turns: i === 0 ? 1 : 2, failedTurns: 0, recoveredTurns: i === 0 ? 1 : 0,
+      modelsTurns: { 'fixture/model': { turns: i === 0 ? 1 : 2, failed: 0, recovered: i === 0 ? 1 : 0 } },
+    }
+  }
+  return buildStats({
+    requests: 10, failedRequests: 1,
+    logical: { turns: 10, failed: 2, recovered: 3, models: { 'fixture/model': { turns: 10, failed: 2, recovered: 3 } } },
+    models: { 'fixture/model': { input: 5000, output: 2000, reasoning: 30, cacheRead: 0, calls: 10, failed: 1 } },
+    days, logicalDailySince: '',
+  }, catalog())
+}
+const legacyStatsPayload = () => { const out = makeUsageStats(); delete out.periods; return out }
 const errors = []
 try {
   const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
@@ -33,7 +58,7 @@ try {
     if (endpoint === '/session') { loggedIn = body.key === key || body.bootstrapToken === 'test'; return answer(loggedIn ? { ok: true } : { error: '登录令牌无效' }, loggedIn ? 200 : 401) }
     if (!loggedIn) return answer({ error: '管理会话已失效，请重新登录' }, 401)
     if (endpoint === '/summary') { summaryReads++; return answer(summary()) }
-    if (endpoint === '/stats') return answer(buildStats({}, []))
+    if (endpoint === '/stats') return answer(legacyStats ? legacyStatsPayload() : makeUsageStats())
     if (endpoint === '/settings') { Object.assign(settings, body); return answer({ settings }) }
     if (endpoint === '/key') return answer({ key })
     if (endpoint === '/key/rotate') { key = 'ofm-ui-rotated-key'; return answer({ key }) }
@@ -176,10 +201,36 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name} 不应横向溢出视口`)
   }
   await page.setViewportSize({ width: 1280, height: 900 })
+  // ===== 用量页四档时间范围：控件 / 全页联动 / localStorage / 旧后端降级 =====
+  await navTo('用量统计', 'usage-ready')
+  const periodGroup = page.getByRole('group', { name: '统计时间范围' })
+  await periodGroup.waitFor()
+  for (const label of ['每日', '每周', '每月', '全部']) {
+    assert.equal(await periodGroup.getByRole('button', { name: label, exact: true }).count(), 1, `档位按钮「${label}」应唯一`)
+  }
+  assert.equal(await periodGroup.getByRole('button', { name: '全部', exact: true }).getAttribute('aria-pressed'), 'true', '默认档位应为全部')
+  assert.equal(await page.evaluate(() => localStorage.getItem('dsh-usage-period')), 'all')
+  assert.equal(await page.getByRole('group', { name: '趋势时间范围' }).count(), 0, '7/14/30 天切换应已删除')
+  assert.equal((await page.locator('[data-metric="用户回合"]').innerText()).trim(), '10', '全部档用户回合应为 lifetime 10')
+  assert.equal((await page.locator('[data-testid="usage-request-failures"]').innerText()).trim(), '1', '全部档物理失败请求应为 1')
+  await periodGroup.getByRole('button', { name: '每日', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('[data-metric="用户回合"]')?.textContent?.trim() === '1')
+  assert.equal(await page.evaluate(() => localStorage.getItem('dsh-usage-period')), 'day')
+  assert.equal((await page.locator('[data-testid="usage-request-failures"]').innerText()).trim(), '0', '每日档物理失败请求应随档位联动为 0')
+  assert.match(await page.getByTestId('usage-period-label').innerText(), /今日/)
+  // 旧后端降级：periods 缺失 → 页面以累计口径渲染、不白屏
+  legacyStats = true
+  await page.reload()
+  await page.getByTestId('overview-ready').waitFor()
+  await navTo('用量统计', 'usage-ready')
+  assert.equal((await page.locator('[data-metric="用户回合"]').innerText()).trim(), '10', 'periods 缺失时应回退累计口径')
+  legacyStats = false
+  await page.reload()
+  await page.getByTestId('overview-ready').waitFor()
   await page.getByRole('button', { name: '退出管理', exact: true }).click()
   await page.getByTestId('login-screen').waitFor()
   assert.deepEqual(errors, [])
-  console.log('react UI: 登录失败/成功、七页面导航、草稿保留/保存、密钥显隐/复制/轮换、轮询保持子页、三种视口、内容列宽度一致性/1280 收敛居中/两主题一致/页脚落底/窄栏居中、退出通过')
+  console.log('react UI: 登录失败/成功、七页面导航、草稿保留/保存、密钥显隐/复制/轮换、轮询保持子页、三种视口、内容列宽度一致性/1280 收敛居中/两主题一致/页脚落底/窄栏居中、用量页四档联动与旧后端降级、退出通过')
 } finally {
   await browser.close(); management.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve))
 }

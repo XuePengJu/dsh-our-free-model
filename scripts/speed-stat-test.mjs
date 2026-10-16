@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-const { decodeWindow, migrateStats, pruneDays, recordTurn, recordUsage, JsonStore, STATS_INITIAL } = await import('../src/store.js')
+const { decodeWindow, migrateStats, pruneDays, recordTurn, recordUsage, JsonStore, STATS_INITIAL, dayKey } = await import('../src/store.js')
 const { windowTokens } = await import('../src/stream.js')
 const { buildStats } = await import('../index.js')
 
@@ -126,6 +126,35 @@ check('migration ignores default-filled v3 counters on old files', [mergedV2.fai
 const migratedStore = store(migratedV2)
 recordTurn(migratedStore, { at: 3, model: 'space-bunny-free', ok: true })
 check('new exact turns preserve the historical estimate marker', migratedStore.get().logical.estimated, true)
+
+// ── v3 → v4：日桶回合字段补齐 + logicalDailySince 迁移标记 ─────────────────────
+const v3 = {
+  ...legacy,
+  version: 3,
+  logical: { turns: 2, failed: 1, recovered: 1, estimated: true, models: { 'space-bunny-free': { turns: 2, failed: 1, recovered: 1 } } },
+}
+const migratedV3 = migrateStats(v3)
+const migratedV3Bucket = migratedV3.days['2026-09-24']
+check('v3 migration bumps to v4 and fills daily turn fields',
+  [migratedV3.version, migratedV3Bucket.turns, migratedV3Bucket.failedTurns, migratedV3Bucket.recoveredTurns, JSON.stringify(migratedV3Bucket.modelsTurns)],
+  [4, 0, 0, 0, '{}'])
+check('v3 migration stamps the daily turn start as today', migratedV3.logicalDailySince, dayKey())
+check('v3 migration keeps the estimated marker untouched', migratedV3.logical.estimated, true)
+check('v4 migration leaves the daily turn marker intact', migrateStats(migratedV3).logicalDailySince, migratedV3.logicalDailySince)
+
+// ── 不变量：Σ days[].turns === logical.turns；裁剪单调不增且保留新字段 ─────────
+const daily = store(structuredClone(STATS_INITIAL))
+recordTurn(daily, { model: 'mimo-v2.6-flash-free', ok: true })
+recordTurn(daily, { model: 'mimo-v2.6-flash-free', ok: false, recovered: true })
+const dayBucketTurns = Object.values(daily.get().days).reduce((sum, bucket) => sum + (bucket.turns ?? 0), 0)
+check('daily turn buckets stay consistent with the lifetime turn count',
+  [dayBucketTurns, daily.get().logical.turns], [2, 2])
+const prunedDaily = pruneDays(daily.get(), 1)
+const prunedBucket = Object.values(prunedDaily.days)[0]
+const prunedBucketTurns = Object.values(prunedDaily.days).reduce((sum, bucket) => sum + (bucket.turns ?? 0), 0)
+check('pruning keeps the new turn fields on surviving buckets',
+  [prunedBucket.turns, prunedBucket.modelsTurns['mimo-v2.6-flash-free'].turns], [2, 2])
+check('pruning cannot grow the daily turn total', prunedBucketTurns <= daily.get().logical.turns, true)
 
 const retained = store(structuredClone(STATS_INITIAL))
 for (let index = 0; index < 405; index += 1) recordUsage(retained, call({ at: index + 1, ok: true }))
