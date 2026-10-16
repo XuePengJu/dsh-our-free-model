@@ -32,7 +32,6 @@ const BACKUP_KEEP = 20
 const BACKUP_NAME = /^models-\d{8}-\d{6}(-\d+)?\.json$/
 const DEFAULT_CONTEXT_WINDOW = 131072
 const DEFAULT_MAX_OUTPUT = 32768
-const REASONING_EFFORTS = ['high', 'xhigh']
 
 /**
  * 带状态码的错误：管理路由的统一 catch 按 `statusCode` 原样把具体原因
@@ -75,13 +74,59 @@ export function isOwnedByOfm(entry) {
 }
 
 /**
+ * 模型行自己声明的思考档位（规范名），读不到时返回 `undefined`。
+ *
+ * 档位必须以模型行的声明为准，绝不写死：写死会在客户端列出模型根本不接受的
+ * 档位，用户选中后要么被网关就近落档（UI 上的档位成了摆设），要么整轮 400。
+ * 三种行形态各读一处，都是各自产物的既有字段，不新增推断：
+ *
+ * - 渠道行（workbuddy/codearts/…）：`reasoning` 是对象，`openai_efforts` 就是
+ *   网关算好的规范名列表；退一步用 `reasoning.efforts[].canonical` 投影。
+ * - EAC / Kilo 行：`reasoning` 是布尔，档位在同级 `efforts` 里，值是上游私有
+ *   id；其中 `disabled` 是「关闭思考」，在规范词汇里对应 `none`
+ *   （见 vendor/channel-pack/src/reasoning-ladder.ts 的强度序）。
+ * - 免费车道与组合行：只声明「能不能思考」，没有档位表。免费车道的档位是本地
+ *   的 token 阶梯（src/effort.js），网关根本不下发 effort 字段，写成任何档位都
+ *   是虚构 —— 故不写该字段，客户端按「只有思考开关」处理。
+ *
+ * 规范名照原样透传（含 `none`/`ultra`）：客户端只渲染它认识的那几档，多写的
+ * 值不会误发；而一旦客户端日后补上标签，文件里已有正确值，无需再同步一次。
+ */
+function supportedEffortsFor(model) {
+  const reasoning = model?.reasoning
+  if (reasoning !== null && typeof reasoning === 'object') {
+    if (Array.isArray(reasoning.openai_efforts) && reasoning.openai_efforts.length > 0) {
+      return [...new Set(reasoning.openai_efforts.filter(effort => typeof effort === 'string' && effort !== ''))]
+    }
+    if (Array.isArray(reasoning.efforts)) {
+      const canonical = reasoning.efforts
+        .map(effort => (effort !== null && typeof effort === 'object' ? effort.canonical ?? effort.id : effort))
+        .filter(effort => typeof effort === 'string' && effort !== '')
+      if (canonical.length > 0) return [...new Set(canonical)]
+    }
+    return undefined
+  }
+  if (Array.isArray(model?.efforts) && model.efforts.length > 0) {
+    const canonical = model.efforts
+      .filter(effort => typeof effort === 'string' && effort !== '')
+      .map(effort => (effort === 'disabled' ? 'none' : effort))
+    if (canonical.length > 0) return [...new Set(canonical)]
+  }
+  return undefined
+}
+
+/**
  * 单个模型目录行 → WorkBuddy 条目。模型组（combo 虚拟行）与真实模型行共用：
  * combo 行的 vision/reasoning/contextWindow/maxOutput 已由 buildComboCatalog
  * 算好交集，字段形状与真实模型行一致。
+ *
+ * `reasoning` 子对象只在拿得到模型自己的档位声明时才写：写一个空档位表等于
+ * 宣称「有档位可选」，客户端的选择器会因此空转。
  */
 export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
   const supportsReasoning = model.reasoning === true ||
     (model.reasoning !== null && typeof model.reasoning === 'object')
+  const efforts = supportedEffortsFor(model)
   return {
     id: String(model.id),
     name: String(model.name ?? model.id),
@@ -94,7 +139,7 @@ export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
     useCustomProtocol: false,
     maxInputTokens: positiveInt(model.contextWindow ?? model.context_window) ?? DEFAULT_CONTEXT_WINDOW,
     maxOutputTokens: positiveInt(model.maxOutput ?? model.max_tokens) ?? DEFAULT_MAX_OUTPUT,
-    ...(supportsReasoning ? { reasoning: { supportedEfforts: [...REASONING_EFFORTS] } } : {}),
+    ...(efforts === undefined ? {} : { reasoning: { supportedEfforts: efforts } }),
   }
 }
 

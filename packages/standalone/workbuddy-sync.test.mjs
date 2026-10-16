@@ -5,6 +5,10 @@
  *
  * - field mapping for combo rows (intersection via buildComboCatalog) and for
  *   single model rows (defaults at 131072/32768, conditional `reasoning`);
+ * - the effort ladder is read from the row's own declaration, never hardcoded:
+ *   channel rows project `reasoning.openai_efforts`, EAC/Kilo rows map their
+ *   `efforts` (`disabled` → `none`), and a row that only declares "reasoning
+ *   yes/no" gets no ladder at all;
  * - ownership (`isOwnedByOfm`) and the "refresh but never clean single-model
  *   entries" rule — cleanup only ever touches `combo:` prefixed owned entries;
  * - the commit pipeline: no backup on first write, backup of the previous raw
@@ -114,16 +118,49 @@ test('buildWorkbuddyEntryFromModel: full mapping with defaults', () => {
   assert.equal('reasoning' in entry, false)
 })
 
-test('buildWorkbuddyEntryFromModel: reasoning flag and efforts, snake_case fallbacks', () => {
+test('buildWorkbuddyEntryFromModel: channel row takes its ladder from openai_efforts', () => {
   const entry = buildWorkbuddyEntryFromModel({
-    id: 'think', name: 'Think', vision: true, reasoning: { supportedEfforts: ['low'] },
+    id: 'think', name: 'Think', vision: true,
+    reasoning: {
+      efforts: [{ id: 'on', name: '开启', canonical: 'high' }, { id: 'off', name: '关闭', canonical: 'none' }],
+      default: 'on', openai_efforts: ['high', 'none'],
+    },
     context_window: 4096, max_tokens: 1024,
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
   assert.equal(entry.supportsReasoning, true)
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['high', 'xhigh'] })
+  assert.deepEqual(entry.reasoning, { supportedEfforts: ['high', 'none'] })
   assert.equal(entry.supportsImages, true)
   assert.equal(entry.maxInputTokens, 4096)
   assert.equal(entry.maxOutputTokens, 1024)
+})
+
+test('buildWorkbuddyEntryFromModel: falls back to reasoning.efforts[].canonical when openai_efforts is absent', () => {
+  const entry = buildWorkbuddyEntryFromModel({
+    id: 'think',
+    reasoning: { efforts: [{ id: 'extra_high', canonical: 'xhigh' }, { id: 'light', canonical: 'low' }] },
+  }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+  assert.deepEqual(entry.reasoning, { supportedEfforts: ['xhigh', 'low'] })
+})
+
+test('buildWorkbuddyEntryFromModel: EAC/Kilo efforts map disabled to none, order and dedupe kept', () => {
+  const entry = buildWorkbuddyEntryFromModel({
+    id: 'z-ai/glm-5.3', reasoning: true, efforts: ['disabled', 'low', 'high', 'max', 'high'],
+  }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+  assert.equal(entry.supportsReasoning, true)
+  assert.deepEqual(entry.reasoning, { supportedEfforts: ['none', 'low', 'high', 'max'] })
+})
+
+test('buildWorkbuddyEntryFromModel: a bare reasoning flag writes no ladder', () => {
+  // 免费车道（只有本地 token 阶梯，网关不收 effort 字段）与组合行（无档位交集）：
+  // 写死任何档位都是虚构，客户端退化为「只有思考开关」才是诚实的。
+  for (const model of [
+    { id: 'free', name: 'Free', reasoning: true },
+    { id: 'combo:x', name: 'x', channel: 'combo', combo: ['free'], reasoning: true },
+  ]) {
+    const entry = buildWorkbuddyEntryFromModel(model, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
+    assert.equal(entry.supportsReasoning, true)
+    assert.equal('reasoning' in entry, false)
+  }
 })
 
 test('buildWorkbuddyEntries: enabled combos only, capacities are the intersection', () => {
