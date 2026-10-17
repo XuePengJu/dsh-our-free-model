@@ -36,6 +36,10 @@ export const CODE = {
   // a refusal neither wipes the cached roster nor sends anyone chasing a
   // re-install; the settings page answers it with a login prompt instead.
   authorization: 'AUTHORIZATION_REQUIRED',
+  // The free lane's client gate: the gateway judged *this client* and refused
+  // the whole lane (403 FreeTierError). Not a credential, not a model, not
+  // retryable — a refusal this install cannot retry away.
+  laneLocked: 'LANE_LOCKED',
   transport: 'TRANSPORT',
   timeout: 'TIMEOUT',
   server: 'SERVER',
@@ -123,6 +127,18 @@ export function classifyFailure(status, payload, retryAfterMs) {
   // gets its own code and the settings page answers with a login prompt.
   if (type === 'AuthorizationRequired' || /需要 GitHub 授权|GitHub 授权无效/.test(raw)) {
     return new UpstreamError(message, CODE.authorization, { status, type, reason: typeof error.reason === 'string' ? error.reason : '' })
+  }
+  // The free lane's client gate (issue #310): 403 FreeTierError — "OpenCode's
+  // free tier can only be used from within OpenCode" — names the client, not
+  // the credential or the model. The stock classifier filed it as
+  // INVALID_CREDENTIAL, which wiped the cached roster and sent users chasing
+  // a re-login that cannot help: the upstream refuses this client's fingerprint
+  // and no credential change alters that. Its own code keeps it out of both
+  // the credential branch and the generic 4xx fallthrough, and the availability
+  // probe reads it as a lane-level lock (src/probe.js) instead of leaving the
+  // model in the picker as "unknown".
+  if (type === 'FreeTierError' || /free tier can only be used from within/i.test(flat)) {
+    return new UpstreamError(message, CODE.laneLocked, { status, type })
   }
   // An HTML page at 401/403 is the front proxy speaking, not the credential
   // store: fall through to the 4xx branch so users are not sent re-logging for
@@ -333,28 +349,29 @@ async function readRemainder(head, signal) {
  * @param {string} options.path - gateway path
  * @param {object} options.body - JSON request body
  * @param {string} options.session - canonical upstream session id
- * @param {string} options.requestId - per-turn request id
- * @param {string} [options.attributionUserAgent] - harness User-Agent merged into the request
+ * @param {string} [options.attributionUserAgent] - kept for the host API; this lane sends the v2 fingerprint UA instead
  * @param {AbortSignal} [options.signal]
  * @param {(payload: string) => void} options.onData - one `data:` payload, in order
  * @returns {Promise<{status:number, headers:Headers}>}
  */
 /**
- * Compose the request User-Agent.
+ * The User-Agent this lane sends.
  *
- * Two independent requirements meet in one header: the harness mandates an
- * attribution User-Agent on every provider request, and the gateway identifies a
- * desktop client by an `opencode/<version>` token (>= 1.17). The gateway tests
- * with a search rather than an anchored match, so one value can satisfy both —
- * verified live against this lane.
+ * ⚠️ v2 指纹（2026-10-14 起）要求这一串**原样单独**出现：形状
+ * `opencode/<channel>/<version>/<client>`、major ≥ 2，且按整串匹配。旧实现
+ * 「归属 UA + `opencode/1.18.x`」的拼接方式现在两处都会踩雷 —— v1 版本号被按名字
+ * 拒掉，任何前后缀又会让整串不再是 v2 客户端形状。
+ *
+ * ⇒ 本车道的 UA 就是官方那一串，归属信息不再随行；归属仍保留在其余车道
+ * （channel pack / EAC / Kilo 各自带自己的 UA）。`attributionUserAgent` 因此在本
+ * 车道上不再影响线上字节，参数保留是为了不动宿主 API 与调用方签名。
  */
-function userAgentWith(attribution) {
-  if (typeof attribution !== 'string' || attribution === '') return CLIENT_UA
-  return attribution.includes('opencode/') ? attribution : `${attribution} ${CLIENT_UA}`
+function userAgentWith(_attribution) {
+  return CLIENT_UA
 }
 
-export async function postStreamed({ path, body, session, requestId, attributionUserAgent, signal, onData, timeoutMs = 300000 }) {
-  const headers = gatewayHeaders({ session: truncateSession(session), requestId, stream: true })
+export async function postStreamed({ path, body, session, attributionUserAgent, signal, onData, timeoutMs = 300000 }) {
+  const headers = gatewayHeaders({ session: truncateSession(session), stream: true })
   headers['user-agent'] = userAgentWith(attributionUserAgent)
   let response
   try {
@@ -493,8 +510,8 @@ function emit(line, onData) {
 }
 
 /** Fetch a small JSON document from the gateway with the fingerprint headers. */
-export async function getJson(path, { session, requestId, attributionUserAgent, signal, timeoutMs = 15000 } = {}) {
-  const headers = gatewayHeaders({ session: truncateSession(session ?? ''), requestId: requestId ?? '', stream: false, accept: 'application/json' })
+export async function getJson(path, { session, attributionUserAgent, signal, timeoutMs = 15000 } = {}) {
+  const headers = gatewayHeaders({ session: truncateSession(session ?? ''), stream: false, accept: 'application/json' })
   headers['user-agent'] = userAgentWith(attributionUserAgent)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)

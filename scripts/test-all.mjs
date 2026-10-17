@@ -42,6 +42,8 @@ const suites = [
   ['trust', 'trust-test.mjs', []],
   ['sanitize', 'sanitize-test.mjs', []],
   ['feed', 'feed-test.mjs', []],
+  ['picks', 'picks-test.mjs', []],
+  ['picks-ui', 'picks-ui-test.mjs', []],
   ['updater', 'updater-test.mjs', []],
   ['upgrade-ui', 'upgrade-ui-test.mjs', []],
   ['forward', 'forward-test.mjs', []],
@@ -51,14 +53,23 @@ const suites = [
   ['forward-boot', 'forward-boot-test.mjs', []],
   ['standalone', 'standalone-test.mjs', []],
   ['desktop', 'desktop-test.mjs', []],
+  ['standalone-desktop-regression', 'standalone-desktop-regression-test.mjs', []],
+  ['standalone-page-lifecycle', 'standalone-page-lifecycle-test.mjs', []],
   ['standalone-management', 'standalone-management-test.mjs', []],
   ['standalone-frontend', 'standalone-frontend-test.mjs', []],
   ['standalone-channels', 'standalone-channels-test.mjs', []],
   ['standalone-channel-failure', 'standalone-channel-failure-test.mjs', []],
+  // 本项目自己的两个回归：用量页四档周期，以及 WorkBuddy 配置写入（后者放在
+  // packages/standalone 里，用相对路径挂进统一入口，避免同一份测试存在两处）。
+  ['usage-period', 'usage-period-test.mjs', []],
+  ['workbuddy-sync', '../packages/standalone/workbuddy-sync.test.mjs', []],
   ['egress', 'egress-test.mjs', []],
   ['effort', 'effort-test.mjs', []],
   ['projection', 'projection-test.mjs', []],
   ['fingerprint', 'fingerprint-test.mjs', []],
+  ['opencode-parity', 'opencode-parity-test.mjs', []],
+  ['free-lane-wire', 'free-lane-wire-test.mjs', []],
+  ['freetier-gate', 'freetier-gate-test.mjs', []],
   ['sniff', 'sniff-test.mjs', []],
   ['truncation', 'truncation-test.mjs', []],
   ['recovery', 'recovery-test.mjs', []],
@@ -68,6 +79,7 @@ const suites = [
   ['tui', 'tui-test.mjs', []],
   ['catalog', 'catalog-test.mjs', mode === 'contributor' ? ['--contributor'] : []],
   ['vault', 'vault-test.mjs', []],
+  ['mint-eac-seal', 'mint-eac-seal-test.mjs', []],
   ['eac-auth', 'eac-auth-test.mjs', []],
   ['eac-login', 'eac-login-test.mjs', []],
   ['kilo', 'kilo-test.mjs', []],
@@ -78,6 +90,7 @@ const suites = [
   // module with its own offline suite; `aggregate-wiring` is the one that
   // proves the host actually reaches them.
   ['rtk', 'rtk-test.mjs', []],
+  ['rtk-shape', 'rtk-shape-test.mjs', []],
   ['local-optimize', 'local-optimize-test.mjs', []],
   ['registry', 'registry-test.mjs', []],
   ['route', 'route-test.mjs', []],
@@ -86,6 +99,7 @@ const suites = [
   ['anthropic', 'anthropic-test.mjs', []],
   ['aggregate', 'aggregate-test.mjs', []],
   ['aggregate-wiring', 'aggregate-wiring-test.mjs', []],
+  ['gateway-source', 'gateway-source-test.mjs', []],
 ].filter(([name]) => (mode === 'contributor' ? !['manifest', 'release'].includes(name)
   : mode === 'release' ? releaseSuites.has(name) : true)
   && (only === null || name.startsWith(only)))
