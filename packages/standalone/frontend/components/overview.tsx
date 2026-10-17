@@ -62,49 +62,44 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
     }).catch(host.error)
   }
 
-  return <div className="dashboard" data-testid="overview-ready">
-    <header className="dashboard-heading"><div><div className="heading-eyebrow">WORKSPACE / OVERVIEW</div><h1>工作空间概览</h1><p>查看你的模型连接与运行情况。</p></div>
-      <Button variant="outline" disabled={refreshing} onClick={() => {
-        setRefreshing(true); void host.refresh().catch(host.error).finally(() => setRefreshing(false))
-      }}><RefreshCw size={15} className={refreshing ? 'spinning' : ''} />{refreshing ? '正在更新' : '更新状态'}</Button></header>
-
-    <div className="dashboard-metrics">{metricRows.map(metric => <Card className="dashboard-metric ov-metric" key={metric.name}>
-      <div><span>{metric.name}</span><div className="ov-metric-icon"><metric.icon size={17} /></div></div>
-      <strong>{metric.value}</strong><p>{metric.detail}</p>
-    </Card>)}</div>
-
-    <div className="dashboard-main-grid">
-      <Card className="usage-panel ov-chart-panel">
-        <div className="card-heading"><div><h2>Token 用量</h2><p>最近 7 天的输入与输出</p></div><Badge>最近 7 天</Badge></div>
-        <div className="usage-total ov-chart-total">{compact(total)} <span>Token</span></div>
-        <div className="dashboard-chart ov-chart" role="img" aria-label={`最近七天 Token 用量：${days.map(day => `${day.id} ${day.value}`).join('；')}`}>
-          <div className="chart-grid-lines"><span /><span /><span /><span /></div>
-          {days.map(day => <div className="dashboard-chart-column ov-chart-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
-            <div className={`dashboard-chart-bar ${day.value === 0 ? 'zero' : ''}`} style={{ height: `${Math.max(2, day.value / max * 80)}%` }} />
-            <span>{day.id.slice(5).replace('-', '/')}</span>
-          </div>)}
-          {total === 0 && <div className="chart-empty ov-chart-empty"><Activity size={22} /><span>还没有调用记录</span><small>接入客户端后，用量会显示在这里</small></div>}
+  return <div className="dashboard ov-dashboard" data-testid="overview-ready">
+    {/* ===== Hero：标题 + 7 天用量 + 快速接入 ===== */}
+    <section className="ov-hero">
+      <div className="ov-hero-main">
+        <div className="heading-eyebrow">WORKSPACE / OVERVIEW</div>
+        <h1>工作空间概览</h1>
+        <p className="ov-hero-sub">查看你的模型连接与运行情况 · 数据仅保存在本机</p>
+        <div className="ov-hero-actions">
+          <Button variant="outline" disabled={refreshing} onClick={() => {
+            setRefreshing(true); void host.refresh().catch(host.error).finally(() => setRefreshing(false))
+          }}><RefreshCw size={15} className={refreshing ? 'spinning' : ''} />{refreshing ? '正在更新' : '更新状态'}</Button>
+          <Button variant="ghost" onClick={() => host.navigate('connection')}>查看接入配置 <ArrowUpRight size={15} /></Button>
         </div>
-        <div className="card-foot"><span>按实际请求记录统计</span><button onClick={() => host.navigate('usage')}>查看全部用量 <ArrowRight size={14} /></button></div>
-      </Card>
+        <div className="ov-hero-spark" role="img" aria-label={`最近七天 Token 用量：${days.map(day => `${day.id} ${number(day.value)}`).join('；')}`}>
+          <div className="ov-spark-head"><span>最近 7 天用量</span><strong>{compact(total)} <small>Token</small></strong></div>
+          <div className="ov-spark-bars">
+            {days.map(day => <div className="ov-spark-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
+              <div className={`ov-spark-bar ${day.value === 0 ? 'zero' : ''}`} style={{ height: `${Math.max(4, day.value / max * 100)}%` }} />
+              <span>{day.id.slice(5).replace('-', '/')}</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
 
-      <Card className="quick-connect ov-quick">
-        <div className="quick-icon ov-quick-icon"><Terminal size={20} /></div>
-        <h2>API 接入</h2><p>OpenAI 兼容 · Chat Completions / Responses</p>
-        <div className="ov-access-fields">
+      <Card className="ov-hero-connect">
+        <div className="ov-connect-head"><div className="quick-icon ov-quick-icon"><Terminal size={19} /></div>
+          <div><h2>快速接入</h2><p>OpenAI 兼容 · 即取即用</p></div></div>
+        <div className="ov-connect-fields">
           <label>API BASE URL</label>
           <div className="quick-endpoint ov-endpoint"><code>{resolveEndpointBase(summary.baseUrl)}/v1</code>
-            <Button variant="ghost" aria-label="复制 API 地址" onClick={copyEndpoint} title="复制 API 地址"
-              className={copied ? 'ov-copied' : ''}>
+            <Button variant="ghost" aria-label="复制 API 地址" onClick={copyEndpoint} title="复制 API 地址" className={copied ? 'ov-copied' : ''}>
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </Button>
           </div>
           {copied && <span className="copy-feedback" role="status">地址已复制</span>}
           <label>API KEY</label>
           <div className="quick-endpoint ov-endpoint ov-access-key"><code>ofm-****</code>
-            <Button variant="ghost" aria-label="复制 API Key" onClick={copyApiKey} title="复制 API Key">
-              <KeyRound size={16} />
-            </Button>
+            <Button variant="ghost" aria-label="复制 API Key" onClick={copyApiKey} title="复制 API Key"><KeyRound size={16} /></Button>
           </div>
           <label>默认模型</label>
           <div className="ov-access-model-row">
@@ -120,21 +115,30 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
             </Button>
           </div>
         </div>
-        <div className="connect-steps"><span>管理会话：本机独立会话</span><span>推理鉴权：Bearer API Key</span><span>监听范围：仅回环地址</span></div>
-        <Button className="connect-button" onClick={() => host.navigate('connection')}>查看接入配置 <ArrowUpRight size={16} /></Button>
-        <div className="connection-footnote"><span className={`status-dot ${summary.settings.enabled ? '' : 'paused'}`} />{summary.settings.enabled ? '推理服务已启用' : '推理服务已暂停'}</div>
+        <div className="connection-footnote"><span className={`status-dot ${summary.settings.enabled ? '' : 'paused'}`} />{summary.settings.enabled ? '推理服务已启用 · Bearer 鉴权' : '推理服务已暂停'}</div>
       </Card>
-    </div>
+    </section>
 
-    <div className="dashboard-bottom-grid">
-      <Card className="ov-sources">
-        <div className="card-heading"><div><h2>模型来源</h2><p>所有渠道，共用一个接入地址</p></div><Network size={18} /></div>
-        <div className="source-list ov-source-list">{sources.map((source, index) => <button className="source-row ov-source-row" key={source.name} onClick={() => host.navigate(source.page)}
-          style={{ animationDelay: `${index * 60}ms` }}>
-          <span className="source-icon"><source.icon size={18} /></span>
-          <span><strong>{source.name}</strong><small>{source.sub}</small></span>
-          <Badge>{source.count} 个模型</Badge><ArrowRight size={14} />
-        </button>)}</div>
+    {/* ===== 指标 ===== */}
+    <div className="dashboard-metrics">{metricRows.map(metric => <Card className="dashboard-metric ov-metric" key={metric.name}>
+      <div><span>{metric.name}</span><div className="ov-metric-icon"><metric.icon size={17} /></div></div>
+      <strong>{metric.value}</strong><p>{metric.detail}</p>
+    </Card>)}</div>
+
+    {/* ===== 主区：Token 用量 + 运行检查 ===== */}
+    <div className="dashboard-main-grid">
+      <Card className="usage-panel ov-chart-panel">
+        <div className="card-heading"><div><h2>Token 用量</h2><p>最近 7 天的输入与输出</p></div><Badge>最近 7 天</Badge></div>
+        <div className="usage-total ov-chart-total">{compact(total)} <span>Token</span></div>
+        <div className="dashboard-chart ov-chart" role="img" aria-label={`最近七天 Token 用量：${days.map(day => `${day.id} ${day.value}`).join('；')}`}>
+          <div className="chart-grid-lines"><span /><span /><span /><span /></div>
+          {days.map(day => <div className="dashboard-chart-column ov-chart-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
+            <div className={`dashboard-chart-bar ${day.value === 0 ? 'zero' : ''}`} style={{ height: `${Math.max(2, day.value / max * 80)}%` }} />
+            <span>{day.id.slice(5).replace('-', '/')}</span>
+          </div>)}
+          {total === 0 && <div className="chart-empty ov-chart-empty"><Activity size={22} /><span>还没有调用记录</span><small>接入客户端后，用量会显示在这里</small></div>}
+        </div>
+        <div className="card-foot"><span>按实际请求记录统计</span><button onClick={() => host.navigate('usage')}>查看全部用量 <ArrowRight size={14} /></button></div>
       </Card>
 
       <Card className="ov-failures">
@@ -149,6 +153,19 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
           </div>)}</div>
           : <div className="runtime-empty ov-runtime-empty"><CircleCheck size={18} /><span>最近的请求样本中没有失败记录</span></div>}
         <div className="card-foot"><span title={summary.dataDir}>数据仅保存在本机独立目录</span><button onClick={() => host.navigate('settings')}>服务设置 <ArrowRight size={14} /></button></div>
+      </Card>
+    </div>
+
+    {/* ===== 底部：模型来源（横排） ===== */}
+    <div className="ov-bottom">
+      <Card className="ov-sources">
+        <div className="card-heading"><div><h2>模型来源</h2><p>所有渠道，共用一个接入地址</p></div><Network size={18} /></div>
+        <div className="source-list ov-source-list">{sources.map((source, index) => <button className="source-row ov-source-row" key={source.name} onClick={() => host.navigate(source.page)}
+          style={{ animationDelay: `${index * 60}ms` }}>
+          <span className="source-icon"><source.icon size={18} /></span>
+          <span><strong>{source.name}</strong><small>{source.sub}</small></span>
+          <Badge>{source.count} 个模型</Badge><ArrowRight size={14} />
+        </button>)}</div>
       </Card>
     </div>
   </div>

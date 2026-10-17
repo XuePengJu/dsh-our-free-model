@@ -60,12 +60,12 @@
   --beam1: radial-gradient(900px 480px at 14% -6%, rgba(255, 209, 140, 0.20), transparent 62%);
   --beam2: radial-gradient(820px 460px at 86% 0%, rgba(255, 177, 92, 0.13), transparent 66%);
   --beam3: linear-gradient(115deg, transparent 38%, rgba(255, 224, 176, 0.07) 50%, transparent 64%);
-  --amber: #b45309;
-  --amber-ink: #92400e;
-  --amber-soft: #fdf6ec;
-  --amber-line: #eedfc6;
-  --amber-glow: rgba(217, 119, 6, 0.14);
-  --warm-shadow: 86, 52, 10;
+  --amber: #4f5fe6;
+  --amber-ink: #3a49c9;
+  --amber-soft: #eef0fe;
+  --amber-line: #d5dafb;
+  --amber-glow: rgba(99, 112, 255, 0.14);
+  --warm-shadow: 15, 23, 42;
 }
 body { position: relative; }
 body::after {
@@ -608,7 +608,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f2ede4; borde
   background: var(--muted); border-radius: 1px; box-shadow: none;
 }
 [data-theme="dark"] .ui-switch.on > span { background: var(--cp-cyan); box-shadow: 0 0 6px var(--cp-glow); }
-:root:not([data-theme="dark"]) .ui-switch.on { background: #d18a2e; border-color: #b5761f; }
+:root:not([data-theme="dark"]) .ui-switch.on { background: rgba(99, 112, 255, 0.18); border-color: rgba(99, 112, 255, 0.55); }
 
 
 
@@ -2223,7 +2223,7 @@ input::placeholder, textarea::placeholder { color: #757064; opacity: 1; }
   text-shadow: 0 0 18px rgba(124, 141, 255, 0.28);
 }
 [data-theme="dark"] .login-card-glow {
-  background: linear-gradient(90deg, transparent, rgba(99, 232, 218, 0.62), transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 141, 255, 0.62), transparent);
   box-shadow: 0 0 14px rgba(124, 141, 255, 0.24);
 }
 [data-theme="dark"] .loading-bar {
@@ -2333,7 +2333,7 @@ input::placeholder, textarea::placeholder { color: #757064; opacity: 1; }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 12px 26px -16px rgba(124, 141, 255, 0.9);
 }
 [data-theme="dark"] .console-brand:hover .console-mark {
-  border-color: rgba(99, 232, 218, 0.36);
+  border-color: rgba(124, 141, 255, 0.36);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 16px 30px -16px rgba(124, 141, 255, 1);
 }
 
@@ -2513,7 +2513,7 @@ input::placeholder, textarea::placeholder { color: #757064; opacity: 1; }
 }
 [data-theme="dark"] .theme-toggle:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035));
-  border-color: rgba(99, 232, 218, 0.42);
+  border-color: rgba(124, 141, 255, 0.42);
   color: #9db6ff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 8px -4px rgba(0, 0, 0, 0.6), 0 0 16px -8px rgba(124, 141, 255, 0.9);
 }
@@ -2771,7 +2771,7 @@ code, pre, kbd { font-family: var(--mono-font); }
 }
 [data-theme="dark"] .quick-connect { border-top-width: 1px; border-top-color: rgba(124, 141, 255, 0.45); }
 [data-theme="dark"] .quick-connect::before {
-  background: linear-gradient(90deg, transparent, rgba(99, 232, 218, 0.85) 16%, rgba(124, 141, 255, 0.25) 84%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 141, 255, 0.85) 16%, rgba(124, 141, 255, 0.25) 84%, transparent);
   opacity: 0.9;
 }
 .quick-icon { border-radius: 10px; }
@@ -3133,7 +3133,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 }
 [data-theme="dark"] .workspace-switch:hover .workspace-avatar {
   box-shadow:
-    inset 0 0 0 1px rgba(99, 232, 218, 0.3),
+    inset 0 0 0 1px rgba(124, 141, 255, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 18px -12px rgba(124, 141, 255, 1);
 }
@@ -3166,7 +3166,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 }
 [data-theme="dark"] .login-card:focus-within .brand-mark span {
   color: #a5b4ff;
-  filter: drop-shadow(0 0 9px rgba(99, 232, 218, 0.65));
+  filter: drop-shadow(0 0 9px rgba(124, 141, 255, 0.65));
 }
 
 /* ==========================================================================
@@ -3247,9 +3247,9 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 /* ---------- 昼 · 主按钮：黄铜主键（世界观：昼=纸+黄铜，不是品牌蓝） ---------- */
 :root:not([data-theme="dark"]) body .ui-button-default,
 :root:not([data-theme="dark"]) body .primary {
-  background: linear-gradient(180deg, #d18a2e, #b5761f);
+  background: linear-gradient(180deg, #6474f4, #4f5fe6);
   color: #fffdf6;
-  border: 1px solid #a06a18;
+  border: 1px solid rgba(30, 41, 89, 0.18);
   box-shadow: 1px 2px 0 rgba(var(--warm-shadow), 0.14), 0 6px 16px -8px rgba(var(--warm-shadow), 0.4);
 }
 :root:not([data-theme="dark"]) body .ui-button-default:hover,
@@ -3261,7 +3261,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 }
 :root:not([data-theme="dark"]) body .ui-button-default:active,
 :root:not([data-theme="dark"]) body .primary:active {
-  background: linear-gradient(180deg, #b5761f, #a06a18);
+  background: linear-gradient(180deg, #5a6aee, #4353d6);
   box-shadow: inset 0 2px 4px rgba(var(--warm-shadow), 0.28);
   transform: translateY(0);
 }
@@ -3289,1810 +3289,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
   .dashboard-chart-column:hover .dashboard-chart-bar:not(.zero) { transform: none !important; }
   .console-nav-item:hover .console-nav-indicator { transform: translateY(-50%) scaleY(0.5); }
 }
-/* ==== V5 LIGHT START ==== */
-/* 拾光者样板间 · 三原子件：卡片 / 黄铜按钮 / 开关
-   世界观：纸 + 黄铜 + 左上光源暖影
-   读书笔记映射：
-   - 卡片 → 双嵌套（外纸壳 + 内亮纸面）+ 可见纸纹 + 方向影
-   - 按钮 → 黄铜镜面高光条 + 拉丝 + 暗倒角 + hover 高光移动 + active 下沉
-   - 开关 → 黄铜胶囊框 + 墨水洇开反馈
-*/
-
-/* ---- 1. 卡片：纸上浮起 ---- */
-:root:not([data-theme="dark"]) .ui-card,
-:root:not([data-theme="dark"]) .login-card {
-  background: #fdfcf9 !important;
-  border: 1px solid #e8e0d3 !important;
-  border-radius: 8px !important;
-  box-shadow: 3px 4px 0 rgba(86,52,10,0.04), 6px 8px 22px -6px rgba(86,52,10,0.13), 0 1px 3px rgba(86,52,10,0.05) !important;
-  transition: transform 400ms cubic-bezier(0.32,0.72,0,1) !important, box-shadow 400ms cubic-bezier(0.32,0.72,0,1) !important;
-  position: relative !important;
-  overflow: hidden !important;
-}
-/* 纸纹：fixed 定位伪元素叠加极细噪点 */
-:root:not([data-theme="dark"]) .ui-card::before {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23p)' opacity='0.04'/%3E%3C/svg%3E") !important;
-  pointer-events: none !important;
-  z-index: 0 !important;
-}
-/* 顶部薄光边：模拟纸被左上阳光照亮的边缘 */
-:root:not([data-theme="dark"]) .ui-card::after {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 1px !important;
-  background: linear-gradient(90deg, rgba(180,83,9,0.12), rgba(255,255,255,0.5) 30%, transparent) !important;
-  pointer-events: none !important;
-  z-index: 1 !important;
-}
-/* 卡片内容不被纹理遮住 */
-:root:not([data-theme="dark"]) .ui-card > * {
-  position: relative !important;
-  z-index: 2 !important;
-}
-/* hover：迎光上浮 2px，影子拉开（纸被拿起透光） */
-:root:not([data-theme="dark"]) .ui-card:hover,
-:root:not([data-theme="dark"]) .login-card:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 4px 6px 0 rgba(86,52,10,0.03), 10px 14px 32px -6px rgba(86,52,10,0.17), 0 2px 5px rgba(86,52,10,0.06) !important;
-}
-
-/* ---- 2. 黄铜按钮：不是橙色渐变，是"真黄铜" ---- */
-:root:not([data-theme="dark"]) body .ui-button-default,
-:root:not([data-theme="dark"]) body .primary {
-  background: linear-gradient(180deg, #c8842a 0%, #b45309 50%, #9a4708 100%) !important;
-  color: #fffdf6 !important;
-  border: 1px solid #8a4a06 !important;
-  border-radius: 6px !important;
-  box-shadow:
-    0 1px 0 rgba(255,240,200,0.45) inset,
-    0 -1px 2px rgba(60,30,0,0.35) inset,
-    2px 3px 0 rgba(86,52,10,0.10),
-    3px 6px 14px -4px rgba(86,52,10,0.30) !important;
-  transition: all 350ms cubic-bezier(0.32,0.72,0,1) !important;
-  position: relative !important;
-  overflow: hidden !important;
-}
-/* 镜面高光条：顶部一条白色反光，不是整体渐变 */
-:root:not([data-theme="dark"]) body .ui-button-default::before,
-:root:not([data-theme="dark"]) body .primary::before {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 10% !important;
-  right: 10% !important;
-  height: 40% !important;
-  background: linear-gradient(180deg, rgba(255,250,235,0.35), rgba(255,250,235,0.05)) !important;
-  border-radius: 6px 6px 50% 50% / 6px 6px 20% 20% !important;
-  pointer-events: none !important;
-  transition: left 350ms cubic-bezier(0.32,0.72,0,1), right 350ms cubic-bezier(0.32,0.72,0,1) !important;
-}
-/* 拉丝纹理：极细水平噪点 */
-:root:not([data-theme="dark"]) body .ui-button-default::after,
-:root:not([data-theme="dark"]) body .primary::after {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='4'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.02 0.9' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='80' height='4' filter='url(%23b)' opacity='0.05'/%3E%3C/svg%3E") !important;
-  pointer-events: none !important;
-  opacity: 0.6 !important;
-}
-/* hover：高光位置移动（模拟黄铜微转反光面变） */
-:root:not([data-theme="dark"]) body .ui-button-default:hover::before,
-:root:not([data-theme="dark"]) body .primary:hover::before {
-  left: 3% !important;
-  right: 25% !important;
-  background: linear-gradient(160deg, rgba(255,250,235,0.45), rgba(255,250,235,0.08)) !important;
-}
-:root:not([data-theme="dark"]) body .ui-button-default:hover,
-:root:not([data-theme="dark"]) body .primary:hover {
-  background: linear-gradient(180deg, #d1912e 0%, #b85a09 50%, #9e4c08 100%) !important;
-  border-color: #7e4406 !important;
-  box-shadow:
-    0 1px 0 rgba(255,240,200,0.5) inset,
-    0 -1px 2px rgba(60,30,0,0.38) inset,
-    3px 4px 0 rgba(86,52,10,0.10),
-    4px 8px 18px -4px rgba(86,52,10,0.35) !important;
-  transform: translateY(-1px) !important;
-}
-/* active：按进纸里，下沉 1px，高光收缩 */
-:root:not([data-theme="dark"]) body .ui-button-default:active,
-:root:not([data-theme="dark"]) body .primary:active {
-  background: linear-gradient(180deg, #a86407 0%, #9a4708 50%, #8a3e06 100%) !important;
-  border-color: #6e3a05 !important;
-  box-shadow:
-    0 1px 0 rgba(255,240,200,0.25) inset,
-    0 2px 5px rgba(60,30,0,0.35) inset,
-    1px 1px 0 rgba(86,52,10,0.06),
-    0 2px 6px -2px rgba(86,52,10,0.20) !important;
-  transform: translateY(1px) !important;
-}
-:root:not([data-theme="dark"]) body .ui-button-default:active::before,
-:root:not([data-theme="dark"]) body .primary:active::before {
-  left: 20% !important;
-  right: 20% !important;
-  height: 25% !important;
-  opacity: 0.6 !important;
-}
-
-/* ---- 3. 开关：黄铜胶囊 + 墨水洇开 ---- */
-:root:not([data-theme="dark"]) .ui-switch {
-  width: 33px !important;
-  height: 20px !important;
-  padding: 3px !important;
-  border: 1px solid #d4c9b5 !important;
-  border-radius: 999px !important;
-  background: #ece6da !important;
-  box-shadow: 1px 2px 2px rgba(86,52,10,0.08) inset, 0 1px 1px rgba(255,255,255,0.6) !important;
-  transition: background 600ms cubic-bezier(0.32,0.72,0,1), box-shadow 600ms cubic-bezier(0.32,0.72,0,1), border-color 600ms cubic-bezier(0.32,0.72,0,1) !important;
-  position: relative !important;
-  overflow: visible !important;
-}
-/* 墨水洇开：on 时 track 底色从中心慢慢扩散成暖棕墨 */
-:root:not([data-theme="dark"]) .ui-switch.on {
-  background: radial-gradient(circle at 50% 50%, #c8842a 0%, #b45309 55%, #a04a08 100%) !important;
-  border-color: #8a4a06 !important;
-  box-shadow: 0 1px 2px rgba(86,52,10,0.18) inset, 0 -1px 1px rgba(255,240,200,0.25) inset !important;
-}
-/* 滑块：黄铜圆片带镜面高光点 */
-:root:not([data-theme="dark"]) .ui-switch span {
-  display: block !important;
-  width: 14px !important;
-  height: 14px !important;
-  background: linear-gradient(180deg, #f5ede0 0%, #ddd4c2 100%) !important;
-  border-radius: 50% !important;
-  box-shadow: 0 1px 3px rgba(86,52,10,0.18), 0 0 0 0.5px rgba(180,83,9,0.12) !important;
-  transition: transform 450ms cubic-bezier(0.16,1,0.3,1) !important;
-  position: relative !important;
-}
-/* 滑块高光点：左上小亮点 */
-:root:not([data-theme="dark"]) .ui-switch span::after {
-  content: "" !important;
-  position: absolute !important;
-  top: 2px !important;
-  left: 3px !important;
-  width: 5px !important;
-  height: 5px !important;
-  background: rgba(255,255,255,0.7) !important;
-  border-radius: 50% !important;
-}
-/* on 状态滑块：变成黄铜色（仪器拨杆被推到黄铜端） */
-:root:not([data-theme="dark"]) .ui-switch.on span {
-  background: linear-gradient(180deg, #e8c47a 0%, #c8842a 100%) !important;
-  box-shadow: 0 1px 2px rgba(86,52,10,0.20), 0 0 0 0.5px rgba(140,75,6,0.18) !important;
-  transform: translateX(13px) !important;
-}
-:root:not([data-theme="dark"]) .ui-switch.on span::after {
-  background: rgba(255,250,235,0.55) !important;
-}
-
-/* ============================================================
-   V5 LIGHT 铺开 · 全套（徽章/分割线/状态点 → 输入与聚焦 →
-   原生件 → 纸纹与光束 → 颜色纪律 → 图表与空态）
-   ============================================================ */
-
-/* ---- 0. 令牌重声明：蓝色泄漏清零（昼内不引蓝） ---- */
-:root:not([data-theme="dark"]) {
-  --green: #b45309 !important;
-  --accent-soft: #f5ede0 !important;
-  --accent-line: #e3d5bd !important;
-  --accent-hover: #9a4708 !important;
-  --accent-glow: rgba(180,83,9,0.14) !important;
-  --focus-ring: #b45309 !important;
-  --focus-halo: rgba(180,83,9,0.16) !important;
-  --dsw-alias-state-business-primary: #b45309 !important;
-  --dsw-alias-accent-primary: #b45309 !important;
-  --dsw-alias-accent-secondary: #f5ede0 !important;
-}
-:root:not([data-theme="dark"]) ::selection { background: rgba(180,83,9,0.20) !important; color: #1c1917 !important; }
-:root:not([data-theme="dark"]) .console-mark { border-color: rgba(180,83,9,0.24) !important; box-shadow: 0 1px 2px rgba(86,52,10,0.10), 0 8px 18px -12px rgba(180,83,9,0.40) !important; }
-:root:not([data-theme="dark"]) .console-brand:hover .console-mark { border-color: rgba(180,83,9,0.38) !important; box-shadow: 0 2px 5px rgba(86,52,10,0.12), 0 12px 22px -14px rgba(180,83,9,0.48) !important; }
-:root:not([data-theme="dark"]) .console-nav-item:hover { background: linear-gradient(90deg, rgba(180,83,9,0.08), rgba(180,83,9,0.02)) !important; }
-:root:not([data-theme="dark"]) .console-nav-item.selected { background: linear-gradient(90deg, rgba(180,83,9,0.13), rgba(180,83,9,0.04)) !important; box-shadow: inset 0 0 0 1px rgba(180,83,9,0.16), 0 1px 2px rgba(86,52,10,0.06) !important; }
-:root:not([data-theme="dark"]) .console-nav-item.selected svg { color: #b45309 !important; }
-:root:not([data-theme="dark"]) .count-badge { background: #f0e6d4 !important; color: #9a4708 !important; box-shadow: inset 0 0 0 1px rgba(180,83,9,0.12) !important; }
-:root:not([data-theme="dark"]) .login-shell { background: radial-gradient(880px 420px at 50% 28%, rgba(180,83,9,0.06), transparent 64%), var(--paper) !important; }
-:root:not([data-theme="dark"]) .login-card { box-shadow: 0 1px 2px rgba(86,52,10,0.05), 0 14px 44px -14px rgba(86,52,10,0.18), 0 40px 80px -60px rgba(180,83,9,0.30), inset 0 1px 0 rgba(255,255,255,0.85) !important; }
-:root:not([data-theme="dark"]) .login-card:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(86,52,10,0.06), 0 22px 56px -16px rgba(86,52,10,0.22), 0 44px 88px -60px rgba(180,83,9,0.38) !important; }
-:root:not([data-theme="dark"]) .login-card-glow { background: linear-gradient(90deg, transparent, rgba(180,83,9,0.4), transparent) !important; }
-:root:not([data-theme="dark"]) .login-card input:focus-visible { box-shadow: 0 0 0 3px var(--accent-glow), 0 0 18px -6px rgba(180,83,9,0.35) !important; }
-:root:not([data-theme="dark"]) .login-card:focus-within .brand-mark span { color: #b45309 !important; filter: drop-shadow(0 0 6px rgba(180,83,9,0.45)) !important; }
-:root:not([data-theme="dark"]) .loading-screen { background: radial-gradient(920px 460px at 50% 22%, rgba(180,83,9,0.07), transparent 62%), radial-gradient(700px 420px at 88% 96%, rgba(30,138,99,0.04), transparent 66%), linear-gradient(180deg, #fdfbf7, var(--paper) 46%, #f7f4ee) !important; }
-:root:not([data-theme="dark"]) .loading-bar { background: rgba(180,83,9,0.12) !important; }
-:root:not([data-theme="dark"]) .loading-bar-fill { background: #b45309 !important; }
-:root:not([data-theme="dark"]) .ui-spinner { border-color: rgba(180,83,9,0.2) !important; }
-:root:not([data-theme="dark"]) .workspace-avatar { background: linear-gradient(180deg, #ffffff, #f5ede0) !important; box-shadow: inset 0 0 0 1px rgba(180,83,9,0.16), 0 1px 2px rgba(86,52,10,0.08) !important; }
-:root:not([data-theme="dark"]) .workspace-switch:hover .workspace-avatar { box-shadow: inset 0 0 0 1px rgba(180,83,9,0.26), 0 4px 10px -4px rgba(180,83,9,0.40) !important; }
-:root:not([data-theme="dark"]) .theme-toggle:hover { border-color: var(--accent-line) !important; color: #b45309 !important; box-shadow: inset 0 1px 0 #ffffff, 0 3px 8px -3px rgba(86,52,10,0.16), 0 0 0 3px rgba(180,83,9,0.06) !important; }
-:root:not([data-theme="dark"]) .quick-endpoint code { color: #8a5206 !important; }
-:root:not([data-theme="dark"]) .quick-icon { background: #f5ede0 !important; color: #b45309 !important; }
-:root:not([data-theme="dark"]) .detail-provider-link.active { background: #f5ede0 !important; color: #b45309 !important; }
-:root:not([data-theme="dark"]) .text-button { color: #b45309 !important; }
-:root:not([data-theme="dark"]) .card-foot button { color: #b45309 !important; }
-:root:not([data-theme="dark"]) .card-foot button:hover { color: #9a4708 !important; }
-:root:not([data-theme="dark"]) input:focus-visible, :root:not([data-theme="dark"]) select:focus-visible, :root:not([data-theme="dark"]) textarea:focus-visible { border-color: #b45309 !important; box-shadow: 0 0 0 3px rgba(180,83,9,0.14), 0 0 14px -6px rgba(180,83,9,0.35) !important; }
-:root:not([data-theme="dark"]) input, :root:not([data-theme="dark"]) textarea { caret-color: #7a4a12 !important; }
-:root:not([data-theme="dark"]) input::placeholder, :root:not([data-theme="dark"]) textarea::placeholder { color: #9c9285 !important; }
-:root:not([data-theme="dark"]) .ui-input:hover:not(:disabled) { border-color: #cbbba0 !important; }
-:root:not([data-theme="dark"]) .ui-input:focus-visible { border-color: #b45309 !important; box-shadow: 0 0 0 3px rgba(180,83,9,0.14), 0 0 14px -6px rgba(180,83,9,0.35) !important; }
-:root:not([data-theme="dark"]) .ui-badge-blue { background: #f5ede0 !important; color: #b45309 !important; border-color: #e3d5bd !important; }
-:root:not([data-theme="dark"]) .ui-badge-blue .ui-badge-dot { box-shadow: 0 0 0 2px rgba(180,83,9,0.16) !important; }
-:root:not([data-theme="dark"]) .ui-switch.on { background: radial-gradient(circle at 50% 50%, #c8842a, #b45309 55%, #a04a08) !important; border-color: #8a4a06 !important; }
-:root:not([data-theme="dark"]) .dashboard-chart-bar { background: linear-gradient(180deg, #c8842a, #b45309) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 0 0 0.5px rgba(120,60,0,0.20), 0 1px 2px rgba(86,52,10,0.10) !important; }
-:root:not([data-theme="dark"]) .dashboard-chart-bar.zero { background: #ece5d8 !important; box-shadow: none !important; }
-:root:not([data-theme="dark"]) .dashboard-chart-column:hover .dashboard-chart-bar:not(.zero) { background: linear-gradient(180deg, #d1912e, #b85a09) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.30), inset 0 0 0 0.5px rgba(120,60,0,0.22), 0 6px 14px -8px rgba(180,83,9,0.45) !important; }
-:root:not([data-theme="dark"]) .chart-empty { background: rgba(250,247,242,0.9) !important; }
-:root:not([data-theme="dark"]) .chart-empty span, :root:not([data-theme="dark"]) .chart-empty small { color: #8a8274 !important; }
-:root:not([data-theme="dark"]) .empty-state h3 { color: #1c1917 !important; }
-:root:not([data-theme="dark"]) .empty-state svg { color: #b45309 !important; opacity: 0.35 !important; }
-:root:not([data-theme="dark"]) .channel-empty svg { color: #b45309 !important; opacity: 0.30 !important; }
-:root:not([data-theme="dark"]) .channel-empty p { color: #6b655c !important; }
-
-/* ---- 1. 徽章 · 分割线 · 状态点（黄铜胶囊 + 虚线分隔） ---- */
-:root:not([data-theme="dark"]) .ui-badge { border-radius: 999px !important; padding: 3px 9px !important; font-size: 10px !important; letter-spacing: 0.04em !important; background: #f5ede0 !important; color: #9a4708 !important; border: 1px solid #e3d5bd !important; }
-:root:not([data-theme="dark"]) .ui-badge-success { background: #eff5f0 !important; color: #177552 !important; border-color: #d5e2d9 !important; }
-:root:not([data-theme="dark"]) .ui-badge-warning { background: #fbf6ea !important; color: #8a6215 !important; border-color: #eadfc6 !important; }
-:root:not([data-theme="dark"]) .ui-badge-dot { width: 5px !important; height: 5px !important; border-radius: 50% !important; }
-:root:not([data-theme="dark"]) .card-foot { border-top: 1px dashed #d8cdb9 !important; }
-:root:not([data-theme="dark"]) .dashboard-heading, :root:not([data-theme="dark"]) .page-heading { border-bottom: 1px dashed #d8cdb9 !important; padding-bottom: 10px !important; }
-
-/* ---- 2. 输入框与聚焦（墨环） ---- */
-:root:not([data-theme="dark"]) input, :root:not([data-theme="dark"]) textarea, :root:not([data-theme="dark"]) select, :root:not([data-theme="dark"]) .ui-input { background: #fdfcf9 !important; border: 1px solid #ddd3c2 !important; border-radius: 6px !important; box-shadow: inset 0 1px 2px rgba(86,52,10,0.04) !important; transition: border-color 280ms cubic-bezier(0.32,0.72,0,1), box-shadow 280ms cubic-bezier(0.32,0.72,0,1) !important; }
-:root:not([data-theme="dark"]) .channel-search input:focus { border-color: #b45309 !important; box-shadow: 0 0 0 3px rgba(180,83,9,0.14), 0 0 14px -6px rgba(180,83,9,0.35) !important; }
-:root:not([data-theme="dark"]) .channel-search input:hover:not(:focus) { border-color: #cbbba0 !important; }
-
-/* ---- 3. 原生件（滚动条 / selection / caret / focus ring） ---- */
-:root:not([data-theme="dark"]) * { scrollbar-color: rgba(140,110,70,0.28) transparent !important; }
-:root:not([data-theme="dark"]) *:hover { scrollbar-color: rgba(140,110,70,0.42) transparent !important; }
-:root:not([data-theme="dark"]) button:focus-visible, :root:not([data-theme="dark"]) a:focus-visible, :root:not([data-theme="dark"]) input:focus-visible, :root:not([data-theme="dark"]) select:focus-visible, :root:not([data-theme="dark"]) textarea:focus-visible, :root:not([data-theme="dark"]) [tabindex]:focus-visible { outline: 2px solid #b45309 !important; outline-offset: 2px !important; }
-
-/* ---- 4. 纸纹与光束 ---- */
-:root:not([data-theme="dark"]) .ui-card::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='p2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23p2)' opacity='0.07'/%3E%3C/svg%3E") !important;
-}
-:root:not([data-theme="dark"]) body::after {
-  background:
-    radial-gradient(900px 480px at 12% -8%, rgba(255,209,140,0.06), transparent 62%),
-    radial-gradient(820px 460px at 88% -4%, rgba(255,177,92,0.05), transparent 66%),
-    linear-gradient(115deg, transparent 36%, rgba(255,224,176,0.04) 48%, transparent 62%),
-    linear-gradient(-165deg, transparent 20%, rgba(255,200,130,0.03) 50%, transparent 78%) !important;
-  animation: lt5-beam-drift 48s ease-in-out infinite alternate !important;
-}
-@keyframes lt5-beam-drift {
-  0%   { transform: translate3d(-2%, -0.5%, 0) scale(1.01); }
-  50%  { transform: translate3d(1%, 1%, 0) scale(1.04); }
-  100% { transform: translate3d(2.5%, 0.5%, 0) scale(1.02); }
-}
-
-/* ---- 5. 按钮高光移动：left/right → transform 位移（性能修正） ---- */
-:root:not([data-theme="dark"]) body .ui-button-default::before,
-:root:not([data-theme="dark"]) body .primary::before {
-  left: 10% !important;
-  right: 10% !important;
-  transform: translateX(0) !important;
-  transition: transform 400ms cubic-bezier(0.32,0.72,0,1), background 400ms cubic-bezier(0.32,0.72,0,1) !important;
-}
-:root:not([data-theme="dark"]) body .ui-button-default:hover::before,
-:root:not([data-theme="dark"]) body .primary:hover::before {
-  transform: translateX(-18px) !important;
-  background: linear-gradient(160deg, rgba(255,250,235,0.5), rgba(255,250,235,0.08)) !important;
-}
-:root:not([data-theme="dark"]) body .ui-button-default:active::before,
-:root:not([data-theme="dark"]) body .primary:active::before {
-  transform: translateX(0) !important;
-}
-/* ============================================================
-   V5 LIGHT 返工补丁 · R1（验收批评家 P0×3 + P1×3）
-   P0-1 蓝清残余：hover 蓝辉光 → 暖棕（开关 on / quick-endpoint / source-row / quick-icon）
-   P0-2 形状统一：按钮全变体 6px / .login-card 8px / 徽章 999px 复申
-   P0-3 黄铜按钮：active 全变体 translateY(1px)，拍死 scale(0.97)
-   P1-4 纸纹卡片级：复申 0.07 纸纹（构建后可见）
-   P1-5 开关墨水洇开：lt5-ink-spread 挂到 .ui-switch.on span
-   P1-6 selection 兜底：黄铜 20%（拍 2810 行蓝）
-   ============================================================ */
-
-/* P1-6 ::selection 兜底（黄铜，拍基础层 2810 蓝） */
-:root:not([data-theme="dark"]) ::selection { background: rgba(180,83,9,0.20) !important; color: #1c1917 !important; }
-
-/* P0-1 hover 蓝辉光清零 */
-:root:not([data-theme="dark"]) .ui-switch.on:hover:not(:disabled) { box-shadow: inset 0 1px 0 rgba(255,255,255,0.30), inset 0 0 0 1px rgba(140,75,6,0.55), 0 4px 12px -6px rgba(180,83,9,0.50) !important; }
-:root:not([data-theme="dark"]) .ui-switch.on { box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 0 0 1px rgba(140,75,6,0.50) !important; }
-:root:not([data-theme="dark"]) .quick-endpoint:hover { border-color: var(--accent-line) !important; box-shadow: inset 0 1px 2px rgba(86,52,10,0.05), 0 0 0 3px rgba(180,83,9,0.06) !important; }
-:root:not([data-theme="dark"]) .source-row:hover { background: linear-gradient(90deg, rgba(180,83,9,0.055), rgba(180,83,9,0)) !important; }
-:root:not([data-theme="dark"]) .quick-icon { box-shadow: inset 0 0 0 1px rgba(180,83,9,0.12), 0 1px 2px rgba(86,52,10,0.06) !important; }
-
-/* P0-2 形状统一 */
-:root:not([data-theme="dark"]) .ui-button,
-:root:not([data-theme="dark"]) .ui-button-sm,
-:root:not([data-theme="dark"]) .ui-button-lg,
-:root:not([data-theme="dark"]) .ui-button-icon,
-:root:not([data-theme="dark"]) .primary,
-:root:not([data-theme="dark"]) .secondary,
-:root:not([data-theme="dark"]) .danger-button { border-radius: 6px !important; }
-:root:not([data-theme="dark"]) .login-card { border-radius: 8px !important; }
-:root:not([data-theme="dark"]) .ui-card { border-radius: 8px !important; }
-:root:not([data-theme="dark"]) .ui-badge,
-:root:not([data-theme="dark"]) .count-badge { border-radius: 999px !important; }
-:root:not([data-theme="dark"]) .ui-badge-blue .ui-badge-dot { background: #b45309 !important; box-shadow: 0 0 0 2px rgba(180,83,9,0.16) !important; }
-
-/* P0-3 active 全变体：按进纸里 */
-:root:not([data-theme="dark"]) .ui-button:active,
-:root:not([data-theme="dark"]) .ui-button-sm:active,
-:root:not([data-theme="dark"]) .ui-button-lg:active,
-:root:not([data-theme="dark"]) .ui-button-icon:active,
-:root:not([data-theme="dark"]) .primary:active,
-:root:not([data-theme="dark"]) .secondary:active,
-:root:not([data-theme="dark"]) .danger-button:active,
-:root:not([data-theme="dark"]) body .ui-button-default:active,
-:root:not([data-theme="dark"]) body .primary:active { transform: translateY(1px) !important; scale: 1 !important; }
-
-/* P1-4 卡片纸纹复申（构建产物验证点） */
-:root:not([data-theme="dark"]) .ui-card::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='p2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23p2)' opacity='0.07'/%3E%3C/svg%3E") !important;
-  background-size: 120px 120px !important;
-}
-
-/* P1-5 开关墨水洇开：黄铜墨从滑块中心洇开 */
-@keyframes lt5-ink-spread {
-  0%   { opacity: 0.45; transform: scale(0.30); }
-  68%  { opacity: 0.28; }
-  100% { opacity: 0; transform: scale(1.80); }
-}
-:root:not([data-theme="dark"]) .ui-switch.on span::after,
-:root:not([data-theme="dark"]) .ui-switch.on span::before {
-  content: "" !important;
-  position: absolute !important;
-  left: 50% !important;
-  top: 50% !important;
-  width: 30px !important;
-  height: 30px !important;
-  margin: -15px 0 0 -15px !important;
-  border-radius: 50% !important;
-  background: radial-gradient(circle, rgba(180,83,9,0.40) 0%, transparent 68%) !important;
-  transform: scale(0.30) !important;
-  animation: lt5-ink-spread 520ms cubic-bezier(0.22,0.61,0.36,1) both !important;
-  pointer-events: none !important;
-}
-/* ============================================================
-   V5 LIGHT 返工补丁 · R2（批评家重测范围补漏：模型清单页）
-   ============================================================ */
-:root:not([data-theme="dark"]) .model-table { border-radius: 8px !important; }
-/* ==== V5 LIGHT END ==== */
-
-/* ==== V5 NIGHT START ==== */
-/* ==========================================================================
-   夜 · 赛博终端 · V5 全套铺开（样板间 0-4 已过审，本轮铺开 5-14）
-   本块为 app.css 末尾追加，绝不修改任何已有行。
-   0-4：卡片（切角 18px + 四角刻度） + 按钮（斜切 + 100ms 色差）
-   5-14：令牌清扫 / 标题方块光标 / 徽章分割线状态点 / 输入框聚焦刻度 /
-         原生件 / 全屏基底 / 图表空态 / 蓝偏色逐条清扫
-   纪律：选择器一律带引号 [data-theme="dark"] 且声明全部 !important；
-   动效只碰 transform / opacity / clip-path / filter；新关键帧 cp5- 前缀。
-   层叠要点：!important 声明在 CSS 层叠里高于 @keyframes 动画，所以"被动画
-   驱动的属性"（::after 的 opacity / clip-path / filter、按钮 :active 的
-   transform / filter）在本块里刻意不写静态 !important 值，改由 visibility
-   与状态选择器控制开关，否则动画会被静默压掉。
-   提权要点：文件里已有一组 [data-theme="dark"] body .ui-button-default /
-   .primary 的 !important 规则（压共享包旧蓝按钮用），特异性 (0,2,1)/(0,2,2)
-   高于普通的 [data-theme="dark"] .ui-button。所以按钮底色 / 文字 / 边框 /
-   阴影这几条必须同样带 body 前缀，并用 :not() 链把特异性提到 (0,4,1)。
-   ========================================================================== */
-
-/* ---------- 0. 令牌重声明：蓝色泄漏清零 + 无障碍硬线 ---------- */
-[data-theme="dark"] {
-  /* 原值 #6f9df3 属旧品牌蓝家族（浅蓝），暗色聚焦环换成扫描青 */
-  --focus-ring: #7c8dff !important;
-  /* 三级文字：原 #55606e 在 #0a0b10 上约 3.1:1，提到约 5.4:1 */
-  --dsw-alias-label-tertiary: #7c8794 !important;
-}
-
-/* ---------- 1. 新关键帧（cp5- 前缀） ---------- */
-/* 边框被青光从左边起笔重新描一遍，走满一圈后余辉收掉 */
-@keyframes cp5-edge-sweep {
-  0%   { clip-path: inset(0 100% 0 0); opacity: 0; filter: drop-shadow(0 0 0 rgba(124, 141, 255, 0)); }
-  12%  { opacity: 1; }
-  55%  { clip-path: inset(0 0 0 0); opacity: 1; filter: drop-shadow(0 0 7px rgba(124, 141, 255, 0.55)); }
-  100% { clip-path: inset(0 0 0 0); opacity: 0.45; filter: drop-shadow(0 0 5px rgba(124, 141, 255, 0.35)); }
-}
-
-/* 按下瞬间的 100ms 色差故障：红青错位一闪，是信号抖动，不是按钮弹跳 */
-@keyframes cp5-glitch-hit {
-  0%   { transform: translate3d(0, 0, 0); filter: none; }
-  25%  { transform: translate3d(-1px, 0, 0); filter: drop-shadow(2px 0 0 rgba(224, 101, 111, 0.55)) drop-shadow(-2px 0 0 rgba(124, 141, 255, 0.55)); }
-  55%  { transform: translate3d(1px, 0, 0); filter: drop-shadow(-2px 0 0 rgba(224, 101, 111, 0.5)) drop-shadow(2px 0 0 rgba(124, 141, 255, 0.9)); }
-  100% { transform: translate3d(0, 0, 0); filter: none; }
-}
-
-/* ---------- 2. 卡片：切角芯片板 ---------- */
-[data-theme="dark"] .ui-card {
-  border-radius: 0 !important;
-  /* 只切两个对角：左上 + 右下（斜切替代圆角，其余角保持 90 度） */
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 14px) 100%, 0 100%, 0 14px) !important;
-  background:
-    linear-gradient(180deg, rgba(124, 141, 255, 0.06) 0%, rgba(124, 141, 255, 0.015) 40%, rgba(124, 141, 255, 0.03) 100%),
-    #0b0f15 !important;
-  border: 1px solid rgba(124, 141, 255, 0.18) !important;
-  border-top-color: rgba(124, 141, 255, 0.34) !important;
-  /* 夜的世界不起浮：层级靠亮度，不靠投影，只留一道内侧顶光 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
-  overflow: hidden !important;
-  position: relative !important;
-  transform: none !important;
-  transition: opacity 200ms var(--ease-out-expo) !important;
-}
-[data-theme="dark"] .ui-card:hover { transform: none !important; }
-[data-theme="dark"] .ui-card:hover,
-[data-theme="dark"] .ui-card:focus-within {
-  border-color: rgba(124, 141, 255, 0.42) !important;
-  border-top-color: rgba(124, 141, 255, 0.62) !important;
-  background:
-    linear-gradient(180deg, rgba(124, 141, 255, 0.10) 0%, rgba(124, 141, 255, 0.028) 40%, rgba(124, 141, 255, 0.045) 100%),
-    #0d131a !important;
-}
-
-/* 四角刻度：右上 / 左下 = L 型刻度；左上 / 右下 = 与斜切边平行的斜刻度 */
-[data-theme="dark"] .ui-card::before {
-  content: "" !important;
-  position: absolute !important;
-  inset: 0 !important;
-  width: auto !important;
-  height: auto !important;
-  pointer-events: none !important;
-  background-color: transparent !important;
-  background-image:
-    linear-gradient(135deg, transparent 0 calc(50% - 0.5px), rgba(124, 141, 255, 0.9) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%),
-    linear-gradient(135deg, transparent 0 calc(50% - 0.5px), rgba(124, 141, 255, 0.9) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%),
-    linear-gradient(rgba(124, 141, 255, 0.9) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.9) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.9) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.9) 0 0) !important;
-  background-size: 18px 18px, 18px 18px, 14px 1px, 1px 14px, 14px 1px, 1px 14px !important;
-  background-position:
-    1px 1px,
-    calc(100% - 1px) calc(100% - 1px),
-    calc(100% - 6px) 6px,
-    calc(100% - 6px) 6px,
-    6px calc(100% - 6px),
-    6px calc(100% - 6px) !important;
-  background-repeat: no-repeat !important;
-  opacity: 0.85 !important;
-  transition: opacity 240ms var(--ease-out-expo) !important;
-}
-[data-theme="dark"] .ui-card:hover::before,
-[data-theme="dark"] .ui-card:focus-within::before { opacity: 0.95 !important; }
-
-/* 悬停：边框被青光从左边起笔描一遍；静止态完全不可见 */
-[data-theme="dark"] .ui-card::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: 0 !important;
-  pointer-events: none !important;
-  border: 1px solid rgba(124, 141, 255, 0.75) !important;
-  background: transparent !important;
-  /* 静止态用 visibility 收起来：opacity / clip-path 留给关键帧，不能被 !important 压住 */
-  visibility: hidden !important;
-  transition: none !important;
-}
-[data-theme="dark"] .ui-card:hover::after,
-[data-theme="dark"] .ui-card:focus-within::after {
-  visibility: visible !important;
-  animation: cp5-edge-sweep 680ms var(--ease-out-expo) 1 forwards !important;
-}
-
-/* 卡内排版：数据 / 正文等宽 + 表格数字；元数据全大写宽字距 */
-[data-theme="dark"] .ui-card .card-heading h2,
-[data-theme="dark"] .ui-card .card-heading h3 {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.06em !important;
-  font-variant-numeric: tabular-nums !important;
-}
-[data-theme="dark"] .ui-card .card-heading p {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  font-variant-numeric: tabular-nums !important;
-}
-[data-theme="dark"] .ui-card .card-foot {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  font-variant-numeric: tabular-nums !important;
-  color: var(--dsw-alias-label-secondary) !important;
-  /* 原分隔线取 --line-soft（#f1ece3，浅色纸白），夜主题下是一条暖白亮线，这里归位 */
-  border-top-color: rgba(124, 141, 255, 0.16) !important;
-}
-[data-theme="dark"] .ui-card .card-foot button {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.08em !important;
-  color: #a5b4ff !important;
-  text-underline-offset: 3px !important;
-}
-[data-theme="dark"] .ui-card .card-foot button:hover { color: #a5b4ff !important; }
-
-/* ---------- 3. 按钮：斜切终端键（只做默认变体 + .primary） ---------- */
-[data-theme="dark"] body .ui-button-default,
-[data-theme="dark"] body button.ui-button-default,
-[data-theme="dark"] body .ui-button:not(.ui-button-outline):not(.ui-button-ghost),
-[data-theme="dark"] body .primary {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.06em !important;
-  font-variant-numeric: tabular-nums !important;
-  font-weight: 600 !important;
-  position: relative !important;
-  overflow: hidden !important;
-  background: rgba(124, 141, 255, 0.18) !important;
-  color: #a5b4ff !important;
-  border: 1px solid #7c8dff !important;
-  /* 静止态不留零偏移彩色光晕，只留一道内侧顶光；亮是稀缺信号 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 0 14px -6px rgba(124, 141, 255, 0.85) !important;
-  transition: opacity 160ms var(--ease-out-expo) !important;
-}
-
-/* 方括号替代：左右各一条 1px 竖刻度，不改文案也不加字符 */
-[data-theme="dark"] .ui-button-default::before,
-[data-theme="dark"] .ui-button:not(.ui-button-outline):not(.ui-button-ghost):not(.ui-button-icon)::before,
-[data-theme="dark"] .primary::before {
-  content: "" !important;
-  position: absolute !important;
-  inset: 5px 4px !important;
-  border-left: 1px solid rgba(124, 141, 255, 0.42) !important;
-  border-right: 1px solid rgba(124, 141, 255, 0.42) !important;
-  pointer-events: none !important;
-  opacity: 0.7 !important;
-}
-[data-theme="dark"] .ui-button-default:disabled::before,
-[data-theme="dark"] .primary:disabled::before { opacity: 0.25 !important; }
-
-/* 悬停：底色升一档 + 轮廓余辉（:not(:active) 给按下故障让路，避免压掉关键帧） */
-[data-theme="dark"] body .ui-button-default:hover:not(:active):not(:disabled),
-[data-theme="dark"] body .primary:hover:not(:active):not(:disabled) {
-  background: rgba(124, 141, 255, 0.30) !important;
-  color: #eef4ff !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
-  filter: drop-shadow(0 0 9px rgba(124, 141, 255, 0.55)) !important;
-}
-/* 悬停：沿用既有扫描光带，只把光束加亮（不碰 transform / opacity，避免压掉动画） */
-[data-theme="dark"] .ui-button:hover::after,
-[data-theme="dark"] .primary:hover::after {
-  background: linear-gradient(105deg, transparent, rgba(124, 141, 255, 0.5), transparent) !important;
-}
-
-/* 按下：100ms 短促色差故障（此处刻意不写 transform / filter 的静态 !important） */
-[data-theme="dark"] .ui-button-default:active,
-[data-theme="dark"] .primary:active,
-[data-theme="dark"] .ui-button:not(.ui-button-outline):not(.ui-button-ghost):active {
-  animation: cp5-glitch-hit 100ms linear 1 !important;
-  background: rgba(124, 141, 255, 0.28) !important;
-}
-
-/* 聚焦：方角 2px 青环（原生件接管；暗色聚焦环令牌已在上方转青） */
-[data-theme="dark"] .ui-button:focus-visible,
-[data-theme="dark"] .ui-button-default:focus-visible,
-[data-theme="dark"] .primary:focus-visible {
-  border-radius: 0 !important;
-  outline: 2px solid var(--focus-ring) !important;
-  outline-offset: 2px !important;
-}
-
-/* 禁用：断电态（不靠整体降透明度表达，改由配色断电） */
-[data-theme="dark"] .ui-button-default:disabled:not(.is-busy),
-[data-theme="dark"] .primary:disabled:not(.is-busy) {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-color: rgba(124, 141, 255, 0.14) !important;
-  color: rgba(223, 230, 233, 0.38) !important;
-  filter: none !important;
-  opacity: 1 !important;
-}
-
-/* 加载中：既有扫描光带持续走格（走格 = 传输中，和断电态区分开） */
-[data-theme="dark"] .ui-button-default.is-busy::after,
-[data-theme="dark"] .ui-button-default[data-busy]::after {
-  animation: cp-scan-sweep 1100ms linear infinite !important;
-}
-
-/* ---------- 4. 降级：prefers-reduced-motion ---------- */
-@media (prefers-reduced-motion: reduce) {
-  [data-theme="dark"] .ui-card::after,
-  [data-theme="dark"] .ui-button::after,
-  [data-theme="dark"] .ui-button-default::after,
-  [data-theme="dark"] .primary::after { animation: none !important; }
-}
-
-/* ---------- 5. 令牌清扫：红归位 + 蓝清零 + 基底去紫 ---------- */
-[data-theme="dark"] {
-  /* 业务/强调槽位在暗色下原本落在纯红 #e0656f；红只该属于真错误 */
-  --dsw-alias-state-business-primary: #7c8dff !important;
-  --dsw-alias-accent-primary: #7c8dff !important;
-  --dsw-alias-accent-secondary: rgba(124, 141, 255, 0.14) !important;
-  /* 通用描边：由中性白改成扫描青发丝线，全站分割线一起归位 */
-  --line: rgba(124, 141, 255, 0.14) !important;
-  --dsw-alias-border-l1: rgba(124, 141, 255, 0.16) !important;
-  --dsw-alias-border-l2: rgba(124, 141, 255, 0.26) !important;
-  /* 暖棕残留：浅色 --ink-faint(#8b8377) 在夜里是暖灰，换冷灰（约 5.7:1） */
-  --ink-faint: #7f8b99 !important;
-  /* 基底纹理：从"看不见"提到"看得见" */
-  --cp-grid: rgba(124, 141, 255, 0.055) !important;
-  --cp-scan: rgba(0, 0, 0, 0.15) !important;
-  --cp-cyan-line: rgba(124, 141, 255, 0.42) !important;
-  --cp-glow: rgba(124, 141, 255, 0.22) !important;
-}
-
-/* ---------- 6. 新增关键帧（cp5- 前缀） ---------- */
-/* 方块光标闪烁：不是渐隐，是二值跳变（终端没有中间态） */
-@keyframes cp5-blink {
-  0%, 69%   { opacity: 1; }
-  70%, 100% { opacity: 0; }
-}
-/* 状态点方块呼吸：step 式，两态跳变，不做平滑呼吸 */
-@keyframes cp5-pulse-square {
-  0%, 49%   { opacity: 1; }
-  50%, 100% { opacity: 0.4; }
-}
-/* 页面进场：信号接入（一次，不循环） */
-@keyframes cp5-boot-in {
-  0%   { opacity: 0; transform: translate3d(0, 6px, 0); clip-path: inset(0 0 100% 0); }
-  38%  { opacity: 1; clip-path: inset(0 0 0 0); }
-  56%  { transform: translate3d(-1.5px, 0, 0); }
-  74%  { transform: translate3d(1.5px, 0, 0); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0); clip-path: inset(0 0 0 0); }
-}
-
-/* ---------- 7. 页面标题：方块光标 + 信号接入 + 蓝标记线归位 ---------- */
-[data-theme="dark"] h1,
-[data-theme="dark"] .page-heading h1 {
-  text-transform: uppercase !important;
-  letter-spacing: -0.02em !important;
-  font-weight: 700 !important;
-  font-variant-numeric: tabular-nums !important;
-  animation: cp5-boot-in 460ms var(--ease-out-expo) both !important;
-}
-[data-theme="dark"] h1::before,
-[data-theme="dark"] .page-heading h1::before {
-  content: "" !important;
-  display: inline-block !important;
-  width: 0.46em !important;
-  height: 0.8em !important;
-  margin-right: 0.34em !important;
-  vertical-align: -0.03em !important; position: static !important; float: none !important;
-  background: #7c8dff !important;
-  box-shadow: 0 0 10px rgba(124, 141, 255, 0.55) !important;
-  animation: cp5-blink 1.1s step-end infinite !important;
-}
-/* 区域标记线原为蓝色 #74a4ff，归位成扫描青 */
-[data-theme="dark"] .heading-eyebrow::before,
-[data-theme="dark"] .eyebrow::before {
-  background: #7c8dff !important;
-  opacity: 0.75 !important;
-}
-[data-theme="dark"] .heading-eyebrow,
-[data-theme="dark"] .eyebrow {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.14em !important;
-  color: #7f8b99 !important;
-}
-/* ---------- 8. 徽章 / 分割线 / 状态点方块 ---------- */
-[data-theme="dark"] .ui-badge {
-  border-radius: 0 !important;
-  clip-path: none !important;
-  background: rgba(124, 141, 255, 0.10) !important;
-  border: 1px solid rgba(124, 141, 255, 0.34) !important;
-  color: #a5b4ff !important;
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  font-variant-numeric: tabular-nums !important;
-}
-[data-theme="dark"] .ui-badge::before { content: "[" !important; opacity: 0.85 !important; margin-right: 2px !important; }
-[data-theme="dark"] .ui-badge::after { content: "]" !important; opacity: 0.85 !important; margin-left: 2px !important; }
-[data-theme="dark"] .ui-badge-success { background: rgba(124, 141, 255, 0.10) !important; color: #a5b4ff !important; border-color: rgba(124, 141, 255, 0.42) !important; }
-[data-theme="dark"] .ui-badge-warning { background: rgba(232, 163, 61, 0.13) !important; color: #f0b75e !important; border-color: rgba(232, 163, 61, 0.42) !important; }
-[data-theme="dark"] .ui-badge-blue { background: rgba(124, 141, 255, 0.10) !important; color: #a5b4ff !important; border-color: rgba(124, 141, 255, 0.34) !important; }
-[data-theme="dark"] .count-badge {
-  border-radius: 0 !important;
-  background: rgba(124, 141, 255, 0.14) !important;
-  color: #a5b4ff !important;
-  font-family: var(--mono-font) !important;
-  font-variant-numeric: tabular-nums !important;
-  letter-spacing: 0.06em !important;
-}
-[data-theme="dark"] hr { border: 0 !important; border-top: 1px solid rgba(124, 141, 255, 0.16) !important; }
-[data-theme="dark"] .topbar-divider { background: rgba(124, 141, 255, 0.22) !important; }
-/* 状态点：圆点 -> 5px 小方块，step 式呼吸（两态跳变） */
-[data-theme="dark"] .status-dot,
-[data-theme="dark"] .console-sidebar-footer .status-dot {
-  border-radius: 0 !important;
-  width: 5px !important;
-  height: 5px !important;
-  animation: cp5-pulse-square 1.6s steps(1, end) infinite !important;
-}
-[data-theme="dark"] .status-dot:not(.paused) { box-shadow: 0 0 6px rgba(124, 141, 255, 0.5) !important; }
-
-/* ---------- 9. 输入框：等宽 + 聚焦四角 L 刻度 ---------- */
-[data-theme="dark"] input:not(.settings-toggle):not([type="checkbox"]):not([type="radio"]),
-[data-theme="dark"] select,
-[data-theme="dark"] textarea,
-[data-theme="dark"] .ui-input {
-  border-radius: 0 !important;
-  background: #0a0f15 !important;
-  border: 1px solid rgba(124, 141, 255, 0.20) !important;
-  color: var(--ink) !important;
-  font-family: var(--mono-font) !important;
-  font-variant-numeric: tabular-nums !important;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28) !important;
-  caret-color: #7c8dff !important;
-}
-[data-theme="dark"] input:not(.settings-toggle):not([type="checkbox"]):not([type="radio"]):hover,
-[data-theme="dark"] select:hover,
-[data-theme="dark"] textarea:hover,
-[data-theme="dark"] .ui-input:hover { border-color: rgba(124, 141, 255, 0.36) !important; }
-/* input 是替换元素，放不了伪元素：四角 L 刻度用背景层画（2px 内缩，7px 臂长） */
-[data-theme="dark"] input:not(.settings-toggle):not([type="checkbox"]):not([type="radio"]):focus,
-[data-theme="dark"] textarea:focus,
-[data-theme="dark"] .ui-input:focus,
-[data-theme="dark"] .ui-input:focus-visible {
-  background-color: #0c1218 !important;
-  border-color: #7c8dff !important;
-  box-shadow: inset 0 0 0 1px rgba(124, 141, 255, 0.40), 0 0 0 3px rgba(124, 141, 255, 0.10) !important;
-  background-image:
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0),
-    linear-gradient(rgba(124, 141, 255, 0.85) 0 0) !important;
-  background-size: 7px 1px, 1px 7px, 7px 1px, 1px 7px, 7px 1px, 1px 7px, 7px 1px, 1px 7px !important;
-  background-position:
-    2px 2px, 2px 2px,
-    calc(100% - 2px) 2px, calc(100% - 2px) 2px,
-    2px calc(100% - 2px), 2px calc(100% - 2px),
-    calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) calc(100% - 2px) !important;
-  background-repeat: no-repeat !important;
-  outline: none !important;
-}
-/* select 自带背景箭头图，不能换背景层：只给边框与内环 */
-[data-theme="dark"] select:focus {
-  border-color: #7c8dff !important;
-  box-shadow: inset 0 0 0 1px rgba(124, 141, 255, 0.40), 0 0 0 3px rgba(124, 141, 255, 0.10) !important;
-}
-/* 真错误保留纯红：invalid 必须盖过我上面的青描边 */
-[data-theme="dark"] .ui-input.is-invalid,
-[data-theme="dark"] .ui-input[aria-invalid="true"],
-[data-theme="dark"] input[aria-invalid="true"],
-[data-theme="dark"] textarea[aria-invalid="true"],
-[data-theme="dark"] select[aria-invalid="true"] {
-  border-color: #e0656f !important;
-  box-shadow: inset 0 0 0 1px rgba(224, 101, 111, 0.38) !important;
-}
-
-/* ---------- 10. 原生件接管：滚动条 / selection / caret / 聚焦环 ---------- */
-[data-theme="dark"] * { scrollbar-color: rgba(124, 141, 255, 0.34) #070a0e !important; }
-[data-theme="dark"] *::-webkit-scrollbar { width: 10px !important; height: 10px !important; }
-[data-theme="dark"] *::-webkit-scrollbar-track { background: #070a0e !important; }
-[data-theme="dark"] *::-webkit-scrollbar-thumb {
-  background: rgba(124, 141, 255, 0.26) !important;
-  border: 2px solid #070a0e !important;
-  border-radius: 0 !important;
-  background-clip: padding-box !important;
-}
-[data-theme="dark"] *::-webkit-scrollbar-thumb:hover { background: rgba(124, 141, 255, 0.48) !important; }
-[data-theme="dark"] *::-webkit-scrollbar-corner { background: #070a0e !important; }
-[data-theme="dark"] ::selection { background: rgba(124, 141, 255, 0.32) !important; color: #eef4ff !important; }
-[data-theme="dark"] textarea,
-[data-theme="dark"] [contenteditable="true"] { caret-color: #7c8dff !important; }
-/* summary 的聚焦环原本直接写死蓝色 #6f9df3，这里归位 */
-[data-theme="dark"] summary:focus-visible { outline-color: #7c8dff !important; }
-/* ---------- 11. 全屏基底：扫描线 / 40px 网格 / 噪点 / 去紫去红 ---------- */
-/* 页面底色：删掉紫蓝径向光（原 rgba(112,88,210)），只留冷青环境光 */
-[data-theme="dark"] body {
-  background:
-    radial-gradient(1120px 620px at 82% -12%, rgba(124, 141, 255, 0.075), transparent 58%),
-    radial-gradient(900px 560px at -10% 8%, rgba(124, 141, 255, 0.035), transparent 60%),
-    linear-gradient(180deg, #0a0e14 0%, #0a0b10 38%, #080a0e 100%) !important;
-}
-/* 扫描线 + 网格：从"垫在内容底下、几乎看不见"改成"盖在整屏之上、看得见" */
-[data-theme="dark"] body::before {
-  content: "" !important;
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 29 !important;
-  pointer-events: none !important;
-  opacity: 1 !important;
-  background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.15) 0 2px, transparent 2px 4px),
-    linear-gradient(90deg, rgba(124, 141, 255, 0.055) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(124, 141, 255, 0.055) 1px, transparent 1px) !important;
-  background-size: auto, 40px 40px, 40px 40px !important;
-  background-repeat: repeat, repeat, repeat !important;
-}
-/* 噪点：0.04 -> 0.12（soft-light），提到肉眼可见的胶片颗粒 */
-[data-theme="dark"] body::after {
-  z-index: 30 !important;
-  pointer-events: none !important;
-  opacity: 0.12 !important;
-  mix-blend-mode: soft-light !important;
-}
-
-/* ---------- 12. 图表与空态 ---------- */
-[data-theme="dark"] .dashboard-chart-bar:not(.zero),
-[data-theme="dark"] .usage-day-bar:not(.zero) {
-  border-radius: 0 !important;
-  background:
-    linear-gradient(180deg, rgba(124, 141, 255, 0.95) 0%, rgba(124, 141, 255, 0.40) 100%),
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.26) 0 2px, transparent 2px 4px) !important;
-  box-shadow: inset 0 1px 0 rgba(234, 255, 253, 0.55), 0 0 10px -3px rgba(124, 141, 255, 0.55) !important;
-}
-[data-theme="dark"] .dashboard-chart-column:hover .dashboard-chart-bar:not(.zero) {
-  background:
-    linear-gradient(180deg, #a5b4ff 0%, rgba(124, 141, 255, 0.55) 100%),
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.26) 0 2px, transparent 2px 4px) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 0 16px -3px rgba(124, 141, 255, 0.75) !important;
-}
-[data-theme="dark"] .dashboard-chart-bar.zero,
-[data-theme="dark"] .usage-day-bar.zero { box-shadow: none !important; background: rgba(255, 255, 255, 0.05) !important; }
-[data-theme="dark"] .chart-grid-lines span { background: rgba(124, 141, 255, 0.075) !important; border-top-color: rgba(124, 141, 255, 0.09) !important; }
-[data-theme="dark"] .dashboard-chart-column > span {
-  font-family: var(--mono-font) !important;
-  font-variant-numeric: tabular-nums !important;
-  color: #7f8b99 !important;
-}
-[data-theme="dark"] .empty-state,
-[data-theme="dark"] .empty-state p,
-[data-theme="dark"] .chart-empty span,
-[data-theme="dark"] .chart-empty small,
-[data-theme="dark"] .channel-empty p,
-[data-theme="dark"] .runtime-empty {
-  font-family: var(--mono-font) !important;
-  font-variant-numeric: tabular-nums !important;
-}
-[data-theme="dark"] .empty-state h3 {
-  font-family: var(--mono-font) !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-}
-[data-theme="dark"] .empty-state svg { color: rgba(124, 141, 255, 0.55) !important; }
-/* 空态尾部一枚等待光标（不加文案、不注入英文） */
-[data-theme="dark"] .empty-state p::after {
-  content: "" !important;
-  display: inline-block !important;
-  width: 0.5em !important;
-  height: 0.9em !important;
-  margin-left: 0.45em !important;
-  vertical-align: -0.1em !important;
-  background: rgba(124, 141, 255, 0.75) !important;
-  animation: cp5-blink 1.1s step-end infinite !important;
-}
-[data-theme="dark"] .chart-empty { border: 1px solid rgba(124, 141, 255, 0.18) !important; border-radius: 0 !important; }
-
-/* ---------- 13. 蓝偏色清扫：逐条点名剩下的蓝 ---------- */
-[data-theme="dark"] .brand-mark span { color: #a5b4ff !important; text-shadow: 0 0 18px rgba(124, 141, 255, 0.42) !important; }
-[data-theme="dark"] .loading-bar-fill { background: linear-gradient(90deg, #7c8dff 0%, #a5b4ff 100%) !important; }
-[data-theme="dark"] .theme-toggle:hover { color: #a5b4ff !important; }
-[data-theme="dark"] .login-help code { color: #a5b4ff !important; }
-[data-theme="dark"] .ui-switch.on { background: rgba(124, 141, 255, 0.55) !important; border-color: rgba(124, 141, 255, 0.75) !important; }
-[data-theme="dark"] .settings-toggle:checked { background: rgba(124, 141, 255, 0.55) !important; border-color: rgba(124, 141, 255, 0.75) !important; }
-[data-theme="dark"] .settings-toggle:checked:hover { background: rgba(124, 141, 255, 0.72) !important; }
-/* 插件面板里唯一一处硬编码蓝（.ofm_starbtn）顺手归位；若归铸器师管，我一行撤回 */
-[data-theme="dark"] .ofm_starbtn { color: #a5b4ff !important; }
-
-/* ---------- 14. 降级：prefers-reduced-motion（新增选择器） ---------- */
-@media (prefers-reduced-motion: reduce) {
-  [data-theme="dark"] h1,
-  [data-theme="dark"] .page-heading h1 { animation: none !important; }
-  [data-theme="dark"] h1::before,
-  [data-theme="dark"] .page-heading h1::before,
-  [data-theme="dark"] .empty-state p::after { animation: none !important; }
-  [data-theme="dark"] .status-dot,
-  [data-theme="dark"] .console-sidebar-footer .status-dot { animation: none !important; }
-}
-/* ---------- 15. 返工加固：徽章 0 圆角 / 标题光标 / 状态点 steps / 卡片扫光余辉 ---------- */
-/* 15.1 徽章：浅色侧有两条 0 圆角竞争者：:root:not([data-theme="dark"]) .ui-badge 的 7px
-   （app.css L1872，无 !important）与浅色块 L3494 的 999px !important，两者特异性都是 (0,3,0)。
-   主题属性挂在 html 上（shell.tsx 用 dataset.theme），所以它们本来就不该匹配；但为彻底保险，
-   这里把特异性提到 (0,3,1)：重复类名是刻意为之，只服务于"运行时恒为 0 圆角"。 */
-[data-theme="dark"] body .ui-badge.ui-badge {
-  border-radius: 0 !important;
-}
-
-/* 15.2 标题方块光标：特异性由 (0,1,2) 提到 (0,2,2)，方块加大到 0.5em，截图更容易读到 */
-[data-theme="dark"] body h1::before {
-  content: "" !important;
-  display: inline-block !important;
-  position: static !important;
-  float: none !important;
-  width: 0.5em !important;
-  height: 0.86em !important;
-  margin-right: 0.32em !important;
-  vertical-align: -0.04em !important;
-  background: #7c8dff !important;
-  box-shadow: 0 0 12px rgba(124, 141, 255, 0.6) !important;
-  animation: cp5-blink 1.1s steps(1, end) infinite !important;
-}
-
-/* 15.3 状态点：侧栏变体的竞争规则特异性是 (0,3,0)，这里提到 (0,3,1)，保持 steps 硬切 */
-[data-theme="dark"] body .console-sidebar-footer .status-dot,
-[data-theme="dark"] body .status-dot.status-dot {
-  border-radius: 0 !important;
-  width: 5px !important;
-  height: 5px !important;
-  animation: cp5-pulse-square 1.6s steps(1, end) infinite !important;
-}
-
-/* ---------- 16. 全局滚动条：补一条直接命中根节点的规则 ---------- */
-/* 根元素 html 不匹配 [data-theme="dark"] *（后代选择器），所以根滚动条一直是 --thumb 灰蓝 */
-[data-theme="dark"],
-[data-theme="dark"] * { scrollbar-color: rgba(124, 141, 255, 0.34) #070a0e !important; }
-[data-theme="dark"]::-webkit-scrollbar,
-[data-theme="dark"] *::-webkit-scrollbar { width: 10px !important; height: 10px !important; }
-[data-theme="dark"]::-webkit-scrollbar-track,
-[data-theme="dark"] *::-webkit-scrollbar-track { background: #070a0e !important; }
-[data-theme="dark"]::-webkit-scrollbar-thumb,
-[data-theme="dark"] *::-webkit-scrollbar-thumb {
-  background: rgba(124, 141, 255, 0.26) !important;
-  border: 2px solid #070a0e !important;
-  border-radius: 0 !important;
-  background-clip: padding-box !important;
-}
-[data-theme="dark"]::-webkit-scrollbar-thumb:hover,
-[data-theme="dark"] *::-webkit-scrollbar-thumb:hover { background: rgba(124, 141, 255, 0.48) !important; }
-[data-theme="dark"]::-webkit-scrollbar-corner,
-[data-theme="dark"] *::-webkit-scrollbar-corner { background: #070a0e !important; }
-
-/* ---------- 17. Skeleton 与禁用态 ---------- */
-[data-theme="dark"] .ofm_skel,
-[data-theme="dark"] .ofm_root .ofm_skel {
-  border-radius: 0 !important;
-  background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 2px, transparent 2px 4px),
-    rgba(124, 141, 255, 0.07) !important;
-  border: 1px solid rgba(124, 141, 255, 0.16) !important;
-  box-shadow: inset 0 0 20px -12px rgba(124, 141, 255, 0.5) !important;
-}
-[data-theme="dark"] .ofm_skel::after,
-[data-theme="dark"] .ofm_root .ofm_skel::after {
-  background: linear-gradient(100deg, transparent 20%, rgba(124, 141, 255, 0.16) 48%, transparent 76%) !important;
-}
-/* 禁用态：条纹叠加表达"断电后仍在通电的骨架"，不用文字标记，避免与方括号刻度伪元素打架 */
-[data-theme="dark"] body button:disabled:not(.is-busy):not([data-busy]):not(.danger-button),
-[data-theme="dark"] body [aria-disabled="true"]:not(.is-busy) {
-  opacity: 1 !important;
-  background-image: repeating-linear-gradient(135deg, rgba(124, 141, 255, 0.10) 0 6px, transparent 6px 12px) !important;
-  border-color: rgba(124, 141, 255, 0.16) !important;
-  color: rgba(223, 230, 233, 0.42) !important;
-  box-shadow: none !important;
-  filter: none !important;
-}
-
-/* ---------- 18. 空态统一：把模型页 [ NO SIGNAL ] 模板搬到首页图表空态与通用空态 ---------- */
-[data-theme="dark"] .chart-empty,
-[data-theme="dark"] .empty-state {
-  position: relative !important;
-  border: 1px solid var(--cp-cyan-line) !important;
-  border-radius: 0 !important;
-  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px) !important;
-  background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 4px),
-    radial-gradient(420px 170px at 50% 30%, rgba(124, 141, 255, 0.07), transparent 72%) !important;
-  box-shadow: inset 0 0 46px -24px var(--cp-glow) !important;
-  font-family: var(--mono-font) !important;
-}
-[data-theme="dark"] .chart-empty::before,
-[data-theme="dark"] .empty-state::before {
-  content: "[ NO SIGNAL ]" !important;
-  display: block !important;
-  margin: 0 auto 14px !important;
-  font-family: var(--mono-font) !important;
-  font-size: 11px !important;
-  letter-spacing: 0.34em !important;
-  text-indent: 0.34em !important;
-  color: #7c8dff !important;
-  opacity: 0.7 !important;
-}
-[data-theme="dark"] .chart-empty::after {
-  content: "" !important;
-  display: block !important;
-  width: 8px !important;
-  height: 14px !important;
-  margin: 12px auto 0 !important;
-  background: #7c8dff !important;
-  box-shadow: 0 0 10px -1px rgba(124, 141, 255, 0.55) !important;
-  animation: cp5-blink 1.05s steps(1, end) infinite !important;
-}
-/* 降级补充：首页空态新加的等待光标也要在 reduced-motion 下停 */
-@media (prefers-reduced-motion: reduce) {
-  [data-theme="dark"] .chart-empty::after { animation: none !important; }
-}
-
-/* ==== V5 NIGHT · 圆角清零 + 切角多样化 ==== */
-/* 用户要求：赛博终端不该有钝圆边框，全部清零。但不是千篇一律的直角，而是不同角度的斜切，独具一格。 */
-
-/* 一级：大容器（卡片/面板/表格/登录卡）—— 18px 对角切 */
-[data-theme="dark"] .ui-card,
-[data-theme="dark"] .login-card,
-[data-theme="dark"] .model-table,
-[data-theme="dark"] .usage-panel,
-[data-theme="dark"] .confirm-panel,
-[data-theme="dark"] .settings-card-heading,
-[data-theme="dark"] .panel {
-  border-radius: 0 !important;
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px) !important;
-}
-
-/* 二级：按钮/输入框/下拉 —— 8px 单侧切（左上或右上，不对称才像切割） */
-[data-theme="dark"] .ui-button,
-[data-theme="dark"] .ui-button-default,
-[data-theme="dark"] .ui-button-outline,
-[data-theme="dark"] .ui-button-ghost,
-[data-theme="dark"] .ui-button-sm,
-[data-theme="dark"] .ui-button-lg,
-[data-theme="dark"] .ui-button-icon,
-[data-theme="dark"] .primary,
-[data-theme="dark"] .secondary,
-[data-theme="dark"] .danger-button,
-[data-theme="dark"] .ui-input,
-[data-theme="dark"] input,
-[data-theme="dark"] select,
-[data-theme="dark"] textarea {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px) !important;
-}
-
-/* 三级：徽章/标签/状态点 —— 4px 微切（小到几乎看不见，但凑近能发现是切角不是圆角） */
-[data-theme="dark"] .ui-badge,
-[data-theme="dark"] .count-badge,
-[data-theme="dark"] .status-dot,
-[data-theme="dark"] .ui-status-dot,
-[data-theme="dark"] .ui-badge-dot {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px) !important;
-}
-
-/* 四级：滚动条/开关/进度条 —— 纯直角（机械件的零修饰） */
-[data-theme="dark"] ::-webkit-scrollbar-thumb,
-[data-theme="dark"] .ui-switch,
-[data-theme="dark"] .ui-switch span,
-[data-theme="dark"] .settings-toggle,
-[data-theme="dark"] .progress-bar,
-[data-theme="dark"] .loading-bar,
-[data-theme="dark"] .loading-bar-fill {
-  border-radius: 0 !important;
-  clip-path: none !important;
-}
-
-/* 五级：骨架屏/空状态/图表柱 —— 12px 对角切（比卡片小一号，区分层级） */
-[data-theme="dark"] .ofm_skel,
-[data-theme="dark"] .empty-state,
-[data-theme="dark"] .chart-empty,
-[data-theme="dark"] .channel-empty,
-[data-theme="dark"] .dashboard-chart-bar,
-[data-theme="dark"] .usage-day-bar {
-  border-radius: 0 !important;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px) !important;
-}
-
-/* 六级：头像/图标容器 —— 允许保留极小圆角（2px），因为完全直角会割手 */
-[data-theme="dark"] .workspace-avatar,
-[data-theme="dark"] .source-icon,
-[data-theme="dark"] .quick-icon,
-[data-theme="dark"] .provider-logo {
-  border-radius: 2px !important;
-  clip-path: none !important;
-}
-/* ==== V5 NIGHT · 圆角清零 END ==== */
-/* ==== V5 NIGHT · 深度打磨（14 项修复） ==== */
-
-/* --- 1. KPI 图标容器：圆角清零 + 切角 --- */
-[data-theme="dark"] .ov-metric-icon {
-  border-radius: 0 !important;
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px) !important;
-}
-
-/* --- 2. 侧边栏导航按钮：2px 圆角清零 --- */
-[data-theme="dark"] .console-nav-item {
-  border-radius: 0 !important;
-}
-
-/* --- 3. 模型来源 source-row：圆角清零 + 切角 --- */
-[data-theme="dark"] .source-row,
-[data-theme="dark"] .ov-source-row {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px) !important;
-}
-
-/* --- 4. workspace-switch：12px 圆角清零 + 切角 --- */
-[data-theme="dark"] .workspace-switch {
-  border-radius: 0 !important;
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px) !important;
-}
-
-/* --- 5. 全局 ::selection：蓝色泄漏 → 青色 --- */
-[data-theme="dark"] ::selection {
-  background: rgba(124, 141, 255, 0.32) !important;
-  color: #eaf6ff !important;
-}
-
-/* --- 6. 设置页开关：加切角 --- */
-[data-theme="dark"] .settings-toggle {
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* --- 7. hover 卡片：青色微光从左扫到右 --- */
-@keyframes cp5-sweep-glow {
-  0% { background-position: -200% 0; opacity: 0; }
-  15% { opacity: 1; }
-  85% { opacity: 1; }
-  100% { background-position: 200% 0; opacity: 0; }
-}
-[data-theme="dark"] .ui-card:hover,
-[data-theme="dark"] .ov-metric:hover {
-  position: relative;
-}
-[data-theme="dark"] .ui-card:hover::after,
-[data-theme="dark"] .ov-metric:hover::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 30%, rgba(124,141,255,0.07) 45%, rgba(124,141,255,0.13) 50%, rgba(124,141,255,0.07) 55%, transparent 70%);
-  background-size: 200% 100%;
-  animation: cp5-sweep-glow 0.6s ease-out 1 forwards;
-  pointer-events: none;
-  z-index: 1;
-  clip-path: inherit;
-}
-
-/* --- 8. 标题前闪烁方块光标 --- */
-@keyframes cp5-blink-cursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-[data-theme="dark"] .card-heading h2::before,
-[data-theme="dark"] .usage-panel h2::before {
-  content: "\25AE  ";
-  color: var(--cp-cyan, #7c8dff);
-  animation: cp5-blink-cursor 1.2s steps(1) infinite;
-  font-size: 0.85em;
-}
-
-/* --- 9. 保存/测试成功 glitch 故障动效（更广泛应用） --- */
-[data-theme="dark"] .settings-status-saved,
-[data-theme="dark"] .ui-button.is-success,
-[data-theme="dark"] .badge-success {
-  animation: 0.3s steps(2) 0s 1 normal both running cp-glitch-pop !important;
-  box-shadow: 0 0 16px -5px var(--cp-glow, rgba(124,141,255,0.16)) !important;
-}
-
-/* --- 10. 状态灯呼吸加强 --- */
-@keyframes cp5-pulse-strong {
-  0%, 100% { opacity: 1; box-shadow: 0 0 6px 1px var(--cp-cyan, #7c8dff), 0 0 14px 2px rgba(124,141,255,0.3); }
-  50% { opacity: 0.4; box-shadow: 0 0 2px 0px var(--cp-cyan, #7c8dff), 0 0 4px 0px rgba(124,141,255,0.1); }
-}
-[data-theme="dark"] .status-dot {
-  animation: 1.6s steps(1) infinite cp5-pulse-square, 2.4s ease-in-out infinite cp5-pulse-strong !important;
-}
-
-/* --- 11. 侧边栏选中项：改切角形状 --- */
-[data-theme="dark"] .console-nav-item.selected,
-[data-theme="dark"] .console-nav-item[aria-current] {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%) !important;
-}
-
-/* --- 12. 全局滚动条：统一暗底青边 --- */
-[data-theme="dark"] *::-webkit-scrollbar-track {
-  background: #070a0e !important;
-}
-[data-theme="dark"] *::-webkit-scrollbar-thumb {
-  background: rgba(124, 141, 255, 0.28) !important;
-  border: 2px solid #070a0e !important;
-  border-radius: 0 !important;
-}
-[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 141, 255, 0.48) !important;
-  box-shadow: 0 0 8px rgba(124, 141, 255, 0.3) !important;
-}
-[data-theme="dark"] * {
-  scrollbar-color: rgba(124, 141, 255, 0.28) #070a0e !important;
-}
-
-/* --- 13. 空状态柱条：暗青色扫描线纹理 --- */
-[data-theme="dark"] .dashboard-chart-bar.zero,
-[data-theme="dark"] .usage-day-bar.zero {
-  background: repeating-linear-gradient(0deg, rgba(124,141,255,0.06) 0px, rgba(124,141,255,0.06) 1px, transparent 1px, transparent 4px) !important;
-  border: 1px solid rgba(124, 141, 255, 0.08) !important;
-}
-
-/* --- 14. 失败/警报指标红色补强 --- */
-[data-theme="dark"] .ov-metric[data-accent="danger"] .ov-metric-icon {
-  background: var(--cp-red-soft, rgba(224,101,111,0.15)) !important;
-  color: var(--cp-red, #e0656f) !important;
-  box-shadow: rgba(224,101,111,0.25) 0 0 10px -3px !important;
-}
-
-/* ==== V5 NIGHT · 深度打磨 END ==== */
-
-/* ==== V5 NIGHT · 第二轮深度打磨（26 处圆角清零 + 七级差异化签名） ==== */
-
-/* ---- P0 · 全页面通用元素 ---- */
-
-/* 1. logo 图片：10px 圆角 → 对角切 6px（Ⅵ 图标座级） */
-[data-theme="dark"] .console-mark {
-  border-radius: 0 !important;
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px) !important;
-}
-
-/* 2. 工作空间头像：2px 圆角 → 对角切 4px（Ⅳ 徽章级） */
-[data-theme="dark"] .workspace-avatar {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 3. 导航指示器：999px 药丸 → 方形刻度线（2px 宽 × 100% 高） */
-[data-theme="dark"] .console-nav-indicator {
-  border-radius: 0 !important;
-  width: 2px !important;
-}
-
-/* 4. 侧边栏底部信息卡：12px 圆角 → 对角切 12px（Ⅶ 骨架级） */
-[data-theme="dark"] .sidebar-support {
-  border-radius: 0 !important;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px) !important;
-}
-
-/* ---- P1 · 差异化签名（不再千篇一律） ---- */
-
-/* 5. 按钮 hover：填充反色（透明底青框 → 青底黑字）+ 辉光 + 微浮起 */
-[data-theme="dark"] .ui-button:hover:not(:disabled) {
-  background: var(--cp-cyan, #7c8dff) !important;
-  color: #0a0f14 !important;
-  box-shadow: 0 0 14px var(--cp-cyan, #7c8dff), 0 0 30px rgba(124, 141, 255, 0.3) !important;
-  transform: translateY(-1px) !important;
-}
-[data-theme="dark"] .ui-button:active:not(:disabled) {
-  transform: translateY(0) scale(0.98) !important;
-}
-
-/* 6. 危险按钮 hover：红底白字 + 红色辉光 */
-[data-theme="dark"] .danger-button:hover:not(:disabled),
-[data-theme="dark"] .ui-button.danger:hover:not(:disabled) {
-  background: var(--cp-red, #e0656f) !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 14px var(--cp-red, #e0656f), 0 0 30px rgba(224, 101, 111, 0.3) !important;
-}
-
-/* 7. 输入框 focus：边框实色 + 辉光 */
-[data-theme="dark"] .ui-input:focus,
-[data-theme="dark"] .ui-input:focus-visible {
-  border-color: var(--cp-cyan, #7c8dff) !important;
-  box-shadow: 0 0 12px rgba(124, 141, 255, 0.25), inset 0 0 0 1px rgba(124, 141, 255, 0.1) !important;
-  outline: none !important;
-}
-
-/* 8. 徽章：等宽大写 + 宽字距 + 霓虹发光 */
-[data-theme="dark"] .ui-badge,
-[data-theme="dark"] .count-badge {
-  font-family: Consolas, "Cascadia Mono", "SF Mono", "JetBrains Mono", monospace !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.08em !important;
-  font-size: 10px !important;
-  text-shadow: 0 0 6px rgba(124, 141, 255, 0.4) !important;
-}
-
-/* 9. 导航选中项：左侧 2px 青色竖线 + 10% 青色底（差异化于按钮/输入框） */
-[data-theme="dark"] .console-nav-item.selected,
-[data-theme="dark"] .console-nav-item[aria-current] {
-  border-left: 2px solid var(--cp-cyan, #7c8dff) !important;
-  background: linear-gradient(90deg, rgba(124, 141, 255, 0.15), rgba(124, 141, 255, 0.05)) !important;
-}
-
-/* ---- P2 · 各页面残留圆角清零 ---- */
-
-/* 10. 概览页 quick-icon：2px → 对角切 4px */
-[data-theme="dark"] .quick-icon,
-[data-theme="dark"] .ov-quick-icon {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 11. 概览页 quick-endpoint：10px → 单侧切 8px（Ⅱ 按钮级，右下切） */
-[data-theme="dark"] .quick-endpoint,
-[data-theme="dark"] .ov-endpoint {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%) !important;
-}
-
-/* 12. 概览页 source-icon：2px → 对角切 4px */
-[data-theme="dark"] .source-icon {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 13. 用量页 channel-filters：6px → 清零 */
-[data-theme="dark"] .channel-filters {
-  border-radius: 0 !important;
-}
-
-/* 14. 用量页筛选按钮：2px → 清零 */
-[data-theme="dark"] .channel-filters button {
-  border-radius: 0 !important;
-}
-
-/* 15. 用量页 usage-window-empty：1px → 对角切 8px */
-[data-theme="dark"] .usage-window-empty {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-}
-
-/* 16. 设置页 settings-field：9px → 对角切 12px（Ⅰ 面板级） */
-[data-theme="dark"] .settings-field {
-  border-radius: 0 !important;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px) !important;
-}
-
-/* 17. 设置页 settings-note：1px → 清零 */
-[data-theme="dark"] .settings-note {
-  border-radius: 0 !important;
-}
-
-/* 18. 设置页 settings-status-dot：1px → 清零 */
-[data-theme="dark"] .settings-status-dot {
-  border-radius: 0 !important;
-}
-
-/* 19. 设置页 settings-toggle 滑块：1px/2px → 清零 */
-[data-theme="dark"] .settings-fieldset .settings-toggle:after,
-[data-theme="dark"] .settings-fieldset .settings-toggle:checked:after,
-[data-theme="dark"] .settings-fieldset .settings-field .settings-toggle {
-  border-radius: 0 !important;
-}
-
-/* 20. API 接入页 cx-icon：1px → 对角切 4px */
-[data-theme="dark"] .cx-icon {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 21. API 接入页 cx-field：1px → 对角切 8px */
-[data-theme="dark"] .cx-field {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-}
-
-/* 22. API 接入页 cx-code：1px → 对角切 8px */
-[data-theme="dark"] .cx-code {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-}
-
-/* 23. 渠道页 ch-metric-icon：1px → 对角切 4px */
-[data-theme="dark"] .ch-metric-icon {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 24. 渠道页 checkin-control：999px 药丸 → 对角切 8px */
-[data-theme="dark"] .checkin-control {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-}
-
-/* 25. 渠道页筛选按钮组：4px/6px/8px → 清零 */
-[data-theme="dark"] .channel-filters,
-[data-theme="dark"] .channel-filters button,
-[data-theme="dark"] .channel-filters span {
-  border-radius: 0 !important;
-}
-
-/* 26. 渠道页 provider-logo：2px → 对角切 4px */
-[data-theme="dark"] .provider-logo {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 27. 模型清单页 model-row-actions 按钮：2px → 清零 */
-[data-theme="dark"] .model-browser .model-row-actions .ui-button-outline,
-[data-theme="dark"] .model-browser .model-row-actions .ui-button {
-  border-radius: 0 !important;
-}
-
-/* 28. 模型清单页 md-copy-done：2px → 清零 */
-[data-theme="dark"] .model-browser .model-row-actions .md-copy-done {
-  border-radius: 0 !important;
-}
-
-/* 29. 登录页 login-card：16px → 对角切 18px（Ⅰ 面板级） */
-[data-theme="dark"] .login-card {
-  border-radius: 0 !important;
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px) !important;
-}
-
-/* 30. 登录页 login-card form .primary：11px → 清零（已由按钮级覆盖） */
-[data-theme="dark"] .login-card form .primary {
-  border-radius: 0 !important;
-}
-
-/* 31. 杂项：ui-button-ghost hover 3px → 清零 */
-[data-theme="dark"] .ui-button-ghost:hover {
-  border-radius: 0 !important;
-}
-
-/* 32. 杂项：滚动条 4px → 清零 */
-[data-theme="dark"] *::-webkit-scrollbar-thumb {
-  border-radius: 0 !important;
-}
-
-/* 33. 杂项：detail-security-note 1px → 清零 */
-[data-theme="dark"] .detail-security-note {
-  border-radius: 0 !important;
-}
-
-/* 34. 杂项：usage-feedback 1px → 清零 */
-[data-theme="dark"] .usage-browser .usage-feedback {
-  border-radius: 0 !important;
-}
-
-/* 35. 杂项：copy-feedback 1px → 清零 */
-[data-theme="dark"] .copy-feedback::after {
-  border-radius: 0 !important;
-}
-
-/* 36. 杂项：usage-model-filters 2px → 清零 */
-[data-theme="dark"] .usage-browser .usage-model-filters select:focus-visible {
-  border-radius: 0 !important;
-}
-
-/* 37. 杂项：usage-pagination 2px → 清零 */
-[data-theme="dark"] .usage-browser .usage-pagination .ui-button {
-  border-radius: 0 !important;
-}
-
-/* ==== V5 NIGHT · 第二轮深度打磨 END ==== */
-/* ==== V5 NIGHT · 第三轮深度打磨（颜色丰富/差异化/棱角分明） ==== */
-
-/* ---- 问题一：颜色太单一 ---- */
-
-/* 1. 红色注入：失败/警报元素必须有红色存在感 */
-[data-theme="dark"] .ov-metric[data-accent="danger"] .ov-metric-icon,
-[data-theme="dark"] .ov-failures .ov-failure-row,
-[data-theme="dark"] .model-browser .channel-error,
-[data-theme="dark"] .usage-feedback.is-error {
-  color: var(--cp-red, #e0656f) !important;
-}
-
-/* 失败回合 KPI 图标用红色 */
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(5) .ov-metric-icon {
-  background: rgba(224, 101, 111, 0.12) !important;
-  color: var(--cp-red, #e0656f) !important;
-  box-shadow: rgba(224, 101, 111, 0.2) 0 0 10px -3px !important;
-}
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(5) strong {
-  color: var(--cp-red, #e0656f) !important;
-}
-
-/* 已恢复回合 KPI 图标用琥珀色 */
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(6) .ov-metric-icon {
-  background: rgba(232, 163, 61, 0.12) !important;
-  color: var(--cp-amber, #e8a33d) !important;
-  box-shadow: rgba(232, 163, 61, 0.2) 0 0 10px -3px !important;
-}
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(6) strong {
-  color: var(--cp-amber, #e8a33d) !important;
-}
-
-/* 输入/输出 Token 用不同颜色区分 */
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(3) .ov-metric-icon {
-  background: rgba(124, 141, 255, 0.12) !important;
-  color: var(--cp-cyan, #7c8dff) !important;
-}
-[data-theme="dark"] .usage-metrics .ov-metric:nth-child(4) .ov-metric-icon {
-  background: rgba(232, 163, 61, 0.12) !important;
-  color: var(--cp-amber, #e8a33d) !important;
-}
-
-/* 2. 琥珀色注入：警告/注意类元素 */
-[data-theme="dark"] .ui-badge-warning,
-[data-theme="dark"] .badge-warn {
-  background: rgba(232, 163, 61, 0.12) !important;
-  color: var(--cp-amber, #e8a33d) !important;
-  border-color: rgba(232, 163, 61, 0.35) !important;
-}
-
-/* 3. 状态徽章按语义着色：成功=青、警告=琥珀、错误=红、信息=灰 */
-[data-theme="dark"] .ui-badge-success,
-[data-theme="dark"] .badge-success {
-  background: rgba(124, 141, 255, 0.12) !important;
-  color: var(--cp-cyan, #7c8dff) !important;
-  border-color: rgba(124, 141, 255, 0.35) !important;
-}
-[data-theme="dark"] .ui-badge-danger,
-[data-theme="dark"] .badge-danger {
-  background: rgba(224, 101, 111, 0.12) !important;
-  color: var(--cp-red, #e0656f) !important;
-  border-color: rgba(224, 101, 111, 0.35) !important;
-}
-
-/* 4. KPI 数字按语义着色：正常=白、异常=红、注意=琥珀 */
-[data-theme="dark"] .ov-metric strong {
-  color: var(--cp-cyan, #7c8dff) !important;
-  text-shadow: 0 0 12px rgba(124, 141, 255, 0.15) !important;
-}
-
-/* ---- 问题二：设计同质化 ---- */
-
-/* 5. 按钮差异化：主按钮=实心青底黑字（扳机），幽灵按钮=透明底青框（瞄具） */
-[data-theme="dark"] .ui-button-default,
-[data-theme="dark"] .primary {
-  background: var(--cp-cyan, #7c8dff) !important;
-  color: #0a0f14 !important;
-  border-color: var(--cp-cyan, #7c8dff) !important;
-  font-weight: 600 !important;
-}
-[data-theme="dark"] .ui-button-default:hover:not(:disabled),
-[data-theme="dark"] .primary:hover:not(:disabled) {
-  background: #2ee8d8 !important;
-  box-shadow: 0 0 16px rgba(124, 141, 255, 0.4), 0 0 40px rgba(124, 141, 255, 0.15) !important;
-  transform: translateY(-1px) !important;
-}
-[data-theme="dark"] .ui-button-default:active:not(:disabled),
-[data-theme="dark"] .primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.98) !important;
-  background: #0bc4b4 !important;
-}
-
-/* 幽灵按钮：透明底 + 青框（和主按钮完全不同的视觉语言） */
-[data-theme="dark"] .ui-button-ghost {
-  background: transparent !important;
-  color: var(--cp-cyan, #7c8dff) !important;
-  border-color: rgba(124, 141, 255, 0.35) !important;
-}
-[data-theme="dark"] .ui-button-ghost:hover:not(:disabled) {
-  background: rgba(124, 141, 255, 0.1) !important;
-  border-color: rgba(124, 141, 255, 0.6) !important;
-  box-shadow: 0 0 10px rgba(124, 141, 255, 0.15) !important;
-}
-
-/* 6. 输入框差异化：深色内嵌底 + 右下单侧切（和按钮的左上切方向不同） */
-[data-theme="dark"] .ui-input,
-[data-theme="dark"] input[type="text"],
-[data-theme="dark"] input[type="number"],
-[data-theme="dark"] input[type="password"],
-[data-theme="dark"] select,
-[data-theme="dark"] textarea {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(124, 141, 255, 0.2) !important;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%) !important;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-}
-[data-theme="dark"] .ui-input:focus,
-[data-theme="dark"] input:focus,
-[data-theme="dark"] select:focus,
-[data-theme="dark"] textarea:focus {
-  border-color: var(--cp-cyan, #7c8dff) !important;
-  box-shadow: 0 0 12px rgba(124, 141, 255, 0.2), inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-  outline: none !important;
-}
-
-/* 7. 徽章差异化：更小的切角（4px）+ 更强的发光（和按钮/输入框区分） */
-[data-theme="dark"] .ui-badge,
-[data-theme="dark"] .count-badge {
-  text-shadow: 0 0 8px currentColor !important;
-  font-weight: 600 !important;
-}
-
-/* 8. 导航选中项差异化：左侧 2px 青色竖线 + 背景渐变 + 文字发光 */
-[data-theme="dark"] .console-nav-item.selected,
-[data-theme="dark"] .console-nav-item[aria-current] {
-  border-left: 2px solid var(--cp-cyan, #7c8dff) !important;
-  background: linear-gradient(90deg, rgba(124, 141, 255, 0.15), rgba(124, 141, 255, 0.05)) !important;
-  color: var(--cp-cyan, #7c8dff) !important;
-  text-shadow: 0 0 8px rgba(124, 141, 255, 0.3) !important;
-}
-
-/* ---- 问题三：棱角不分明 ---- */
-
-/* 9. 卡片边框加强：0.666px → 1px + 不透明度提升 */
-[data-theme="dark"] .ui-card,
-[data-theme="dark"] .ov-metric,
-[data-theme="dark"] .usage-panel {
-  border: 1px solid rgba(124, 141, 255, 0.25) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 20px -8px rgba(124, 141, 255, 0.1) !important;
-}
-
-/* 10. 四角 L 型刻度线：用伪元素画真正的四角刻度 */
-[data-theme="dark"] .ui-card::after,
-[data-theme="dark"] .ov-metric::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: 0 !important;
-  pointer-events: none !important;
-  background:
-    /* 左上角 L */
-    linear-gradient(to right, var(--cp-cyan, #7c8dff) 12px, transparent 12px) top left / 12px 1px,
-    linear-gradient(to bottom, var(--cp-cyan, #7c8dff) 12px, transparent 12px) top left / 1px 12px,
-    /* 右上角 L */
-    linear-gradient(to left, var(--cp-cyan, #7c8dff) 12px, transparent 12px) top right / 12px 1px,
-    linear-gradient(to bottom, var(--cp-cyan, #7c8dff) 12px, transparent 12px) top right / 1px 12px,
-    /* 右下角 L */
-    linear-gradient(to left, var(--cp-cyan, #7c8dff) 12px, transparent 12px) bottom right / 12px 1px,
-    linear-gradient(to top, var(--cp-cyan, #7c8dff) 12px, transparent 12px) bottom right / 1px 12px,
-    /* 左下角 L */
-    linear-gradient(to right, var(--cp-cyan, #7c8dff) 12px, transparent 12px) bottom left / 12px 1px,
-    linear-gradient(to top, var(--cp-cyan, #7c8dff) 12px, transparent 12px) bottom left / 1px 12px !important;
-  background-repeat: no-repeat !important;
-  opacity: 0.5 !important;
-  z-index: 1 !important;
-  clip-path: inherit !important;
-}
-
-/* 11. 按钮边框加强：0.666px → 1px */
-[data-theme="dark"] .ui-button {
-  border-width: 1px !important;
-}
-
-/* 12. 设置页开关加强：更明显的视觉边界 */
-[data-theme="dark"] .settings-toggle {
-  border: 1px solid rgba(124, 141, 255, 0.4) !important;
-  box-shadow: 0 0 8px rgba(124, 141, 255, 0.15), inset 0 0 4px rgba(124, 141, 255, 0.1) !important;
-}
-
-/* 13. 输入框边框加强：0.666px → 1px + 不透明度提升 */
-[data-theme="dark"] .ui-input,
-[data-theme="dark"] input[type="text"],
-[data-theme="dark"] input[type="number"],
-[data-theme="dark"] input[type="password"],
-[data-theme="dark"] select,
-[data-theme="dark"] textarea {
-  border-width: 1px !important;
-  border-color: rgba(124, 141, 255, 0.25) !important;
-}
-
-/* 14. 徽章边框加强：不透明度提升 */
-[data-theme="dark"] .ui-badge,
-[data-theme="dark"] .count-badge {
-  border-width: 1px !important;
-  border-color: rgba(124, 141, 255, 0.45) !important;
-}
-
-/* 15. 空状态图表面板加强：边框更明显 */
-[data-theme="dark"] .chart-empty,
-[data-theme="dark"] .ov-chart-empty {
-  border: 1px solid rgba(124, 141, 255, 0.3) !important;
-  box-shadow: inset 0 0 30px -10px rgba(124, 141, 255, 0.15) !important;
-}
-
-/* 16. 侧边栏底部信息卡边框加强 */
-[data-theme="dark"] .sidebar-support {
-  border: 1px solid rgba(124, 141, 255, 0.15) !important;
-}
-
-/* 17. workspace-switch 边框加强 */
-[data-theme="dark"] .workspace-switch {
-  border: 1px solid rgba(124, 141, 255, 0.2) !important;
-}
-
-/* ==== V5 NIGHT · 第三轮深度打磨 END ==== */
-/* ==== V5 NIGHT · 第四轮深度打磨（EAC 协付渠道 + 登录页残留） ==== */
-
-/* 1. EAC 状态徽章（ofm_pill）：999px 药丸 → 切角 4px */
-[data-theme="dark"] .ofm_pill {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* 2. EAC 状态点（ofm_dot）：50% 圆形 → 方形 */
-[data-theme="dark"] .ofm_dot {
-  border-radius: 0 !important;
-  width: 5px !important;
-  height: 5px !important;
-}
-
-/* 3. EAC "点个 Star" 按钮（ofm_starbtn）：7px 圆角 → 切角 8px */
-[data-theme="dark"] .ofm_starbtn {
-  border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
-}
-
-/* 4. EAC 信息卡（ofm_hero）：12px/20px 圆角 → 对角切 18px */
-[data-theme="dark"] .ofm_hero {
-  border-radius: 0 !important;
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px) !important;
-}
-
-/* 5. 登录页代码块（code）：6px 圆角 → 切角 4px */
-[data-theme="dark"] code {
-  border-radius: 0 !important;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px) !important;
-}
-
-/* ==== V5 NIGHT · 第四轮深度打磨 END ==== *//* ==== V5 NIGHT END ==== */
-
-/* ==========================================================================
-   ==== V5 DAY · 流光岁月打磨（只动白昼，黑夜一律不碰） =====================
-   依据 impeccable craft-floor：
-   ① kicker 去"装扮感"——缩短字距、弱化前置短线（保留标签本身做导航）；
-   ② 彩色表面次级字改暖调，不再用中性灰（对标 Claude #6c6a64）；
-   ③ 状态徽章分色——成功/警告/危险/信息分色相，别全一个橙；
-   ④ 缓动已在上方 :root 换成指数 ease-out（回弹过时）。
-   ========================================================================== */
-
-/* ① kicker：缩短字距、弱化前置短线，去"等宽仪表盘"味 */
-:root:not([data-theme="dark"]) .heading-eyebrow,
-:root:not([data-theme="dark"]) .eyebrow {
-  letter-spacing: 0.07em !important;
-  color: #8a8175 !important;            /* 暖调 tertiary，不再偏灰 */
-}
-:root:not([data-theme="dark"]) .heading-eyebrow::before,
-:root:not([data-theme="dark"]) .eyebrow::before {
-  width: 10px !important;
-  background: #b49a6a !important;       /* 黄铜短线，贴纸张语言 */
-  opacity: 0.6 !important;
-}
-
-/* ② 彩色表面次级字暖调：徽章、计数、表格次级信息不再用中性灰 */
-:root:not([data-theme="dark"]) .ui-badge {
-  color: #6c6a64 !important;            /* 暖灰，贴奶白画布 */
-  background: #f3efe7 !important;
-}
-:root:not([data-theme="dark"]) .dashboard-metric > div,
-:root:not([data-theme="dark"]) .console-breadcrumb,
-:root:not([data-theme="dark"]) .console-topbar-status,
-:root:not([data-theme="dark"]) .workspace-switch small {
-  color: #7d7668 !important;            /* 次级信息统一暖调 */
-}
-
-/* ③ 状态徽章分色：成功=绿 / 警告=琥珀 / 危险=红 / 信息=黄铜，别全一个橙 */
-:root:not([data-theme="dark"]) .ui-badge-success { background: #eff7f2 !important; color: #177552 !important; border-color: #cfe6da !important; }
-:root:not([data-theme="dark"]) .ui-badge-warning { background: #fbf6ea !important; color: #8a6215 !important; border-color: #e9ddc0 !important; }
-:root:not([data-theme="dark"]) .ui-badge-danger,
-:root:not([data-theme="dark"]) .ui-badge-error   { background: #fdf5f5 !important; color: #9c3343 !important; border-color: #f0d5d5 !important; }
-:root:not([data-theme="dark"]) .ui-badge-blue,
-:root:not([data-theme="dark"]) .ui-badge-info    { background: #f3efe7 !important; color: #8a4b06 !important; border-color: #eedfc6 !important; }
-/* ==== V5 DAY · 流光岁月打磨 END ==== */
-/* ---- V5 DAY 补：侧边栏选中态 & 黄铜按钮（收现代 SaaS 味，贴纸张/黄铜） ---- */
-/* ⑥ 侧边栏选中：圆角收敛 + 左侧一道黄铜细线（页签折角感），不再是大圆角块 */
-:root:not([data-theme="dark"]) .console-nav-item { border-radius: 5px !important; }
-:root:not([data-theme="dark"]) .console-nav-item.selected {
-  border-radius: 5px !important;
-  background: linear-gradient(90deg, rgba(180,83,9,0.10), rgba(180,83,9,0.02)) !important;
-  box-shadow: inset 2px 0 0 #b45309, inset 0 0 0 1px rgba(180,83,9,0.10) !important;
-  color: #8a4b06 !important;
-}
-
-/* ⑦ 黄铜主键：压哑光、减甜度——细刻边 + 几乎无大软阴影，像黄铜铭牌 */
-:root:not([data-theme="dark"]) .ui-button-default,
-:root:not([data-theme="dark"]) .primary {
-  background: linear-gradient(180deg, #b57309, #9a5c06) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.12), 0 1px 2px rgba(86,52,10,0.14) !important;
-  border: 1px solid #8a4b06 !important;
-}
-:root:not([data-theme="dark"]) .ui-button-default:hover,
-:root:not([data-theme="dark"]) .primary:hover {
-  background: linear-gradient(180deg, #c07f0c, #a36307) !important;
-  transform: translateY(-1px) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.10), 0 3px 8px -3px rgba(86,52,10,0.22) !important;
-}
-:root:not([data-theme="dark"]) .ui-button-default:active,
-:root:not([data-theme="dark"]) .primary:active {
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.18) !important;
-}
-/* ==== V5 DAY 补 END ==== */
+/* ==== V5 LIGHT / V5 DAY / DAY补 三块已下架存档至 outputs/_archive-v5-light-paper.css（2026-10-18 昼主题重构为 V7 DAY） ==== */
 /* ==========================================================================
    ==== V5 DAY · 错位与不合理修复（只动白昼） =============================
    ========================================================================== */
@@ -5194,7 +3391,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
   background-image:
     linear-gradient(to top, rgba(138,75,6,0.07) 1px, transparent 1px) !important;
   background-size: 100% 25% !important;
-  border-bottom: 1px solid #e6ddcc !important;
+  border-bottom: 1px solid #e6e9f0 !important;
 }
 /* 0 数据柱子的轨道：淡黄铜刻度槽，看得见但克制 */
 :root:not([data-theme="dark"]) .usage-day-track {
@@ -5324,7 +3521,7 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 [data-theme="dark"] .ep-strip-divider { background: var(--cp-cyan-line); }
 /* 亮色主题：羊皮纸暖色风 */
 :root:not([data-theme="dark"]) .ep-strip {
-  border: 1px solid #e3d5b8; background: #fffdf8;
+  border: 1px solid #e6e9f0; background: #ffffff;
 }
 :root:not([data-theme="dark"]) .ep-strip-tag { color: var(--amber, #b8860b); }
 :root:not([data-theme="dark"]) .ep-strip code { color: #4a3b1a; }
@@ -5338,3 +3535,321 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 /* 深色主题侧边栏 sticky 已由上游在源头修复（主题层选择器改为
    `.app-shell > *:not(.sidebar)`），原先在这里追加的同优先级 workaround 已删除：
    它反而会让主题层出现 .sidebar 的 position 声明，掩盖基础层的 sticky。 */
+
+/* ==========================================================================
+   Z. 概览页新布局（Hero + 指标 + 主区 + 底部来源）—— 结构级重构
+   ========================================================================== */
+.ov-dashboard { display: flex; flex-direction: column; gap: 20px; }
+.ov-dashboard .dashboard-metrics,
+.ov-dashboard .dashboard-main-grid { margin-bottom: 0; }
+
+/* Z1 Hero 走廊 */
+.ov-hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+.ov-hero-main { position: relative; display: flex; flex-direction: column; padding: 26px 28px 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--dsw-alias-bg-layer-1); overflow: hidden; }
+[data-theme="dark"] .ov-hero-main {
+  background:
+    radial-gradient(620px 220px at 88% -30%, rgba(124,141,255,.10), transparent 68%),
+    linear-gradient(160deg, rgba(124,141,255,.05), transparent 62%),
+    var(--dsw-alias-bg-layer-1);
+  border-color: rgba(130,149,190,.16);
+}
+.ov-hero-main h1 { font-size: 30px; }
+.ov-hero-sub { margin-top: 8px; font-size: 13px; max-width: 54ch; }
+.ov-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.ov-hero-spark { margin-top: auto; padding-top: 24px; }
+.ov-spark-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); margin-bottom: 9px; }
+.ov-spark-head strong { font-size: 18px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ov-spark-head small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.ov-spark-bars { display: flex; align-items: flex-end; gap: 10px; height: 78px; }
+.ov-spark-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; }
+.ov-spark-bar { width: 100%; min-height: 3px; border-radius: 4px 4px 2px 2px; background: linear-gradient(180deg, #a5b4ff, var(--green)); box-shadow: 0 0 10px -3px var(--cp-glow); transition: height .45s var(--ease-out-expo); }
+.ov-spark-bar.zero { background: var(--line); box-shadow: none; }
+.ov-spark-col span { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Z2 Hero 右侧快速接入卡 */
+.ov-hero-connect { display: flex; flex-direction: column; gap: 14px; padding: 22px 22px 18px; }
+.ov-connect-head { display: flex; align-items: center; gap: 11px; }
+.ov-connect-head h2 { font-size: 15px; }
+.ov-connect-head p { font-size: 12px; margin-top: 2px; }
+.ov-connect-fields { display: flex; flex-direction: column; gap: 6px; }
+.ov-connect-fields label { margin-top: 7px; font-size: 11px; letter-spacing: .045em; text-transform: uppercase; color: var(--muted); }
+.ov-connect-fields label:first-child { margin-top: 0; }
+.ov-hero-connect .connection-footnote { margin-top: auto; padding-top: 12px; }
+
+/* Z3 底部来源横排 */
+.ov-bottom .ov-source-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ov-bottom .ov-source-row { margin: 0; }
+
+@media (max-width: 1080px) {
+  .ov-hero { grid-template-columns: minmax(0, 1fr); }
+  .ov-hero-main h1 { font-size: 26px; }
+}
+@media (max-width: 720px) {
+  .ov-hero-main { padding: 20px 18px; }
+  .ov-bottom .ov-source-list { grid-template-columns: minmax(0, 1fr); }
+  .ov-spark-bars { height: 62px; gap: 6px; }
+}
+
+/* ==========================================================================
+   ==== V7 NIGHT · 干净现代暗色（2026-10-18） ===============================
+   老板要求：去掉"方格子"（网格/扫描线/噪点/切角/四角刻度），重新设计暗色。
+   方向：Linear/Vercel 式现代暗色 —— 纯深蓝灰底、细白边框、圆角、柔和阴影、
+   靛蓝强调。本段全部 !important 压制上游赛博装饰；昼主题零改动。
+   ========================================================================== */
+
+/* 1. 全屏基底：删除网格 + 扫描线 + 噪点，只留两团极淡靛蓝环境光 */
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1100px 520px at 78% -10%, rgba(124, 141, 255, 0.08), transparent 60%),
+    radial-gradient(900px 500px at -8% 12%, rgba(93, 124, 255, 0.05), transparent 55%),
+    #0b0e14 !important;
+}
+[data-theme="dark"] body::before { content: none !important; }
+[data-theme="dark"] body::after { content: none !important; }
+
+/* 2. 卡片：圆角面板 + 细白边框，去切角/去四角刻度/去发光悬停 */
+[data-theme="dark"] body .ui-card {
+  clip-path: none !important;
+  border-radius: 14px !important;
+  background: linear-gradient(180deg, #131826, #10151f) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 16px 40px -28px rgba(0, 0, 0, 0.8) !important;
+}
+[data-theme="dark"] body .ui-card::after { content: none !important; }
+[data-theme="dark"] body .ui-card:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(124, 141, 255, 0.32) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 20px 44px -28px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(124, 141, 255, 0.08) !important;
+}
+
+/* 3. 按钮：圆角实心现代键，去斜切/去扫描光带/去故障动效 */
+[data-theme="dark"] body .ui-button,
+[data-theme="dark"] body .primary,
+[data-theme="dark"] body .secondary,
+[data-theme="dark"] body .danger-button {
+  clip-path: none !important;
+  border-radius: 9px !important;
+  letter-spacing: normal !important;
+}
+[data-theme="dark"] body .ui-button::after { content: none !important; }
+[data-theme="dark"] body .ui-button:active { animation: none !important; transform: scale(0.985) !important; }
+[data-theme="dark"] body .ui-button-default,
+[data-theme="dark"] body .primary {
+  background: linear-gradient(180deg, #7c8dff, #5f74f2) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 18px -8px rgba(124, 141, 255, 0.55) !important;
+}
+[data-theme="dark"] body .ui-button-default:hover,
+[data-theme="dark"] body .primary:hover {
+  background: linear-gradient(180deg, #8b99ff, #6a7ef5) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 8px 22px -8px rgba(124, 141, 255, 0.65) !important;
+}
+[data-theme="dark"] body .ui-button-outline,
+[data-theme="dark"] body .secondary {
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #dbe3f2 !important;
+}
+[data-theme="dark"] body .ui-button-outline:hover,
+[data-theme="dark"] body .secondary:hover {
+  background: rgba(124, 141, 255, 0.12) !important;
+  border-color: rgba(124, 141, 255, 0.45) !important;
+  color: #fff !important;
+}
+[data-theme="dark"] body .ui-button-ghost { border-radius: 8px !important; }
+[data-theme="dark"] body .danger-button {
+  background: linear-gradient(180deg, #e0656f, #c9505b) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 6px 18px -8px rgba(224, 101, 111, 0.5) !important;
+}
+
+/* 4. 输入/下拉/文本域：圆角细边框，聚焦靛蓝柔环 */
+[data-theme="dark"] .ui-input,
+[data-theme="dark"] input[type="text"], [data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"], [data-theme="dark"] textarea, [data-theme="dark"] select {
+  border-radius: 9px !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+[data-theme="dark"] .ui-input:focus,
+[data-theme="dark"] input[type="text"]:focus, [data-theme="dark"] input[type="password"]:focus,
+[data-theme="dark"] input[type="number"]:focus, [data-theme="dark"] textarea:focus, [data-theme="dark"] select:focus {
+  border-color: rgba(124, 141, 255, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(124, 141, 255, 0.16) !important;
+}
+
+/* 5. 键盘焦点环：标准 2px 靛蓝，去"刻度"感 */
+[data-theme="dark"] button:focus-visible, [data-theme="dark"] a:focus-visible,
+[data-theme="dark"] input:focus-visible, [data-theme="dark"] select:focus-visible,
+[data-theme="dark"] textarea:focus-visible, [data-theme="dark"] summary:focus-visible {
+  outline: 2px solid rgba(124, 141, 255, 0.65) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+/* 6. 徽章/计数：小圆角，去直角芯片感 */
+[data-theme="dark"] body .ui-badge,
+[data-theme="dark"] body .count-badge { clip-path: none !important; border-radius: 6px !important; }
+
+/* 7. 登录卡：圆角细边框 */
+[data-theme="dark"] body .login-card {
+  clip-path: none !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+}
+
+/* 8. 滚动条圆角 */
+[data-theme="dark"] ::-webkit-scrollbar-thumb { border-radius: 8px !important; }
+
+/* 9. 侧栏底部：去等宽"终端读数"字体 */
+[data-theme="dark"] .console-sidebar-footer > div,
+[data-theme="dark"] .console-sidebar-footer small { font-family: inherit !important; letter-spacing: normal !important; }
+
+/* 10. 工作空间卡：柔和圆角面板 */
+[data-theme="dark"] body .workspace-switch {
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* 11. Hero 面板同步新表面 */
+[data-theme="dark"] .ov-hero-main {
+  background:
+    radial-gradient(620px 220px at 88% -30%, rgba(124, 141, 255, 0.10), transparent 68%),
+    linear-gradient(180deg, #151a28, #10141f) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ==========================================================================
+   ==== V7 DAY · 干净现代昼色（2026-10-18） =================================
+   与 V7 NIGHT 同一套设计语言：冷调浅灰白底、纯白圆角卡片、细灰边框、
+   柔和阴影、靛蓝强调。去暖纸黄铜拟物（光束/噪点/纸纹/黄铜按钮）。
+   本段全 !important，仅作用于昼；暗色零改动。
+   ========================================================================== */
+
+/* 1. 全屏基底：删光束动画 + 噪点纸纹，冷调浅灰白 + 极淡靛蓝环境光 */
+:root:not([data-theme="dark"]) body {
+  background:
+    radial-gradient(1000px 500px at 80% -10%, rgba(99, 112, 255, 0.06), transparent 60%),
+    radial-gradient(800px 460px at -6% 8%, rgba(99, 112, 255, 0.04), transparent 55%),
+    #f5f6f8 !important;
+}
+:root:not([data-theme="dark"]) body::before { content: none !important; }
+:root:not([data-theme="dark"]) body::after { content: none !important; animation: none !important; }
+
+/* 2. 卡片：纯白圆角面板 + 细灰边框 + 柔和阴影 */
+:root:not([data-theme="dark"]) body .ui-card,
+:root:not([data-theme="dark"]) body .login-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(23, 32, 54, 0.08) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -20px rgba(15, 23, 42, 0.18) !important;
+}
+:root:not([data-theme="dark"]) body .ui-card::before,
+:root:not([data-theme="dark"]) body .ui-card::after { content: none !important; }
+:root:not([data-theme="dark"]) body .ui-card:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(99, 112, 255, 0.30) !important;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05), 0 16px 36px -20px rgba(15, 23, 42, 0.22) !important;
+}
+
+/* 3. 按钮：靛蓝实心主键（浅底加深保证对比），中性次键 */
+:root:not([data-theme="dark"]) body .ui-button-default,
+:root:not([data-theme="dark"]) body .primary {
+  background: linear-gradient(180deg, #6474f4, #4f5fe6) !important;
+  color: #fff !important;
+  border: 1px solid rgba(30, 41, 89, 0.18) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 5px 14px -6px rgba(79, 95, 230, 0.55) !important;
+}
+:root:not([data-theme="dark"]) body .ui-button-default:hover,
+:root:not([data-theme="dark"]) body .primary:hover {
+  background: linear-gradient(180deg, #7383f7, #5a6aee) !important;
+  color: #fff !important;
+  border-color: rgba(30, 41, 89, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 8px 18px -6px rgba(79, 95, 230, 0.62) !important;
+}
+:root:not([data-theme="dark"]) body .ui-button-default:active,
+:root:not([data-theme="dark"]) body .primary:active { transform: translateY(0.5px) !important; }
+:root:not([data-theme="dark"]) body .ui-button-outline,
+:root:not([data-theme="dark"]) body .secondary {
+  background: #ffffff !important;
+  border: 1px solid #d7dce6 !important;
+  color: #38415a !important;
+}
+:root:not([data-theme="dark"]) body .ui-button-outline:hover,
+:root:not([data-theme="dark"]) body .secondary:hover {
+  background: #f4f5fd !important;
+  border-color: rgba(99, 112, 255, 0.45) !important;
+  color: #3d4ed9 !important;
+}
+:root:not([data-theme="dark"]) body .danger-button {
+  background: linear-gradient(180deg, #e26a72, #cd545e) !important;
+  color: #fff !important;
+  border: 1px solid rgba(120, 30, 40, 0.18) !important;
+  box-shadow: 0 5px 14px -6px rgba(205, 84, 94, 0.5) !important;
+}
+
+/* 4. 输入/下拉/文本域：白底细边框，聚焦靛蓝柔环 */
+:root:not([data-theme="dark"]) .ui-input,
+:root:not([data-theme="dark"]) input[type="text"], :root:not([data-theme="dark"]) input[type="password"],
+:root:not([data-theme="dark"]) input[type="number"], :root:not([data-theme="dark"]) textarea,
+:root:not([data-theme="dark"]) select {
+  background: #ffffff !important;
+  border: 1px solid #d8dde8 !important;
+  border-radius: 9px !important;
+}
+:root:not([data-theme="dark"]) .ui-input:focus,
+:root:not([data-theme="dark"]) input[type="text"]:focus, :root:not([data-theme="dark"]) input[type="password"]:focus,
+:root:not([data-theme="dark"]) input[type="number"]:focus, :root:not([data-theme="dark"]) textarea:focus,
+:root:not([data-theme="dark"]) select:focus {
+  border-color: rgba(99, 112, 255, 0.60) !important;
+  box-shadow: 0 0 0 3px rgba(99, 112, 255, 0.14) !important;
+}
+:root:not([data-theme="dark"]) input, :root:not([data-theme="dark"]) textarea { caret-color: #4f5fe6 !important; }
+
+/* 5. 键盘焦点环：统一 2px 靛蓝 */
+:root:not([data-theme="dark"]) button:focus-visible, :root:not([data-theme="dark"]) a:focus-visible,
+:root:not([data-theme="dark"]) input:focus-visible, :root:not([data-theme="dark"]) select:focus-visible,
+:root:not([data-theme="dark"]) textarea:focus-visible, :root:not([data-theme="dark"]) summary:focus-visible {
+  outline: 2px solid rgba(99, 112, 255, 0.65) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+/* 6. 开关 on 态：黄铜 → 靛蓝 */
+:root:not([data-theme="dark"]) .ui-switch.on { background: rgba(99, 112, 255, 0.18) !important; border-color: rgba(99, 112, 255, 0.55) !important; }
+:root:not([data-theme="dark"]) .ui-switch.on > span { background: #4f5fe6 !important; }
+
+/* 7. 选区 / 滚动条 */
+:root:not([data-theme="dark"]) ::selection { background: rgba(99, 112, 255, 0.20) !important; color: #1c2440 !important; }
+:root:not([data-theme="dark"]) ::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18) !important; border-radius: 8px !important; }
+:root:not([data-theme="dark"]) ::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.30) !important; }
+
+/* 8. 工作空间卡 / 登录卡 */
+:root:not([data-theme="dark"]) body .workspace-switch {
+  background: #ffffff !important;
+  border: 1px solid rgba(23, 32, 54, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* 9. 接入信息条 ep-strip：羊皮纸 → 白底中性 */
+:root:not([data-theme="dark"]) .ep-strip { border: 1px solid #e6e9f0 !important; background: #ffffff !important; border-radius: 10px !important; }
+:root:not([data-theme="dark"]) .ep-strip-tag { color: #6a7288 !important; }
+:root:not([data-theme="dark"]) .ep-strip code { color: #38415a !important; }
+:root:not([data-theme="dark"]) .ep-strip-key code { color: #8a91a5 !important; }
+:root:not([data-theme="dark"]) .ep-strip-copy { color: #4f5fe6 !important; }
+:root:not([data-theme="dark"]) .ep-strip-copy:hover { border-color: rgba(99, 112, 255, 0.45) !important; }
+:root:not([data-theme="dark"]) .ep-strip-copy.is-copied { color: #178a5f !important; }
+:root:not([data-theme="dark"]) .ep-strip-divider { background: #e6e9f0 !important; }
+
+/* 10. Hero 面板（昼） */
+:root:not([data-theme="dark"]) .ov-hero-main {
+  background:
+    radial-gradient(620px 220px at 88% -30%, rgba(99, 112, 255, 0.07), transparent 68%),
+    #ffffff !important;
+  border-color: rgba(23, 32, 54, 0.08) !important;
+}
