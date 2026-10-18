@@ -32142,6 +32142,10 @@ var FALLBACK_IMAGE_PRICING = Object.freeze({
 // vendor/channel-pack/src/token-ledger.ts
 var TOKEN_LEDGER_LIMIT = 500;
 var ledger = [];
+// 逐条请求日志落盘（独立端增强，2026-10-18）：单文件 JSONL、满 5MB 轮转一份 .old、
+// 启动时回读最近 TOKEN_LEDGER_LIMIT 条 —— 重启不再丢逐条记录（此前只存内存）。
+var ENTRY_LOG_MAX_BYTES = 5 * 1024 * 1024;
+var entryLogPath = "";
 var reportedAccounts = /* @__PURE__ */ new Map();
 function reportLedgerAccount(provider, accountId) {
   try {
@@ -32190,10 +32194,12 @@ function recordTokenUsage(entry) {
     const accountId = typeof entry.accountId === "string" ? entry.accountId.slice(0, 64) : "";
     const ttft = clampCount(entry.ttftMs);
     const duration = clampCount(entry.durationMs);
-    const outputTokens = clampCount(entry.outputTokens);
-    const decodeMs = duration - ttft;
-    const tps = ttft > 0 && decodeMs > 0 && usageReported ? Math.round(outputTokens / (decodeMs / 1e3) * 10) / 10 : void 0;
-    const record = Object.freeze({
+  const outputTokens = clampCount(entry.outputTokens);
+  const promptPreview = typeof entry.promptPreview === "string" ? entry.promptPreview.slice(0, 200) : "";
+  const responsePreview = typeof entry.responsePreview === "string" ? entry.responsePreview.slice(0, 200) : "";
+  const decodeMs = duration - ttft;
+  const tps = ttft > 0 && decodeMs > 0 && usageReported ? Math.round(outputTokens / (decodeMs / 1e3) * 10) / 10 : void 0;
+  const record = Object.freeze({
       ts: Date.now(),
       // channel 只认两个合法值，垃圾值一律落回 `direct`（保守缺省）。
       channel: entry.channel === "gateway" ? "gateway" : "direct",
@@ -32203,6 +32209,9 @@ function recordTokenUsage(entry) {
       usageReported,
       inputTokens: clampCount(entry.inputTokens),
       outputTokens,
+      // 请求/返回摘要（独立端增强）：各截前 200 字，空则省略字段。
+      ...promptPreview !== "" ? { promptPreview } : {},
+      ...responsePreview !== "" ? { responsePreview } : {},
       // ⚠️ 0 / 缺失一律**省略字段**而不是写 0：与接口注释一致，
       // 「没有缓存命中」与「命中 0 个」无从区分时，缺省是更诚实的表示。
       ...cacheRead > 0 ? { cacheReadTokens: cacheRead } : {},
@@ -32220,8 +32229,56 @@ function recordTokenUsage(entry) {
       backend?.append(record);
     } catch {
     }
+    appendEntryLog(record);
   } catch {
   }
+}
+function appendEntryLog(record) {
+  if (entryLogPath === "") return;
+  try {
+    if (existsSync10(entryLogPath) && statSync4(entryLogPath).size > ENTRY_LOG_MAX_BYTES) {
+      try { renameSync8(entryLogPath, entryLogPath + ".old"); } catch {
+      }
+    }
+    appendFileSync4(entryLogPath, JSON.stringify(record) + "\n");
+  } catch {
+  }
+}
+function restoreLedgerFromEntryLog() {
+  if (entryLogPath === "") return;
+  try {
+    const readText = (path) => {
+      try {
+        return existsSync10(path) ? readFileSync10(path, "utf-8") : "";
+      } catch {
+        return "";
+      }
+    };
+    const lines = (readText(entryLogPath + ".old") + readText(entryLogPath)).split("\n").filter((line) => line.trim().length > 0);
+    for (const line of lines.slice(-TOKEN_LEDGER_LIMIT)) {
+      try {
+        const record = JSON.parse(line);
+        if (typeof record?.ts === "number") ledger.unshift(record);
+      } catch {
+      }
+    }
+    if (ledger.length > TOKEN_LEDGER_LIMIT) ledger.length = TOKEN_LEDGER_LIMIT;
+  } catch {
+  }
+}
+function previewTextOfOptions(options) {
+  try {
+    const messages = Array.isArray(options?.messages) ? options.messages : [];
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index];
+      if (message?.role !== "user") continue;
+      const content = message.content;
+      const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => typeof part === "string" ? part : part?.type === "text" && typeof part.text === "string" ? part.text : "").join(" ") : "";
+      return text.replace(/\s+/g, " ").trim().slice(0, 200);
+    }
+  } catch {
+  }
+  return "";
 }
 function emptyTotals() {
   return {
@@ -32500,7 +32557,7 @@ function wrapAdapterWithTokenLedger(providers, adapter) {
   const accountingStream = (options, open) => {
     const channel = channelOfOptions(options);
     const model = String(options?.model ?? "").slice(0, 160);
-    return recordThroughStream(open, { channel, provider, model, startedAt: Date.now() });
+    return recordThroughStream(open, { channel, provider, model, promptPreview: previewTextOfOptions(options), startedAt: Date.now() });
   };
   return new Proxy(adapter, {
     get(target, prop) {
@@ -32549,9 +32606,14 @@ async function* recordThroughStream(openStream, meta) {
   let ttftMs = 0;
   let accountId = "";
   let failure;
+  let responsePreview = "";
   try {
     for await (const chunk of openStream()) {
       if (ttftMs === 0) ttftMs = Date.now() - meta.startedAt;
+      // 返回摘要（独立端增强）：只累积 text-delta 文本，截前 200 字。
+      if (responsePreview.length < 200 && typeof chunk === "object" && chunk !== null && chunk.type === "text-delta" && typeof chunk.text === "string") {
+        responsePreview = (responsePreview + chunk.text).slice(0, 200);
+      }
       if (typeof chunk === "object" && chunk !== null && chunk.type === "usage") {
         const usage = chunk.usage;
         if (typeof usage === "object" && usage !== null) {
@@ -32579,6 +32641,9 @@ async function* recordThroughStream(openStream, meta) {
       usageReported,
       inputTokens,
       outputTokens,
+      // 请求/返回摘要（独立端增强）：prompt 来自 meta（调用方已提取），response 来自流式累积。
+      ...meta.promptPreview !== "" ? { promptPreview: meta.promptPreview } : {},
+      ...responsePreview !== "" ? { responsePreview } : {},
       ...cacheReadTokens !== void 0 ? { cacheReadTokens } : {},
       ...cacheWriteTokens !== void 0 ? { cacheWriteTokens } : {},
       ...reasoningTokens !== void 0 ? { reasoningTokens } : {},
@@ -64773,7 +64838,7 @@ function installLoopResume(ctx) {
 }
 
 // vendor/channel-pack/src/token-ledger-store.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync8, readFileSync as readFileSync10, renameSync as renameSync8, writeFileSync as writeFileSync9 } from "node:fs";
+import { appendFileSync as appendFileSync4, existsSync as existsSync10, mkdirSync as mkdirSync8, readFileSync as readFileSync10, renameSync as renameSync8, statSync as statSync4, writeFileSync as writeFileSync9 } from "node:fs";
 import { join as join10 } from "node:path";
 var TOKEN_LEDGER_FILE = "token-ledger.json";
 var TOKEN_LEDGER_DAYS = 90;
@@ -65004,6 +65069,10 @@ function createTokenLedgerStore(ctx) {
     ctx.logger?.warn?.("[channel-pack] \u65E0\u6CD5\u5B9A\u4F4D DSH home\uFF0CToken \u7528\u91CF\u5386\u53F2\u4EC5\u5B58\u5728\u4E8E\u5185\u5B58\u4E2D");
     return new MemoryLedgerStore();
   }
+  // 逐条请求日志落盘（独立端增强）：channel-pack/request-log.jsonl，5MB 轮转，
+  // 启动时回读最后 500 条进内存 ledger，重启不丢。
+  entryLogPath = join10(home, "channel-pack", "request-log.jsonl");
+  restoreLedgerFromEntryLog();
   return new FileLedgerStore(join10(home, "channel-pack", TOKEN_LEDGER_FILE), ctx.logger);
 }
 

@@ -138,3 +138,16 @@
 .workbuddy-backups .combo-hint { margin: 0; }
 [data-theme="dark"] .workbuddy-backups { background: rgba(255, 255, 255, 0.03); box-shadow: none; }
 [data-theme="dark"] .workbuddy-backup-row { border-top-color: rgba(255, 255, 255, 0.08); }
+
+/* ============================================
+   按钮分级增量：卡头右侧「编辑 + ⋯」收纳（菜单本体在 app.css .ui-menu）。
+   ============================================ */
+.combo-card-tools .combo-more { min-height: 28px; min-width: 28px; padding: 4px 6px; font-weight: 600; }
+.combo-card-tools .combo-more.is-open { background: var(--md-accent-tint, rgba(99, 112, 255, 0.10)); color: var(--md-accent, #b4782c); }
+.combo-card-actions { min-height: 20px; }
+[data-theme="dark"] .combo-card-tools .combo-more { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.12); color: #dbe3f2; }
+[data-theme="dark"] .combo-card-tools .combo-more:hover:not(:disabled),
+[data-theme="dark"] .combo-card-tools .combo-more.is-open:not(:disabled) { background: rgba(124, 141, 255, 0.12); border-color: rgba(124, 141, 255, 0.45); color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .combo-card-tools .combo-more { transition: none !important; }
+}

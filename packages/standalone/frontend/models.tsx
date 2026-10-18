@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual'
-import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
+import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, MoreHorizontal, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
-import { Badge, Button, Input } from './components/ui'
+import { Badge, Button, DropdownMenu, Input } from './components/ui'
 import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
 import { filterModels } from './models-data.mjs'
@@ -45,6 +45,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const [copied, setCopied] = useState<string>()
   const [toggling, setToggling] = useState<string>()
   const [exportingId, setExportingId] = useState<string>()
+  // 行内 ⋯ 菜单单例互斥：同一时刻只展开一行的更多菜单。
+  const [openMenuId, setOpenMenuId] = useState<string>()
   const [focusedId, setFocusedId] = useState<string>()
   const scrollRef = useRef<HTMLDivElement>(null)
   const pending = useRef<AbortController | undefined>(undefined)
@@ -75,6 +77,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       pending.current = undefined
       setOperation(undefined)
       setExportingId(undefined)
+      setOpenMenuId(undefined)
       setTest(previous => previous?.state === 'pending' ? { ...previous, state: 'cancelled' } : previous)
     }
     return () => { pending.current?.abort(); pending.current = undefined }
@@ -145,14 +148,17 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       .finally(() => { if (activeRef.current) setToggling(undefined) })
   }
 
-  // 写入 WorkBuddy：幂等单模型 upsert，无二次确认；与 toggleModel 相同的卸载保护。
-  const exportModel = (model: Model) => {
+  // 写入 WorkBuddy / WorkBuddy AI 国际版：幂等单模型 upsert，无二次确认；与 toggleModel 相同的卸载保护。
+  // exportingId 记录「模型 ID + 目标」，让两个写入项的 loading 文案互不串扰。
+  const exportModel = (model: Model, target?: 'ai') => {
     if (operation || exportingId !== undefined) return
-    setOperation('export'); setExportingId(model.id); setError(''); setMessage('')
-    void host.writeModelToWorkbuddy(model.id, resolveEndpointBase(summary.baseUrl))
+    const slot = target ? `${model.id}:ai` : model.id
+    setOperation('export'); setExportingId(slot); setError(''); setMessage('')
+    void host.writeModelToWorkbuddy(model.id, resolveEndpointBase(summary.baseUrl), target)
       .then(result => {
         if (activeRef.current) {
-          setMessage(`已写入 WorkBuddy：${model.name}（${result.updated > 0 ? '已更新' : '首次新增'}），重启 WorkBuddy 后生效`)
+          const label = target ? 'WorkBuddy AI 国际版' : 'WorkBuddy'
+          setMessage(`已写入 ${label}：${model.name}（${result.updated > 0 ? '已更新' : '首次新增'}），重启 ${label} 后生效`)
         }
       })
       .catch(reason => {
@@ -257,6 +263,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                     CSS 截断两行，完整内容挂在单元格的 title 上。 */}
                 {!model.disabled && state !== 'available' && model.availabilityDetail
                   ? <small className="model-state-detail">{model.availabilityDetail}</small> : null}</div>
+              {/* 规则 3：行内 ≤2 钮 + ⋯ 菜单。复制=图标钮，测试=主操作实心钮，
+                  低频的禁用/启用与写入收进 ⋯ 菜单（危险项标红，语义与 loading 态不变）。 */}
               <div role="cell" className="model-row-actions">
                 <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
                   className={copied === model.id ? 'md-copy-done' : ''}>
@@ -268,17 +276,33 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                   className={toggling === model.id ? 'md-testing' : ''}>
                   {toggling === model.id ? <LoaderCircle size={14} className="spinning" /> : <Power size={14} />}{model.disabled ? '启用' : '禁用'}
                 </Button>
-                <Button variant="outline" disabled={!!disabledReason} title={disabledReason || `测试 ${model.name}，会产生推理请求`}
+                <Button disabled={!!disabledReason} title={disabledReason || `测试 ${model.name}，会产生推理请求`}
                   aria-label={`测试模型：${model.id}`} onClick={() => { void run('test', model) }}
                   className={operation === 'test' && test?.model.id === model.id ? 'md-testing' : ''}>
                   {operation === 'test' && test?.model.id === model.id ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
                 </Button>
-                {/* combo 虚拟行在目录里没有真实模型行可映射，写入必 404，隐藏该按钮。 */}
-                {model.channel !== 'combo' && <Button variant="outline" disabled={!!disabledReason} title={disabledReason || `把 ${model.name} 写入 WorkBuddy 配置`}
-                  aria-label={`写入 WorkBuddy：${model.id}`} onClick={() => exportModel(model)}
-                  className={operation === 'export' && exportingId === model.id ? 'md-testing' : ''}>
-                  {operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />}写入
-                </Button>}
+                {/* combo 虚拟行在目录里没有真实模型行可映射，写入必 404；菜单仅剩写入两项，combo 行无菜单可开则整体隐藏。 */}
+                {model.channel !== 'combo' && <DropdownMenu triggerLabel={`更多操作：${model.name}`} icon={<MoreHorizontal size={15} />}
+                  triggerClassName="md-more" open={openMenuId === model.id}
+                  onOpenChange={next => setOpenMenuId(next ? model.id : undefined)}
+                  items={[
+                    {
+                      key: 'export',
+                      label: operation === 'export' && exportingId === model.id ? '写入中…' : '写入 WorkBuddy',
+                      icon: operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
+                      disabled: !!disabledReason || !!operation,
+                      title: disabledReason || `把 ${model.name} 写入 WorkBuddy 配置（~/.workbuddy）`,
+                      onSelect: () => exportModel(model),
+                    },
+                    {
+                      key: 'export-ai',
+                      label: operation === 'export' && exportingId === `${model.id}:ai` ? '写入中…' : '写入 WorkBuddy AI 国际版',
+                      icon: operation === 'export' && exportingId === `${model.id}:ai` ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
+                      disabled: !!disabledReason || !!operation,
+                      title: disabledReason || `把 ${model.name} 写入 WorkBuddy AI 国际版配置（~/.workbuddy-ai）`,
+                      onSelect: () => exportModel(model, 'ai'),
+                    },
+                  ]} />}
               </div>
             </div>
           })}

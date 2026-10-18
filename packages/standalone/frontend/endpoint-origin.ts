@@ -1,6 +1,8 @@
 // 接入地址来源选择：'page' = 当前访问的域名/IP，'local' = 服务端绑定地址（通常为 127.0.0.1）。
-// 选择持久化在 localStorage，跨页面生效——「API 接入」页切换后，
-// 「模型组 / 模型清单」的写入 WorkBuddy 按钮会使用同一选择。
+// 选择持久化在 localStorage，跨页面生效——概览「快速接入」卡、模型清单/模型组的
+// 接入信息条与「写入 WorkBuddy」按钮都使用同一选择。
+// （原「API 接入」页的切换 UI 已随页面下线；saveEndpointOriginChoice 暂留，
+//   后续如需在别处恢复切换入口可直接复用。）
 export type EndpointOriginChoice = 'page' | 'local'
 
 const STORAGE_KEY = 'ofm:endpoint-origin'

@@ -30,6 +30,21 @@ const css = shared.CSS + `
 .ofm_root img{max-width:100%}
 .ofm_root input,.ofm_root select{max-width:100%;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:white;color:inherit}
 .ofm_root input[type=checkbox]{padding:0}
+/* 运行日志：点击行展开请求/返回摘要 */
+.ofm_logrow{cursor:pointer}
+.ofm_logrow:active td{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 8%,transparent)}
+.ofm_logdetail-row td{padding:0}
+.ofm_logdetail-row:hover td{background:transparent}
+.ofm_logdetail{display:flex;flex-direction:column;gap:10px;padding:12px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);border-left:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);animation:ofm_logdetail-in .18s ease}
+@keyframes ofm_logdetail-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.ofm_logdetail-block{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ofm_logdetail-label{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}
+.ofm_logdetail p{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-primary);word-break:break-all;white-space:pre-wrap}
+/* 运行日志：底部翻页行（左翻页、右每页条数下拉） */
+.ofm_logpager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+.ofm_logpager-nav{display:flex;align-items:center;gap:10px}
+.ofm_logpager-size{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.ofm_logpager-size select{padding:4px 8px;font-size:12px;border-radius:7px;max-width:none}
 `
 
 export function standaloneSharedUi() {

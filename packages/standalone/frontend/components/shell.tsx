@@ -1,34 +1,63 @@
-import { Activity, Boxes, Cable, ChevronRight, Layers, LayoutDashboard, LogOut, Moon, Network, Settings2, ShieldCheck, Sun } from 'lucide-react'
-import { useState } from 'react'
+import { ChartColumn, ChevronRight, Cpu, Layers, LayoutDashboard, LogOut, Monitor, Moon, PlugZap, Settings, ShieldCheck, Sun, Terminal } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { Badge, Button } from './ui'
+import { Button } from './ui'
 import type { Host, Page, Summary } from '../types'
 
 const navigation = [
   { label: '工作空间', items: [
     { id: 'overview', name: '概览', icon: LayoutDashboard },
-    { id: 'models', name: '模型清单', icon: Boxes },
+    { id: 'models', name: '模型清单', icon: Cpu },
     { id: 'combos', name: '模型组', icon: Layers },
-    { id: 'usage', name: '用量统计', icon: Activity },
+    { id: 'usage', name: '用量统计', icon: ChartColumn },
+    { id: 'logs', name: '请求日志', icon: Terminal },
   ] },
-  { label: '渠道与连接', items: [
-    { id: 'channels', name: '免费账号渠道', icon: Network },
-    { id: 'connection', name: 'API 接入', icon: Cable },
-  ] },
-  { label: '管理', items: [{ id: 'settings', name: '服务设置', icon: Settings2 }] },
+  { label: '渠道', items: [{ id: 'channels', name: '账号池', icon: PlugZap }] },
+  { label: '管理', items: [{ id: 'settings', name: '服务设置', icon: Settings }] },
 ] as const
 
 type Origin = { x: number; y: number }
+type ThemeMode = 'light' | 'dark' | 'auto'
+type ResolvedTheme = 'light' | 'dark'
+const THEME_KEY = 'ofm-theme'
 
+const readThemeMode = (): ThemeMode => {
+  try { const saved = localStorage.getItem(THEME_KEY); if (saved === 'light' || saved === 'dark') return saved } catch { /* 存储不可用走默认档 */ }
+  return 'auto'
+}
+// 自动档时间表：19:00–07:00 夜间主题，其余浅色（北京时间本地时钟，不依赖系统外观设置）。
+const isNightTime = () => { const hour = new Date().getHours(); return hour >= 19 || hour < 7 }
+const resolveTheme = (mode: ThemeMode): ResolvedTheme => mode === 'auto' ? (isNightTime() ? 'dark' : 'light') : mode
+const applyTheme = (resolved: ResolvedTheme) => { document.documentElement.dataset.theme = resolved }
+
+// 三档主题：白天 / 晚上 / 自动（按时间表实时切换）。档位持久化在 localStorage，
+// 历史值只有 light/dark，天然映射为手动档；没存过即 auto（与 theme.mjs 开机脚本同一套规则）。
 function useTheme() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
-  const apply = (next: 'light' | 'dark') => {
-    document.documentElement.dataset.theme = next
-    try { localStorage.setItem('ofm-theme', next) } catch { /* 存储不可用时仅本次会话生效 */ }
-    setTheme(next)
+  const [mode, setMode] = useState<ThemeMode>(readThemeMode)
+  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveTheme(readThemeMode()))
+  // 自动档每 30 秒自检时间表，跨档（19:00 / 07:00 界）时静默切换——
+  // 不走 View Transition 扩散，避免用户正在看内容时屏幕突然转一圈。
+  useEffect(() => {
+    if (mode !== 'auto') return
+    const tick = () => {
+      const next = resolveTheme('auto')
+      setResolved(previous => {
+        if (previous === next) return previous
+        applyTheme(next)
+        return next
+      })
+    }
+    tick()
+    const timer = window.setInterval(tick, 30000)
+    return () => window.clearInterval(timer)
+  }, [mode])
+  const apply = (next: ThemeMode) => {
+    const target = resolveTheme(next)
+    setMode(next); setResolved(target); applyTheme(target)
+    try { localStorage.setItem(THEME_KEY, next) } catch { /* 存储不可用时仅本次会话生效 */ }
   }
-  const toggle = (origin?: Origin) => {
-    const next = theme === 'dark' ? 'light' : 'dark'
+  const switchTo = (next: ThemeMode, origin?: Origin) => {
+    if (next === mode) return
     // 没有 View Transition、或用户要求减少动效时直接切换，不做扩散。
     if (!origin || typeof document.startViewTransition !== 'function'
       || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(next); return }
@@ -49,30 +78,37 @@ function useTheme() {
     }
     transition.finished.then(finish, finish)
   }
-  return { theme, toggle }
+  return { mode, resolved, switchTo }
 }
 
-export function ThemeToggle() {
-  const { theme, toggle } = useTheme()
-  const label = theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'
-  return <Button variant="ghost" className="theme-toggle" aria-label={label} title={theme === 'dark' ? '浅色' : '深色'}
-    onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); toggle({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) }}>
-    <span className="theme-toggle-track" data-theme={theme}>
-      <span className="theme-toggle-icon theme-toggle-sun" aria-hidden="true"><Sun size={16} /></span>
-      <span className="theme-toggle-icon theme-toggle-moon" aria-hidden="true"><Moon size={16} /></span>
-    </span>
-  </Button>
+const THEME_OPTIONS = [
+  { id: 'light', label: '白天（浅色主题）', icon: Sun },
+  { id: 'dark', label: '晚上（深色主题）', icon: Moon },
+  { id: 'auto', label: '自动（19:00–07:00 夜间）', icon: Monitor },
+] as const
+
+// 顶栏右上角三态主题胶囊；切换动效沿用圆形扩散（圆心从所点分段起算）。
+export function ThemeSwitch() {
+  const { mode, switchTo } = useTheme()
+  return <div className="theme-switch" role="group" aria-label="主题：白天 / 晚上 / 自动">
+    {THEME_OPTIONS.map(option => <button key={option.id} type="button"
+      className={`theme-switch-btn ${mode === option.id ? 'is-active' : ''}`}
+      aria-pressed={mode === option.id} aria-label={option.label} title={option.label}
+      onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); switchTo(option.id, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) }}>
+      <option.icon size={14} strokeWidth={1.8} />
+    </button>)}
+  </div>
 }
 
 export const pageNames: Record<Page, string> = {
-  overview: '概览', models: '模型清单', combos: '模型组', usage: '用量统计', channels: '免费账号渠道',
-  settings: '服务设置', connection: 'API 接入',
+  overview: '概览', models: '模型清单', combos: '模型组', usage: '用量统计', logs: '请求日志', channels: '账号池',
+  settings: '服务设置',
 }
 
 export function Sidebar({ page, summary, host }: { page: Page; summary?: Summary; host: Host }) {
   return <>
     <div className="workspace-switch"><span className="workspace-avatar"><ShieldCheck size={17} /></span>
-      <span>个人工作空间<small>独立本地服务</small></span><Badge>本机</Badge>
+      <span>个人工作空间</span>
     </div>
     <nav className="console-nav" aria-label="管理导航">{navigation.map(group => <div className="nav-group" key={group.label}>
       <span className="nav-group-label">{group.label}</span>
@@ -83,11 +119,16 @@ export function Sidebar({ page, summary, host }: { page: Page; summary?: Summary
         {item.id === 'models' && <span className="count-badge">{summary?.catalog.length ?? '—'}</span>}
       </button>)}
     </div>)}</nav>
-    <div className="console-sidebar-footer"><div><span className="status-dot" />本地服务在线<small>v{summary?.version ?? '—'}</small></div>
-      <ThemeToggle /><Button variant="ghost" aria-label="退出管理" title="退出管理" onClick={() => { void host.logout().catch(host.error) }}><LogOut size={16} /></Button></div>
+    {/* 页脚：状态 + 版本号独占一行居左，退出钮靠右（主题开关已上移顶栏）。 */}
+    <div className="console-sidebar-footer">
+      <div className="sidebar-foot-info"><span className="sidebar-foot-status"><span className="status-dot" />本地服务在线</span>
+        <small>v{summary?.version ?? '—'}</small></div>
+      <div className="sidebar-foot-actions">
+        <Button variant="ghost" aria-label="退出管理" title="退出管理" onClick={() => { void host.logout().catch(host.error) }}><LogOut size={16} /></Button></div>
+    </div>
   </>
 }
-export function Topbar({ page, summary }: { page: Page; summary?: Summary }) {
+export function Topbar({ page }: { page: Page }) {
   return <><div className="console-breadcrumb"><span>工作空间</span><ChevronRight size={14} /><strong key={page} className="console-breadcrumb-current">{pageNames[page]}</strong></div>
-    <div className="console-topbar-status"><span className="status-dot" /><span>{summary?.settings.enabled === false ? '推理已暂停' : '本地服务'}</span><span className="topbar-divider" /><span>LOCAL</span></div></>
+    <ThemeSwitch /></>
 }

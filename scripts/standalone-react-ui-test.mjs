@@ -98,18 +98,22 @@ try {
   assert.equal(await page.locator('#connection-key').inputValue(), '')
   await page.getByRole('button', { name: '复制地址', exact: true }).click()
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${baseUrl}/v1`)
-  page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '轮换密钥', exact: true }).click()
+  // 轮换已改为页内确认弹层（role=alertdialog），不再触发原生 dialog。
+  await page.getByRole('alertdialog', { name: '轮换 API Key', exact: true }).waitFor()
+  await page.getByRole('button', { name: '确认轮换', exact: true }).click()
   await page.waitForFunction(() => document.getElementById('connection-key').value === 'ofm-ui-rotated-key')
   await nav('免费账号渠道'); await page.getByLabel('搜索渠道').waitFor()
-  await page.getByRole('tab', { name: '请求日志', exact: true }).click()
+  // 四个 tab 已删除：用量/日志/备份收进「数据与工具」下拉菜单，经菜单项进入子页。
+  await page.getByRole('button', { name: '打开数据与工具页面菜单', exact: true }).click()
+  await page.getByRole('menuitem', { name: '请求日志', exact: true }).click()
   // 等待轮询真实执行；刷新不应重置渠道子页。
   const previousReads = summaryReads
   await page.waitForFunction(() => true)
   const deadline = Date.now() + 20000
   while (summaryReads === previousReads && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 250))
   assert.ok(summaryReads > previousReads, '15 秒自动轮询应执行')
-  assert.equal(await page.getByRole('tab', { name: '请求日志', exact: true }).getAttribute('aria-selected'), 'true', '刷新不得重置渠道子页')
+  assert.ok(await page.getByRole('button', { name: '← 返回账号池' }).isVisible(), '刷新不得重置渠道子页')
   await nav('EAC 协付渠道'); await page.getByRole('heading', { name: 'EAC 协付渠道', exact: true }).waitFor()
   await nav('API 接入')
   const imageDir = process.env.OFM_UI_SCREENSHOT_DIR
