@@ -370,23 +370,27 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       // 幂等全量同步：启用且可解析的模型组 upsert 进 ~/.workbuddy/models.json，
       // 顺带刷新归属单模型条目并清理 combo: 残留；详见 workbuddy-sync.mjs。
       // 可选 body.baseUrl：把写入条目的接入地址切到管理页当前访问的域名/IP。
+      // 可选 body.target === 'ai'：写入 WorkBuddy AI 国际版（~/.workbuddy-ai/models.json），默认写 ~/.workbuddy。
       const body = await readBody(req)
       const settings = stores.settings.get()
       const result = await syncWorkbuddyModels({
         combos: normalizeCombos(settings.combos), catalog: runtime.catalog,
         baseUrl: resolveWorkbuddyBase(body.baseUrl, info().baseUrl), forwardKey: settings.forwardKey,
+        dirName: body.target === 'ai' ? '.workbuddy-ai' : undefined,
       })
       json(res, 200, result)
     } else if (method === 'POST' && pathname === `${PREFIX}/models/export-workbuddy`) {
       // 单模型 upsert：只写这一个条目，不清理任何其他条目（无二次确认）。
       // 可选 body.baseUrl：同上，跟随管理页选择的接入地址。
+      // 可选 body.target === 'ai'：写入 WorkBuddy AI 国际版（~/.workbuddy-ai/models.json），默认写 ~/.workbuddy。
       const body = await readBody(req)
       const baseUrl = resolveWorkbuddyBase(body.baseUrl, info().baseUrl)
+      const dirName = body.target === 'ai' ? '.workbuddy-ai' : undefined
       if (typeof body.id !== 'string' || body.id === '' || body.id.length > 300) throw fail(400, '请提供有效的模型 ID')
       const model = runtime.catalog.find(row => row.id === body.id && !isComboEntry(row))
       if (!model) throw fail(404, '模型清单中没有这个模型')
       const result = await writeWorkbuddyModel({
-        model, baseUrl, forwardKey: stores.settings.get().forwardKey,
+        model, baseUrl, forwardKey: stores.settings.get().forwardKey, dirName,
       })
       json(res, 200, result)
     } else if (method === 'GET' && pathname === `${PREFIX}/workbuddy/backups`) {

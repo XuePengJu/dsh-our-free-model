@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Copy, FolderOutput, History, Layers, LoaderCircle, MoreHorizontal, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
-import { Badge, Button, Input, Switch } from './components/ui'
+import { Badge, Button, DropdownMenu, Input, Switch } from './components/ui'
 import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
 import type { Combo, ComboDraft, Host, Model, ModelTestResult, Summary, WorkbuddyBackup } from './types'
@@ -73,11 +73,12 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
       setError(reason instanceof Error ? reason.message : '操作失败，请重试。')
     } finally { setSaving(false) }
   }
-  // 幂等全量同步：无需二次确认；成功文案带 added/updated/removed/total 计数。
-  const syncWorkbuddy = () => {
+  // 幂等全量同步：无需二次确认；成功文案带 added/updated/removed/total 计数。target='ai' 写 WorkBuddy AI 国际版。
+  const syncWorkbuddy = (target?: 'ai') => {
     void run(async () => {
-      const result = await host.syncCombosToWorkbuddy(resolveEndpointBase(summary.baseUrl))
-      return `已同步到 WorkBuddy：新增 ${number(result.added)}、更新 ${number(result.updated)}、清理 ${number(result.removed)}，共 ${number(result.total)} 条。重启 WorkBuddy 后生效。`
+      const result = await host.syncCombosToWorkbuddy(resolveEndpointBase(summary.baseUrl), target)
+      const label = target ? 'WorkBuddy AI 国际版' : 'WorkBuddy'
+      return `已同步到 ${label}：新增 ${number(result.added)}、更新 ${number(result.updated)}、清理 ${number(result.removed)}，共 ${number(result.total)} 条。重启 ${label} 后生效。`
     })
   }
   // 回滚面板：展开时拉取备份列表；恢复采用与删除模型组相同的两段式确认。
@@ -168,13 +169,29 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
       <div><div className="heading-eyebrow">WORKSPACE / COMBOS</div><h1>模型组</h1>
         <p>{combos === undefined ? '正在加载…' : `${number(combos.length)} 个模型组 · 对外是一个 combo:名称 虚拟模型`}</p></div>
       <div className="actions">
-        <Button variant="outline" disabled={draft !== undefined || saving} title="把启用的模型组写入 ~/.workbuddy/models.json，供 WorkBuddy 直接调用"
-          onClick={syncWorkbuddy}>
-          <FolderOutput size={15} />同步到 WorkBuddy
-        </Button>
-        <Button variant="ghost" disabled={saving} title="回滚 WorkBuddy 配置"
+        {/* 规则 1：页头右侧主次分明——同步（双目标下拉）/备份为次级描边钮，新建是全页唯一实心主操作。 */}
+        <DropdownMenu label="同步" triggerLabel="同步模型组到 WorkBuddy" icon={<FolderOutput size={15} />}
+          triggerClassName="combo-sync" items={[
+            {
+              key: 'sync-wb',
+              label: '同步到 WorkBuddy',
+              icon: <FolderOutput size={14} />,
+              disabled: draft !== undefined || saving,
+              title: '把启用的模型组写入 ~/.workbuddy/models.json，供 WorkBuddy 直接调用',
+              onSelect: () => syncWorkbuddy(),
+            },
+            {
+              key: 'sync-ai',
+              label: '同步到 WorkBuddy AI 国际版',
+              icon: <FolderOutput size={14} />,
+              disabled: draft !== undefined || saving,
+              title: '把启用的模型组写入 ~/.workbuddy-ai/models.json，供 WorkBuddy AI 国际版直接调用',
+              onSelect: () => syncWorkbuddy('ai'),
+            },
+          ]} />
+        <Button variant="outline" disabled={saving} title="回滚 WorkBuddy 配置（每次写入前自动备份，可在此恢复）"
           onClick={() => { void toggleBackups() }}>
-          <History size={15} />回滚
+          <History size={15} />备份
         </Button>
         <Button disabled={draft !== undefined || saving} onClick={() => { setDraft({ ...emptyDraft }); setDraftError(''); setMessage('') }}>
           <Plus size={15} />新建模型组
@@ -294,6 +311,23 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
             {combo.strategy === 'round-robin' && <Badge>粘滞 {combo.stickyLimit} 轮</Badge>}
             <Switch checked={combo.enabled} aria-label={`启用或停用 ${combo.name}`}
               onCheckedChange={next => toggle(combo, next)} />
+            {/* 规则 3：卡内只留「编辑」+ ⋯ 菜单；测试/删除收进菜单，删除项红色
+                且沿用两段式 confirming——第一次点只武装（菜单保持展开），再点才执行，
+                菜单因任何路径关闭时解除武装。 */}
+            <Button variant="outline" size="sm" disabled={saving} onClick={() => {
+              setDraft({ id: combo.id, name: combo.name, models: [...combo.models], strategy: combo.strategy, stickyLimit: combo.stickyLimit })
+              setDraftError(''); setMessage('')
+            }}>编辑</Button>
+            <DropdownMenu triggerLabel={`更多操作：${combo.name}`} icon={<MoreHorizontal size={15} />}
+              triggerClassName="combo-more"
+              onClose={() => setConfirming(previous => previous === combo.id ? undefined : previous)}
+              items={[
+                { key: 'test', label: '测试', icon: <Play size={14} />, disabled: test?.state === 'pending',
+                  title: '用链首可用模型发一次小请求', onSelect: () => runTest(combo) },
+                { key: 'delete', label: confirming === combo.id ? '确认删除' : '删除', icon: <Trash2 size={14} />,
+                  danger: true, keepOpen: true, disabled: saving, title: '删除后 API 调用立即返回 404',
+                  onSelect: () => remove(combo) },
+              ]} />
           </div>
         </div>
         <ol className="combo-chain-list">{combo.models.map((id, index) => {
@@ -306,24 +340,13 @@ export function Combos({ summary, host, active }: { summary: Summary; host: Host
               : model.disabled === true ? <Badge tone="warning">已禁用</Badge> : <Badge>{channelName(model.channel)}</Badge>}
           </li>
         })}</ol>
+        {/* 底部只放测试进行中的状态反馈；操作已全部上移到卡头右侧。 */}
         <div className="combo-card-actions">
           {test?.id === combo.id && <span className={`combo-test combo-test-${test.state}`} role="status">
             {test.state === 'pending' && <><LoaderCircle size={13} className="spinning" />正在测试…</>}
             {test.state === 'success' && <><CircleCheck size={13} />{number(test.result?.latencyMs ?? 0)} ms</>}
             {test.state === 'error' && <><CircleAlert size={13} />{test.error}</>}
           </span>}
-          <Button variant="outline" size="sm" disabled={test?.state === 'pending'} title="用链首可用模型发一次小请求"
-            onClick={() => runTest(combo)}>
-            {test?.id === combo.id && test.state === 'pending' ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
-          </Button>
-          <Button variant="outline" size="sm" disabled={saving} onClick={() => {
-            setDraft({ id: combo.id, name: combo.name, models: [...combo.models], strategy: combo.strategy, stickyLimit: combo.stickyLimit })
-            setDraftError(''); setMessage('')
-          }}>编辑</Button>
-          <Button variant="ghost" size="sm" className={confirming === combo.id ? 'combo-delete-armed' : ''}
-            onClick={() => remove(combo)} onBlur={() => setConfirming(previous => previous === combo.id ? undefined : previous)}>
-            {confirming === combo.id ? <>确认删除<Trash2 size={14} /></> : <>删除<Trash2 size={14} /></>}
-          </Button>
         </div>
       </article>)}
       {combos !== undefined && combos.length === 0 && draft === undefined && <div className="model-empty">

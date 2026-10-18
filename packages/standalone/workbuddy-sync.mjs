@@ -41,8 +41,13 @@ function syncError(statusCode, message) {
   return Object.assign(new Error(message), { statusCode })
 }
 
-function homePaths(homeDir) {
-  const root = path.join(homeDir ?? os.homedir(), '.workbuddy')
+/** 允许写入的 WorkBuddy 目录变体：默认国际通用目录，`ai` 为 WorkBuddy AI 国际版（~/.workbuddy-ai）。 */
+const WORKBUDDY_DIR_NAMES = new Set(['.workbuddy', '.workbuddy-ai'])
+
+function homePaths(homeDir, dirName = '.workbuddy') {
+  // 目录名白名单：只接受本模块声明的两个变体，杜绝请求参数拼接出任意路径。
+  if (!WORKBUDDY_DIR_NAMES.has(dirName)) throw syncError(400, `不支持的 WorkBuddy 目录：${dirName}`)
+  const root = path.join(homeDir ?? os.homedir(), dirName)
   return {
     dir: root,
     file: path.join(root, 'models.json'),
@@ -272,8 +277,8 @@ const sameEntry = (left, right) => JSON.stringify(left) === JSON.stringify(right
  *
  * @returns {Promise<{added: number, updated: number, removed: number, total: number}>}
  */
-export async function syncWorkbuddyModels({ combos, catalog, baseUrl, forwardKey, homeDir } = {}) {
-  const paths = homePaths(homeDir)
+export async function syncWorkbuddyModels({ combos, catalog, baseUrl, forwardKey, homeDir, dirName } = {}) {
+  const paths = homePaths(homeDir, dirName)
   const state = readModelsFile(paths)
   const desired = buildWorkbuddyEntries({ combos, catalog, baseUrl, forwardKey })
   const desiredById = new Map(desired.map(entry => [entry.id, entry]))
@@ -324,8 +329,8 @@ export async function syncWorkbuddyModels({ combos, catalog, baseUrl, forwardKey
  *
  * @returns {Promise<{added: number, updated: number, total: number}>}
  */
-export async function writeWorkbuddyModel({ model, baseUrl, forwardKey, homeDir } = {}) {
-  const paths = homePaths(homeDir)
+export async function writeWorkbuddyModel({ model, baseUrl, forwardKey, homeDir, dirName } = {}) {
+  const paths = homePaths(homeDir, dirName)
   const state = readModelsFile(paths)
   const entry = buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey })
   const index = state.entries.findIndex(row => row?.id === entry.id)

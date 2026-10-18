@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowDownToLine, ArrowUpFromLine, ChevronLeft, ChevronRight, CircleAlert, Layers3, RefreshCw, Search, RotateCcw, X } from 'lucide-react'
 import { Badge, Button, Card, Input } from './components/ui'
 import { usageModels } from './usage-data.mjs'
+import { useAutoRefreshSpin } from './use-auto-refresh-spin'
 import type { Host, Stats, UsageModel, UsagePeriod } from './types'
 import './usage.css'
 
@@ -31,6 +32,9 @@ export function Usage({ stats, host, active }: { stats: Stats; host: Host; activ
   const [sort, setSort] = useState('calls')
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
+  // 自动轮询动效：数据本体随 app 层 5 秒快照自动更新，这里只负责按钮图标转圈
+  // （共享 hook，最短 600ms；「正在更新」与禁用仍只留给手动点击）。
+  const autoRefreshing = useAutoRefreshSpin()
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const generation = useRef(0)
@@ -114,7 +118,7 @@ export function Usage({ stats, host, active }: { stats: Stats; host: Host; activ
     <header className="dashboard-heading"><div><div className="heading-eyebrow">WORKSPACE / USAGE</div>
       <h1>用量统计</h1><p>查看本机用量与趋势，可按日 / 周 / 月 / 累计切换口径。</p></div>
       <Button variant="outline" disabled={refreshing} onClick={() => { void refresh() }}>
-        <RefreshCw size={15} className={refreshing ? 'spinning' : ''} />{refreshing ? '正在更新' : '更新统计'}
+        <RefreshCw size={15} className={refreshing || autoRefreshing ? 'spinning' : ''} />{refreshing ? '正在更新' : '更新统计'}
       </Button>
     </header>
     <div className="usage-period-bar">
@@ -190,11 +194,15 @@ export function Usage({ stats, host, active }: { stats: Stats; host: Host; activ
           <td>{measured(model.avgTtftMs)}<small>ms</small></td><td>{measured(model.tps)}<small>Token/s</small></td>
         </tr>)}</tbody></table>
       </div></> : <div className="usage-empty"><Activity size={25} /><h3>{emptyTitle}</h3><p>{emptyDesc}</p></div>}
-      <div className="usage-pagination"><span data-testid="usage-model-count">{number(models.total)} / {number(modelTotal)} {period === 'all' ? '个模型' : '个有活动的模型'}</span>
-        <span>第 {models.page} / {models.pages} 页</span><Button variant="outline" aria-label="上一页统计模型" disabled={models.page === 1}
-          onClick={() => setPage(models.page - 1)}><ChevronLeft size={15} />上一页</Button>
-        <Button variant="outline" aria-label="下一页统计模型" disabled={models.page === models.pages}
-          onClick={() => setPage(models.page + 1)}>下一页<ChevronRight size={15} /></Button></div>
+      {/* 规则：计数文字居左归组，翻页改紧凑图标钮居右（aria-label / title 保留完整文案）。 */}
+      <div className="usage-pagination">
+        <span data-testid="usage-model-count">{number(models.total)} / {number(modelTotal)} {period === 'all' ? '个模型' : '个有活动的模型'} · 第 {models.page} / {models.pages} 页</span>
+        <div className="usage-pagination-nav">
+          <Button variant="outline" size="icon" aria-label="上一页统计模型" title="上一页统计模型" disabled={models.page === 1}
+            onClick={() => setPage(models.page - 1)}><ChevronLeft size={15} /></Button>
+          <Button variant="outline" size="icon" aria-label="下一页统计模型" title="下一页统计模型" disabled={models.page === models.pages}
+            onClick={() => setPage(models.page + 1)}><ChevronRight size={15} /></Button>
+        </div></div>
     </Card>
     <p className="footnote">统计只记录用量与性能，不保存提示词和回答。首字延迟与生成速度基于保留的可测量样本；未测得时显示“—”。</p>
   </div>

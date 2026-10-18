@@ -2,29 +2,32 @@ import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import { shared } from 'ofm-shared-client'
 import { ChannelBrowser } from './components/channel-browser'
+import { ConfirmDialog } from './components/ui'
+import { BarChart3, SlidersHorizontal } from 'lucide-react'
 import 'ofm-shared-styles.css'
 
 const { EacAuth, useEacLogin, DICT, Tank, usePool, poolReading, capacityText, CHANNEL_PROVIDERS, LedgerPage, LogsPage } = shared
 const h = React.createElement
 const t = key => DICT.zh[key] ?? key
 t.locale = 'zh'
-let requestLifetime = new AbortController()
-const ctx = {
-  connection: { rpc: {
-    async call(_base, _method, payload, signal) {
-      const lifetime = requestLifetime.signal
-      const response = await fetch('/api/management/channels/rpc', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload), signal: AbortSignal.any([signal, lifetime]), credentials: 'same-origin',
-      })
-      const result = await response.json()
-      lifetime.throwIfAborted()
-      if (response.status === 401) window.dispatchEvent(new CustomEvent('ofm:unauthorized'))
-      if (!response.ok) throw new Error(result.error ?? '渠道请求失败')
-      return result
-    },
-  } },
+// rpc 上下文工厂：每个挂载实例一份独立 AbortController 生命周期——
+// 请求日志页（LogsMount）与渠道页互不牵连（渠道页 hide() 只 abort 自己的）。
+function makeRpcContext() {
+  const state = { lifetime: new AbortController() }
+  const call = async (_base, _method, payload, signal) => {
+    const response = await fetch('/api/management/channels/rpc', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.any([signal, state.lifetime.signal]), credentials: 'same-origin',
+    })
+    const result = await response.json()
+    state.lifetime.signal.throwIfAborted()
+    if (response.status === 401) window.dispatchEvent(new CustomEvent('ofm:unauthorized'))
+    if (!response.ok) throw new Error(result.error ?? '渠道请求失败')
+    return result
+  }
+  return { state, connection: { rpc: { call } } }
 }
+const ctx = makeRpcContext()
 async function rpc(method, payload = {}) {
   const result = await ctx.connection.rpc.call('/api', 'channel-pack', { method, payload }, AbortSignal.timeout(180000))
   if (!result.ok) throw new Error(result.error?.message ?? '渠道操作失败')
@@ -80,13 +83,24 @@ function ChannelTools({ summary }) {
     link.href = url; link.download = `ofm-channels-${new Date().toISOString().slice(0, 10)}.json`
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
+  const [confirmImport, setConfirmImport] = React.useState(null)
   const importFile = async event => {
     const selected = event.target.files[0]
     event.target.value = ''
     if (!selected) return
     if (selected.size > 8 * 1024 * 1024) { setMessage('备份文件不能超过 8MB。'); return }
-    if (!window.confirm('导入会合并备份中的账号凭据、模型开关和积分锁定设置，确认继续吗？')) return
-    await run(async () => { await rpc('backup.import', { payload: JSON.parse(await selected.text()) }) })
+    // 原生 confirm 换成页内确认弹层：先读出并解析备份内容，坏 JSON 直接提示不弹确认框。
+    let payload
+    try { payload = JSON.parse(await selected.text()) } catch {
+      setMessage('备份文件不是有效的 JSON。')
+      return
+    }
+    setConfirmImport({ payload })
+  }
+  const runImport = () => {
+    const payload = confirmImport?.payload
+    setConfirmImport(null)
+    if (payload) void run(async () => { await rpc('backup.import', { payload }) })
   }
   return h('section', { className: 'ofm_hero', 'aria-label': '供应商与数据管理' },
     h('h3', null, '供应商与数据管理'),
@@ -110,22 +124,37 @@ function ChannelTools({ summary }) {
       h('button', { className: 'ofm_btn', disabled: busy, onClick: () => file.current.click() }, '导入账号备份'),
       h('input', { ref: file, type: 'file', hidden: true, accept: '.json,application/json', onChange: importFile })),
     h('p', { className: 'ofm_note' }, '备份包含登录凭据，请保存在可信的本地位置。插件导出的原格式备份也可以手动导入。'),
-    message ? h('p', { role: 'status', className: 'ofm_note' }, message) : null)
+    message ? h('p', { role: 'status', className: 'ofm_note' }, message) : null,
+    h(ConfirmDialog, {
+      open: confirmImport !== null, danger: true, title: '导入账号备份',
+      body: '导入会合并备份中的账号凭据、模型开关和积分锁定设置，确认继续吗？',
+      confirmText: '确认导入', onConfirm: runImport, onCancel: () => setConfirmImport(null),
+    }))
 }
 
 function ChannelConsole({ summary }) {
   const [page, setPage] = React.useState('accounts')
+  // 请求日志已提升为顶层导航页（LogsMount），这里只剩渠道用量与供应商备份两个低频子页。
+  const tools = [
+    { key: 'ledger', label: '渠道用量', icon: h(BarChart3, { size: 14 }), onSelect: () => setPage('ledger') },
+    { key: 'tools', label: '供应商与备份', icon: h(SlidersHorizontal, { size: 14 }), onSelect: () => setPage('tools') },
+  ]
   return h(React.Fragment, null,
-    h('header', { className: 'dashboard-heading' },
+    h('header', { className: 'dashboard-heading channels-heading' },
       h('div', null, h('div', { className: 'heading-eyebrow' }, 'WORKSPACE / CHANNELS'),
-        h('h1', null, '免费账号渠道'), h('p', null, '连接你的账号，把各家的免费额度汇集到一个 API。'))),
-    h('div', { className: 'ofm_seg', role: 'tablist', 'aria-label': '渠道管理页面' },
-      [['accounts', '登录与账号池'], ['ledger', '渠道用量'], ['logs', '请求日志'], ['tools', '供应商与备份']].map(([id, name]) =>
-        h('button', { key: id, role: 'tab', 'aria-selected': page === id, onClick: () => setPage(id) }, name))),
+        h('h1', null, '账号池'), h('p', null, '连接你的账号，把各家的免费额度汇集到一个 API。')),
+      // 主视图即「登录与账号池」主从布局；用量 / 备份两个低频页入口平铺页头右侧
+      // （老板拍板：空间够就别折叠，一次点击直达，与其他页面头部按钮组同款）。
+      // 进入后页头右侧提供「← 返回账号池」。
+      page === 'accounts'
+        ? h('div', { className: 'channels-tools', role: 'group', 'aria-label': '数据与工具' },
+            tools.map(tool => h('button', { type: 'button', key: tool.key, className: 'ui-button ui-button-outline', onClick: tool.onSelect }, tool.icon, tool.label)))
+        : h('button', { type: 'button', className: 'ui-button ui-button-outline channels-back',
+            onClick: () => setPage('accounts') }, '← 返回账号池')),
     page === 'accounts' ? h(ChannelBrowser, { rpc, summary })
-      : page === 'ledger' ? h(LedgerPage, { t, ctx, summary })
-        : page === 'logs' ? h(LogsPage, { t, ctx, summary })
-          : h(ChannelTools, { summary }))
+      : h('div', { className: 'channels-subpage' },
+          page === 'ledger' ? h(LedgerPage, { t, ctx, summary })
+            : h(ChannelTools, { summary })))
 }
 
 function EacPage({ summary }) {
@@ -148,15 +177,22 @@ function EacPage({ summary }) {
           h('p', null, capacityText(pool, t)))))
 }
 
+// 请求日志顶层页：每实例独立 rpc 生命周期，卸载时 abort 在途请求。
+export function LogsMount() {
+  const own = React.useMemo(makeRpcContext, [])
+  React.useEffect(() => () => { own.state.lifetime.abort() }, [own])
+  return h(LogsPage, { t, ctx: own })
+}
+
 let root
 export function show(kind, summary) {
   if (!root) {
-    requestLifetime = new AbortController()
+    ctx.state.lifetime = new AbortController()
     root = createRoot(document.getElementById('channel-root'))
   }
   root.render(h(kind === 'eac' ? EacPage : ChannelConsole, { t, ctx, summary }))
 }
 export function hide() {
-  requestLifetime.abort()
+  ctx.state.lifetime.abort()
   if (root) { root.unmount(); root = undefined }
 }

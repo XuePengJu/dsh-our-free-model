@@ -1712,3 +1712,17 @@
   .usage-period-label-full { display: none; }
   .usage-period-label-short { display: inline; }
 }
+
+/* ============================================
+   分页紧凑化增量：计数文字居左归组，‹ › 紧凑图标钮居右。
+   ============================================ */
+.usage-pagination-nav { display: flex; align-items: center; gap: 6px; }
+.usage-pagination .usage-pagination-nav .ui-button { min-height: 30px; min-width: 30px; padding: 6px; }
+:root:not([data-theme="dark"]) .usage-pagination .usage-pagination-nav .ui-button,
+:root[data-theme="dark"] .usage-pagination .usage-pagination-nav .ui-button { min-height: 30px; padding: 6px; }
+@media (max-width: 640px) {
+  .usage-pagination-nav { flex-basis: 100%; justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-pagination .ui-button { transition: none !important; }
+}

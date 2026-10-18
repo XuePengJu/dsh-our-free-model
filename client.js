@@ -477,6 +477,12 @@ window.__ModuleLoader__.load({
         'logs.empty': '还没有请求记录。',
         'logs.page': '第 {page} 页 / 共 {pages} 页',
         'logs.windowNote': '逐条日志保留最近窗口；历史只保留按日聚合（约 90 天），数据看板的「全部历史」即来源于此。',
+        'logs.prompt': '提问摘要',
+        'logs.response': '返回摘要',
+        'logs.expandHint': '点击行查看请求内容',
+        'logs.noPreview': '本条没有内容摘要。',
+        'logs.perPage': '每页',
+        'logs.perPageSuffix': '条',
         'gw.title': '网关设置',
         'gw.sub': '把渠道模型以 OpenAI 兼容接口发给本机与局域网工具：端点、密钥与转发端口都在这里。',
         'gw.gatewayTitle': '渠道模型网关（OpenAI 兼容）',
@@ -1146,6 +1152,12 @@ window.__ModuleLoader__.load({
         'logs.empty': 'No requests recorded yet.',
         'logs.page': 'Page {page} of {pages}',
         'logs.windowNote': 'Per-request rows cover a recent window only; history is kept as daily aggregates (~90 days) — the dashboard\'s "All time" reads those.',
+        'logs.prompt': 'Prompt',
+        'logs.response': 'Response',
+        'logs.expandHint': 'Click a row to view its content',
+        'logs.noPreview': 'No content preview for this entry.',
+        'logs.perPage': 'Rows per page',
+        'logs.perPageSuffix': '',
         'gw.title': 'Gateway settings',
         'gw.sub': 'Serve the channel models over an OpenAI-compatible API to this machine and the LAN: endpoint, key and relay port live here.',
         'gw.gatewayTitle': 'Channel gateway (OpenAI compatible)',
@@ -4710,6 +4722,8 @@ window.__ModuleLoader__.load({
       const ledger = useLedger(props)
       const [pageSize, setPageSize] = useState(20)
       const [auto, setAuto] = useState(false)
+      // 点击行展开内容摘要：记条目的 ts（同屏唯一），-1 = 全部收起。
+      const [expanded, setExpanded] = useState(-1)
       const reload = ledger.reload
       useEffect(() => {
         if (auto !== true) return undefined
@@ -4724,10 +4738,6 @@ window.__ModuleLoader__.load({
       const rows = entries.slice((safePage - 1) * pageSize, safePage * pageSize)
       return h('div', { className: 'ofm_page' },
         h(PageHero, { title: t('logs.title'), sub: t('logs.sub') },
-          h('div', { className: 'ofm_seg' }, [10, 20, 50, 100].map(size => h('button', {
-            key: size, type: 'button', 'aria-pressed': pageSize === size ? 'true' : 'false',
-            onClick: () => { setPageSize(size); setPage(1) },
-          }, String(size)))),
           h(Switch, { checked: auto, label: t('logs.auto'), onChange: () => setAuto(value => !value) }),
           h(Button, { onClick: () => void reload() }, t('dash.refresh'))),
         ledger.status === 'unavailable' ? h('div', { className: 'ofm_callout' }, h('div', null, t('chan.rpc.unavailable'))) : null,
@@ -4753,7 +4763,8 @@ window.__ModuleLoader__.load({
                 h('th', { key: 'reasoning' }, t('log.reasoning')),
                 h('th', { key: 'cache' }, t('log.cache')),
                 h('th', { key: 'total' }, t('log.total')))),
-              h('tbody', null, rows.map((entry, index) => h('tr', { key: index, className: entry.error ? 'ofm_logfailed' : '' },
+              h('tbody', null, rows.map((entry, index) => [
+                h('tr', { key: `r${index}`, className: `${entry.error ? 'ofm_logfailed' : ''} ofm_logrow`.trim(), title: t('logs.expandHint'), onClick: () => setExpanded(current => current === entry.ts ? -1 : entry.ts) },
                 h('td', null, new Date(entry.ts).toLocaleString()),
                 h('td', null, entry.provider),
                 h('td', null, entry.model),
@@ -4767,11 +4778,27 @@ window.__ModuleLoader__.load({
                 h('td', { className: 'ofm_num' }, fmtInt(entry.outputTokens)),
                 h('td', { className: 'ofm_num' }, Number.isFinite(entry.reasoningTokens) ? fmtInt(entry.reasoningTokens) : '—'),
                 h('td', { className: 'ofm_num' }, Number.isFinite(entry.cacheReadTokens) ? fmtInt(entry.cacheReadTokens) : '—'),
-                h('td', { className: 'ofm_num' }, h('b', null, fmtInt(entry.inputTokens + entry.outputTokens)))))))),
-          pages > 1 ? h('div', { className: 'ofm_row' },
-            h(Button, { kind: 'ghost', disabled: safePage <= 1, onClick: () => setPage(value => Math.max(1, value - 1)) }, '‹'),
-            h('span', { className: 'ofm_note' }, t('logs.page').replace('{page}', String(safePage)).replace('{pages}', String(pages))),
-            h(Button, { kind: 'ghost', disabled: safePage >= pages, onClick: () => setPage(value => Math.min(pages, value + 1)) }, '›')) : null,
+                h('td', { className: 'ofm_num' }, h('b', null, fmtInt(entry.inputTokens + entry.outputTokens)))),
+                expanded === entry.ts ? h('tr', { key: `x${index}`, className: 'ofm_logdetail-row' },
+                  h('td', { colSpan: 14 },
+                    h('div', { className: 'ofm_logdetail' },
+                      h('div', { className: 'ofm_logdetail-block' },
+                        h('span', { className: 'ofm_logdetail-label' }, t('logs.prompt')),
+                        h('p', null, entry.promptPreview || t('logs.noPreview'))),
+                      h('div', { className: 'ofm_logdetail-block' },
+                        h('span', { className: 'ofm_logdetail-label' }, t('logs.response')),
+                        h('p', null, entry.responsePreview || t('logs.noPreview')))))) : null,
+              ])))),
+          entries.length > 0 ? h('div', { className: 'ofm_logpager' },
+            h('div', { className: 'ofm_logpager-nav' },
+              h(Button, { kind: 'ghost', disabled: safePage <= 1, onClick: () => setPage(value => Math.max(1, value - 1)) }, '‹'),
+              h('span', { className: 'ofm_note' }, t('logs.page').replace('{page}', String(safePage)).replace('{pages}', String(pages))),
+              h(Button, { kind: 'ghost', disabled: safePage >= pages, onClick: () => setPage(value => Math.min(pages, value + 1)) }, '›')),
+            h('label', { className: 'ofm_logpager-size' },
+              t('logs.perPage'),
+              h('select', { value: String(pageSize), onChange: event => { setPageSize(Number(event.target.value)); setPage(1) } },
+                [10, 20, 50, 100].map(size => h('option', { key: size, value: String(size) }, String(size)))),
+              t('logs.perPageSuffix'))) : null,
           h('p', { className: 'ofm_note' }, t('logs.windowNote'))) : null)
     }
 

@@ -1,4 +1,4 @@
-export type Page = 'overview' | 'models' | 'combos' | 'usage' | 'channels' | 'settings' | 'connection'
+export type Page = 'overview' | 'models' | 'combos' | 'usage' | 'logs' | 'channels' | 'settings'
 export interface Model {
   id: string
   name: string
@@ -143,8 +143,8 @@ export interface Host {
   listCombos(): Promise<Combo[]>
   saveCombo(combo: ComboDraft): Promise<Combo[]>
   deleteCombo(id: string): Promise<Combo[]>
-  syncCombosToWorkbuddy(baseUrl?: string): Promise<WorkbuddySyncResult>
-  writeModelToWorkbuddy(id: string, baseUrl?: string): Promise<WorkbuddyWriteResult>
+  syncCombosToWorkbuddy(baseUrl?: string, target?: 'ai'): Promise<WorkbuddySyncResult>
+  writeModelToWorkbuddy(id: string, baseUrl?: string, target?: 'ai'): Promise<WorkbuddyWriteResult>
   listWorkbuddyBackups(): Promise<WorkbuddyBackup[]>
   restoreWorkbuddyBackup(file: string): Promise<{ restored: boolean; total: number; at: number }>
 }

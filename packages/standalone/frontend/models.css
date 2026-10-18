@@ -173,7 +173,7 @@
 /* ---- 表头 ---- */
 .model-table-header, .model-table-row {
   display: grid;
-  grid-template-columns: minmax(160px, 2.3fr) minmax(115px, 1.25fr) minmax(105px, 1fr) minmax(100px, 1fr) 264px;
+  grid-template-columns: minmax(160px, 2.3fr) minmax(115px, 1.25fr) minmax(105px, 1fr) minmax(100px, 1fr) 232px;
   gap: 18px; padding: 16px; align-items: center;
 }
 .model-table-header {
@@ -249,7 +249,7 @@
 }
 
 /* ---- 行内操作按钮 ---- */
-/* 四个操作按钮一行放平并整体居中：列宽已放宽到 264px，nowrap 兜底防止再被挤成两行。 */
+/* 行内四钮（复制图标 + 禁用 + 测试 + ⋯）一行放平并整体居中：列宽 232px，nowrap 兜底防止再被挤成两行。 */
 .model-row-actions { display: flex; align-items: center; justify-content: center; flex-wrap: nowrap; gap: 8px; }
 .model-row-actions .ui-button { min-height: 36px; padding: 7px 10px; gap: 5px; }
 .model-browser .model-row-actions .ui-button-ghost { width: 33px; padding: 0; flex-shrink: 0; }
@@ -361,7 +361,7 @@
 @media (max-width: 1050px) {
   .model-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .model-search { grid-column: 1 / -1; }
-  .model-table-header, .model-table-row { grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 100px 264px; gap: 14px; }
+  .model-table-header, .model-table-row { grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 100px 232px; gap: 14px; }
   .model-table-header > span:nth-child(3) { display: none; }
   .model-table-row .model-limits { grid-column: 1 / 3; grid-row: 2; flex-direction: row; gap: 15px; }
   .model-table-row .model-state { grid-column: 3; grid-row: 1 / 3; }
@@ -1214,4 +1214,18 @@
     transform: none !important;
   }
   [data-theme="dark"] .model-row-actions .md-copy-done::after { opacity: 0.9 !important; }
+}
+
+/* ============================================
+   行内操作收纳增量（规则 3）：复制(图标) + 测试(实心主操作) + ⋯ 菜单。
+   菜单本体样式在 app.css 的 .ui-menu 区段，这里只收敛行内触发布局。
+   ============================================ */
+.model-row-actions .md-more { min-height: 36px; min-width: 34px; padding: 7px 8px; font-weight: 600; flex-shrink: 0; }
+.model-row-actions .md-more.is-open { background: var(--md-accent-tint, rgba(99, 112, 255, 0.10)); color: var(--md-accent, var(--amber)); }
+[data-theme="dark"] .model-row-actions .md-more { border-radius: 2px; }
+[data-theme="dark"] .model-row-actions .md-more:not(:disabled) { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.12); color: #dbe3f2; }
+[data-theme="dark"] .model-row-actions .md-more:hover:not(:disabled),
+[data-theme="dark"] .model-row-actions .md-more.is-open:not(:disabled) { background: rgba(124, 141, 255, 0.12); border-color: rgba(124, 141, 255, 0.45); color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .model-row-actions .md-more { transition: none !important; }
 }
