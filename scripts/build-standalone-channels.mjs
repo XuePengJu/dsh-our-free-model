@@ -45,6 +45,20 @@ replaceOnce(
   ].join('\n'),
 )
 replaceOnce('resolve(dirname(fileURLToPath(import.meta.url)), "qoder-auth-wasm.wasm")', 'fileURLToPath(new URL("../../../vendor/channel-pack/qoder-auth-wasm.wasm", import.meta.url))')
+// ⚠️ esbuild 会给第二个同名 import 加数字后缀（resolve2/dirname2/fileURLToPath2），
+// 重命名随版本漂移 —— 用正则一次替换而不是精确串匹配。
+{
+  const wasmReplace = output.match(
+    /resolve\d*\(dirname\d*\(fileURLToPath\d*\(import\.meta\.url\)\), "qwenwork-auth-wasm\.wasm"\)/,
+  )
+  if (wasmReplace === null || output.split(wasmReplace[0]).length !== 2) {
+    throw new Error('qwenwork wasm 路径表达式未找到或不唯一（esbuild 产物形状变了？）')
+  }
+  output = output.replace(
+    wasmReplace[0],
+    'fileURLToPath(new URL("../../../vendor/channel-pack/qwenwork-auth-wasm.wasm", import.meta.url))',
+  )
+}
 replaceOnce('  const override = process.env.DSH_CODEARTS_CACHE_DIR;', '  const override = process.env.OFM_CODEARTS_CACHE_DIR;')
 replaceOnce('export {\n  Config,', `export {
   toGenerateOptions, toResponsesGenerateOptions, normalizeReasoningEffort,

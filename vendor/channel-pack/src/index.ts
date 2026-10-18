@@ -57,6 +57,10 @@ import { MinimaxAuth } from './minimax-auth.js'
 import { registerMinimaxLlm } from './minimax-adapter.js'
 import { MINIMAX } from './minimax-product.js'
 import type { MinimaxCredential } from './minimax.js'
+import { QwenworkAuth } from './qwenwork-auth.js'
+import { registerQwenworkLlm } from './qwenwork-adapter.js'
+import { QWENWORK } from './qwenwork-product.js'
+import type { QwenworkCredential } from './qwenwork.js'
 import { GeminiAuth } from './gemini-auth.js'
 import { registerGeminiLlm } from './gemini-adapter.js'
 import { GEMINI } from './gemini.js'
@@ -1250,6 +1254,41 @@ export function apply(ctx: Context, config: { disableOpencode?: boolean; outlet?
     accountPool: pool,
     product: MINIMAX,
   })
+
+  // 与其它渠道**不同**的登录模型：**本机导入制** —— 凭据来自本机官方客户端
+  // 的 `auth-v2.dat`（Electron safeStorage；macOS 走钥匙串
+  // `QwenWorkCN Safe Storage`，见 `qwenwork-store.ts`）或粘贴 JSON。
+  // 没有可直接对接的 OAuth 网页流，故不注册浏览器登录；每日赠分领取走
+  // 1.3.1 OpenAPI 身份（`qwenwork-credits.ts`，实测 200）。
+  //
+  // 推理走加密端点（WASM `qwenwork-auth-wasm.wasm` 打包 + COSY 签名），
+  // 端到端已用真实账号验证（2026-10-18，`qwork-advanced` HTTP 200）。
+  //
+  // ⚠️ **不做无提示的启动导入**：钥匙串读取是敏感动作（可能弹授权框、
+  // 在测试机/他人机器上会读到真实凭据导致目录不确定）。仅当显式设置
+  // `OFM_QWENWORK_AUTO_IMPORT=1` 时才在启动时导入一次；默认走显式导入
+  // （RPC / 粘贴）。
+  const qwenwork = new QwenworkAuth(ctx, { fetchImpl: network.fetch })
+  registerQwenworkLlm(ctx, {
+    credentialRef: credentialRef(QWENWORK.defaultCredentialRef),
+    resolveCredential: async () => {
+      const resolved = await ctx.credentials.resolve(credentialRef(QWENWORK.defaultCredentialRef))
+      if (!resolved) return undefined
+      try {
+        return JSON.parse(resolved.value) as QwenworkCredential
+      } catch {
+        return undefined
+      }
+    },
+    refresh: () => qwenwork.refresh(),
+    readImage: makeReadImage(ctx),
+    fetchImpl: network.fetch,
+  })
+  if (process.env.OFM_QWENWORK_AUTO_IMPORT === '1') {
+    void ctx.credentials.resolve(credentialRef(QWENWORK.defaultCredentialRef))
+      .then((resolved) => resolved === undefined ? qwenwork.importLocal() : undefined)
+      .catch(() => {})
+  }
 
   // ===== Gemini（Google Cloud Code Assist 免费线）=====
   //

@@ -13,6 +13,7 @@ const packageRoot = resolve(scriptDir, '..')
 /** 源 → 目标（相对 packageRoot）。 */
 const ASSETS = [
   ['src/qoder-auth-wasm.wasm', 'lib/qoder-auth-wasm.wasm'],
+  ['src/qwenwork-auth-wasm.wasm', 'lib/qwenwork-auth-wasm.wasm'],
 ]
 
 for (const [from, to] of ASSETS) {
