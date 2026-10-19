@@ -221,6 +221,30 @@ main > footer { flex-shrink: 0; margin-top: auto; }
 .channel-filters button { border: 0; background: transparent; padding: 6px 10px; border-radius: 4px; font-size: 11px; color: var(--dsw-alias-label-secondary); transition: background 150ms var(--ease-out-expo), color 150ms var(--ease-out-expo); }
 .channel-filters button[aria-pressed=true] { background: var(--surface); color: var(--ink-soft); box-shadow: 0 1px 3px rgba(72,58,42,0.08); }
 .channel-filters button span { margin-left: 5px; font-size: 10px; }
+/* 状态 chips 与「筛选」触发器同排：chips 收缩（窄列表里可以溢出隐藏），触发器恒定在右。 */
+.channel-filter-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.channel-filter-row .channel-filters { min-width: 0; overflow: hidden; }
+/* 触发器占了右侧 57~75px 后 chips 可用宽度变窄，标签原本会折成两三行（chips 高度 36px → 54px）。
+   chips 保持单行：文字不换行，超宽时由外层 overflow: hidden 裁掉尾部而不是撑高整行。 */
+.channel-filter-row .channel-filters button { white-space: nowrap; }
+.channel-filter-trigger { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 1px solid var(--line); background: var(--surface); color: var(--dsw-alias-label-secondary); border-radius: 6px; padding: 5px 8px; font-size: 11px; cursor: pointer; transition: border-color 150ms var(--ease-out-expo), color 150ms var(--ease-out-expo); }
+.channel-filter-trigger:hover { border-color: var(--green); color: var(--ink-soft); }
+.channel-filter-trigger.on { border-color: var(--green); color: var(--green); }
+.channel-filter-badge { background: var(--green); color: #fff; border-radius: 7px; padding: 0 4px; font-size: 10px; line-height: 14px; }
+.channel-filter-popover { position: absolute; top: calc(100% + 6px); right: 0; width: 252px; z-index: 30; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; box-shadow: var(--shadow-md); }
+.channel-filter-group + .channel-filter-group { margin-top: 12px; }
+.channel-filter-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.channel-filter-group-head span { font-size: 11px; font-weight: 600; color: var(--ink-soft); }
+.channel-filter-group-head small { font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.channel-filter-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.channel-filter-options button { border: 1px solid var(--line); background: var(--surface); color: var(--dsw-alias-label-secondary); border-radius: 999px; padding: 4px 9px; font-size: 11px; cursor: pointer; transition: border-color 150ms var(--ease-out-expo), background 150ms var(--ease-out-expo), color 150ms var(--ease-out-expo); }
+.channel-filter-options button span { margin-left: 4px; font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.channel-filter-options button.on { border-color: var(--green); background: var(--accent-soft); color: var(--green); }
+.channel-filter-options button.on span { color: var(--green); }
+.channel-filter-options button:disabled { opacity: .4; cursor: not-allowed; }
+.channel-filter-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 9px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--dsw-alias-label-secondary); }
+.channel-filter-foot strong { color: var(--ink); }
+.channel-filter-clear { border: 0; background: none; color: var(--green); font-size: 11px; cursor: pointer; padding: 0; }
 .channel-results-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-size: 10px; color: var(--dsw-alias-label-tertiary); margin: 17px 0 12px; }
 .channel-results-meta span { display: flex; align-items: center; gap: 5px; }
 .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
@@ -1212,6 +1236,18 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f2ede4; borde
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.25);
   border-color: rgba(255, 255, 255, 0.08);
 }
+/* 深色：筛选触发器与浮层沿用渠道页的 #141622 底色 + 7% 白描边，跟上面的 chips 规则一致。 */
+[data-theme="dark"] .channel-filter-trigger { background: #141622; border-color: rgba(255, 255, 255, 0.07); color: var(--dsw-alias-label-secondary); }
+[data-theme="dark"] .channel-filter-trigger:hover { border-color: var(--green); color: var(--ink); }
+[data-theme="dark"] .channel-filter-trigger.on { border-color: var(--green); color: var(--green); }
+[data-theme="dark"] .channel-filter-popover { background: #141622; border-color: rgba(255, 255, 255, 0.07); box-shadow: 0 18px 46px -24px rgba(0, 0, 0, 0.9), 0 2px 8px rgba(0, 0, 0, 0.4); }
+[data-theme="dark"] .channel-filter-group-head span { color: var(--ink); }
+[data-theme="dark"] .channel-filter-options button { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.07); color: var(--dsw-alias-label-secondary); }
+[data-theme="dark"] .channel-filter-options button:hover { background: rgba(255, 255, 255, 0.05); color: var(--ink); }
+[data-theme="dark"] .channel-filter-options button.on { border-color: var(--green); background: rgba(62, 207, 160, 0.12); color: var(--green); }
+[data-theme="dark"] .channel-filter-options button.on span { color: var(--green); }
+[data-theme="dark"] .channel-filter-foot { border-top-color: rgba(255, 255, 255, 0.07); color: var(--dsw-alias-label-secondary); }
+[data-theme="dark"] .channel-filter-foot strong { color: var(--ink); }
 [data-theme="dark"] .channel-error { background: rgba(227, 106, 106, 0.06); border-color: rgba(227, 106, 106, 0.18); color: var(--dsw-alias-state-error-primary); }
 [data-theme="dark"] .channel-empty > svg { color: var(--dsw-alias-label-tertiary); opacity: 0.5; }
 [data-theme="dark"] .provider-card {
@@ -3655,6 +3691,8 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
   box-shadow: none !important;
 }
 .provider-master-head .channel-filters { align-self: flex-start; }
+/* chips 现在与「筛选」触发器同排（.channel-filter-row 已居中），不再需要单独的顶对齐。 */
+.provider-master-head .channel-filter-row .channel-filters { align-self: center; }
 .provider-master-items { flex: 1; overflow-y: auto; padding: 4px 6px 6px; min-height: 0; }
 .provider-master-item {
   display: flex; align-items: center; gap: 9px; width: 100%;
