@@ -41,6 +41,16 @@ export function isComboEntry(entry) {
   return entry?.channel === COMBO_CHANNEL && Array.isArray(entry.combo)
 }
 
+/** Emoji-only names leave no letters behind; hash them so the combo keeps an id. */
+function hashedSlug(name) {
+  let hash = 0x811c9dc5
+  for (const char of name) {
+    hash ^= char.codePointAt(0)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(36)
+}
+
 /** `My Fast Chain` -> `combo:my-fast-chain`；中文名按字保留：`深度求索` -> `combo:深度求索`。 */
 export function comboId(name) {
   const slug = [...String(name ?? '').trim().toLowerCase()]
@@ -49,7 +59,11 @@ export function comboId(name) {
     .replace(/^-+/, '')
     .slice(0, 48)
     .replace(/-+$/g, '')
-  return slug === '' ? '' : `${COMBO_PREFIX}${slug}`
+  if (slug !== '') return `${COMBO_PREFIX}${slug}`
+  // A name made only of emoji/punctuation has no readable slug; without a
+  // fallback it would silently lose its identity and be dropped on reload.
+  const trimmed = String(name ?? '').trim()
+  return trimmed === '' ? '' : `${COMBO_PREFIX}${hashedSlug(trimmed)}`
 }
 
 /**

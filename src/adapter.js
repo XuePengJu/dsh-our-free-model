@@ -498,7 +498,7 @@ export class FreeModelAdapter {
       const advanceVerdict = (code, message, status) => {
         if (plan.allowAdvance !== true || options.signal?.aborted === true || sawAnswer) return { advance: false, verdict: null }
         const verdict = classifyFailure({ status, code, message })
-        return { advance: shouldAdvance(verdict), verdict }
+        return { advance: shouldAdvance(verdict) || code === CODE.client || code === CODE.region, verdict }
       }
       try {
         const reader = readStream(channel.read(), wire, renameMap, () => Date.now(), {
@@ -608,6 +608,10 @@ export class FreeModelAdapter {
         if (error?.code === CODE.region) this.deps.onRegionBlocked?.(entry.id)
         const aborted = options.signal?.aborted === true
         let failure = toFailure(error)
+        if (sealed && failure.code === CODE.server) failure = { ...failure, code: 'EAC_UPSTREAM_FAILED' }
+        if ((delivered || partialOutcome?.sawToolCall === true) && this.providerRetryPolicy().retryableCodes.includes(failure.code)) {
+          failure = { ...failure, code: 'STREAM_CUT' }
+        }
         if (!aborted && (recovering || expired)) {
           failure = { ...failure, code: recovering || delivered || partialOutcome?.sawToolCall === true ? 'STREAM_CUT' : CODE.timeout,
             message: expired

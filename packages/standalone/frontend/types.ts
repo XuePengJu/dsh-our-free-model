@@ -4,6 +4,8 @@ export interface Model {
   name: string
   channel: string
   routable: boolean
+  hiddenByUser?: boolean
+  hiddenByGroup?: boolean
   vision?: boolean
   reasoning?: boolean
   contextWindow?: number
@@ -34,6 +36,9 @@ export interface ModelTestResult { ok: boolean; text: string; latencyMs: number 
 export interface ServiceSettings {
   enabled: boolean
   exposeRegionModels: boolean
+  hiddenModelIds: string[]
+  hideFreeModels: boolean
+  hideEacModels: boolean
   streamRecovery: boolean
   standaloneProbe: boolean
   probeIntervalMinutes: number
@@ -139,7 +144,7 @@ export interface Host {
   testModel(model: string, signal: AbortSignal): Promise<ModelTestResult>
   refreshModels(probe: boolean, signal: AbortSignal): Promise<void>
   setModelDisabled(id: string, disabled: boolean): Promise<void>
-  saveSettings(settings: ServiceSettings): Promise<ServiceSettings>
+  saveSettings(settings: Partial<ServiceSettings>): Promise<ServiceSettings>
   listCombos(): Promise<Combo[]>
   saveCombo(combo: ComboDraft): Promise<Combo[]>
   deleteCombo(id: string): Promise<Combo[]>

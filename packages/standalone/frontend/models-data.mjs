@@ -9,3 +9,9 @@ export function filterModels(catalog, { search = '', channel = 'all', capability
     && (disabled === 'all' || (disabled === 'only' ? model.disabled === true : model.disabled !== true))
     && `${model.name} ${model.id}`.toLocaleLowerCase().includes(query))
 }
+
+/** 单模型隐藏开关的下一步设置值：纯函数，便于在没有浏览器的情况下验证写入语义。 */
+export function nextHiddenIds(ids, modelId) {
+  const list = Array.isArray(ids) ? ids : []
+  return list.includes(modelId) ? list.filter(id => id !== modelId) : [...list, modelId]
+}

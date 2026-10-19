@@ -161,6 +161,23 @@
 }
 .model-browser .model-list-toolbar .ui-button-ghost { color: var(--md-ink-secondary); }
 .model-browser .model-list-toolbar .ui-button-ghost:hover { background: var(--md-accent-tint); color: var(--md-accent); }
+/* 整组隐藏开关（上游 v2.5.2「隐藏模型」体系，与本地禁用体系并存）：复选框 + 文案。 */
+.model-visibility-toggle {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--md-ink-secondary); user-select: none;
+}
+.model-visibility-toggle input[type="checkbox"] {
+  appearance: none; width: 30px; height: 18px; border-radius: 999px; cursor: pointer;
+  background: var(--md-surface); box-shadow: inset 0 0 0 1px rgba(var(--warm-shadow), 0.16);
+  position: relative; transition: background-color var(--md-duration-fast) var(--md-ease-out);
+}
+.model-visibility-toggle input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--md-ink-tertiary); transition: transform var(--md-duration-fast) var(--md-ease-out), background-color var(--md-duration-fast) var(--md-ease-out);
+}
+.model-visibility-toggle input[type="checkbox"]:checked { background: var(--md-accent); }
+.model-visibility-toggle input[type="checkbox"]:checked::after { transform: translateX(12px); background: #fff; }
+.model-visibility-toggle input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
 
 /* ---- 表格容器：一张有边界的明细纸 ---- */
 .model-table {

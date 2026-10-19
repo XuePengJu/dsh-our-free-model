@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual'
-import { Boxes, Check, CircleAlert, CircleCheck, Copy, LoaderCircle, MoreHorizontal, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
+import { Boxes, Check, CircleAlert, CircleCheck, Copy, Eye, EyeOff, LoaderCircle, MoreHorizontal, Play, Power, RefreshCw, Search, SlidersHorizontal, Square, Upload, X } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { Badge, Button, DropdownMenu, Input } from './components/ui'
 import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
-import { filterModels } from './models-data.mjs'
-import type { Host, Model, ModelTestResult, Summary } from './types'
+import { filterModels, nextHiddenIds } from './models-data.mjs'
+import { visibilityCopy } from './visibility-data.mjs'
+import type { Host, Model, ModelTestResult, ServiceSettings, Summary } from './types'
 import './models.css'
 
 const availabilityNames: Record<string, string> = {
@@ -37,6 +38,7 @@ type Operation = 'refresh' | 'probe' | 'test' | 'export'
 type TestState = { model: Model; state: 'pending' | 'success' | 'error' | 'cancelled'; result?: ModelTestResult; error?: string }
 
 export function Models({ summary, host, active }: { summary: Summary; host: Host; active: boolean }) {
+  const visibility = visibilityCopy(document.documentElement.lang)
   const [filters, setFilters] = useState(initialFilters)
   const [operation, setOperation] = useState<Operation>()
   const [test, setTest] = useState<TestState>()
@@ -48,6 +50,11 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   // 行内 ⋯ 菜单单例互斥：同一时刻只展开一行的更多菜单。
   const [openMenuId, setOpenMenuId] = useState<string>()
   const [focusedId, setFocusedId] = useState<string>()
+  // 上游 v2.5.2 的「隐藏模型」体系（与本地「禁用」体系并存）：批量整组隐藏
+  // （免费/EAC）与单模型隐藏都走 saveSettings 局部补丁，用 visibilityPending
+  // 串行化，避免连续点击时后发请求覆盖先发。
+  const [visibilitySaving, setVisibilitySaving] = useState(false)
+  const visibilityPending = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const pending = useRef<AbortController | undefined>(undefined)
   const activeRef = useRef(active)
@@ -148,6 +155,24 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       .finally(() => { if (activeRef.current) setToggling(undefined) })
   }
 
+  // 上游「隐藏模型」写入通道：局部 patch 交给 saveSettings（app.tsx 已改为
+  // 乐观更新 snapshot，故隐藏即时反映到整表），保存后刷新摘要确认落盘。
+  const saveVisibility = async (patch: Partial<ServiceSettings>) => {
+    if (visibilityPending.current || !activeRef.current) return
+    visibilityPending.current = true
+    setVisibilitySaving(true); setError(''); setMessage('')
+    try {
+      await host.saveSettings(patch)
+      if (activeRef.current) setMessage(visibility.saved)
+      try { await host.refresh() } catch (reason) { if (activeRef.current) host.error(reason as Error) }
+    } catch (reason) {
+      if (activeRef.current) setError(reason instanceof Error ? reason.message : '保存失败，请重试。')
+    } finally {
+      visibilityPending.current = false
+      setVisibilitySaving(false)
+    }
+  }
+
   // 写入 WorkBuddy / WorkBuddy AI 国际版：幂等单模型 upsert，无二次确认；与 toggleModel 相同的卸载保护。
   // exportingId 记录「模型 ID + 目标」，让两个写入项的 loading 文案互不串扰。
   const exportModel = (model: Model, target?: 'ai') => {
@@ -219,6 +244,15 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)} 个模型</span>
       {filtered && <Button variant="ghost" onClick={() => changeFilters(initialFilters)}><X size={14} />清空筛选</Button>}
     </div>
+    {/* 上游 v2.5.2 的整组隐藏开关：与本地禁用体系互不影响，只控制清单默认可见性。 */}
+    <div className="model-list-toolbar">
+      <div className="channel-filters" role="group" aria-label="整组隐藏">
+        <label className="model-visibility-toggle"><input type="checkbox" role="switch" checked={summary.settings.hideFreeModels === true}
+          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideFreeModels: event.target.checked }) }} /> {visibility.hideFree}</label>
+        <label className="model-visibility-toggle"><input type="checkbox" role="switch" checked={summary.settings.hideEacModels === true}
+          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideEacModels: event.target.checked }) }} /> {visibility.hideEac}</label>
+      </div>
+    </div>
     {test && <section className={`model-test-result model-test-${test.state}`} aria-label="模型测试结果" aria-live="polite">
       <div className="model-test-heading"><div><strong>
         {test.state === 'pending' ? '正在测试' : test.state === 'success' ? '测试完成' : test.state === 'cancelled' ? '测试已取消' : '测试失败'}
@@ -243,7 +277,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
           {virtual.getVirtualItems().map(item => {
             const model = models[item.index]
             const state = model.availability ?? 'unknown'
-            const disabledReason = model.disabled ? '模型已禁用，可在「已禁用」页重新启用' : !summary.settings.enabled ? '推理服务已暂停' : !model.routable ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
+            const disabledReason = model.disabled ? '模型已禁用，可在「已禁用」页重新启用' : !summary.settings.enabled ? '推理服务已暂停' : !model.routable && !model.hiddenByUser ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
+            const canHide = ['anonymous', 'kilo', 'eac', 'aggregate', 'combo'].includes(model.channel)
             return <div role="row" aria-rowindex={item.index + 2} key={item.key} data-index={item.index} data-model-id={model.id}
               className="model-table-row" ref={virtual.measureElement} style={{ transform: `translateY(${item.start}px)` }}
               onFocusCapture={() => setFocusedId(model.id)} onBlurCapture={event => {
@@ -255,7 +290,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
               <div role="cell" className="model-limits"><span title={model.contextWindow ? `${model.contextWindow} Token` : undefined}>{capacity(model.contextWindow)} <small>上下文</small></span>
                 <span title={model.maxOutput ? `${model.maxOutput} Token` : undefined}>{capacity(model.maxOutput)} <small>输出</small></span></div>
               <div role="cell" className="model-state" title={model.availabilityDetail ?? undefined}><Badge tone={state === 'available' ? 'success' : warningStates.includes(state) ? 'warning' : 'neutral'}>
-                {model.disabled ? '已禁用' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>未公开</small>}
+                {model.disabled ? '已禁用' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>{model.hiddenByUser ? visibility.hidden : '未公开'}</small>}
                 {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}
                 {/* 判定原文：徽章只放得下状态名，失败原因（限流何时解禁 / 需重新登录 /
                     探测超时）在这里露出；只要状态不是「已探测可用」且确实带了原因就显示，
@@ -263,8 +298,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                     CSS 截断两行，完整内容挂在单元格的 title 上。 */}
                 {!model.disabled && state !== 'available' && model.availabilityDetail
                   ? <small className="model-state-detail">{model.availabilityDetail}</small> : null}</div>
-              {/* 规则 3：行内 ≤2 钮 + ⋯ 菜单。复制=图标钮，测试=主操作实心钮，
-                  低频的禁用/启用与写入收进 ⋯ 菜单（危险项标红，语义与 loading 态不变）。 */}
+              {/* 规则 3：行内 ≤2 钮 + ⋯ 菜单。复制=图标钮，禁用/启用与测试=主操作，
+                  低频的隐藏与写入收进 ⋯ 菜单（隐藏=上游体系，写入=本地导出）。 */}
               <div role="cell" className="model-row-actions">
                 <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
                   className={copied === model.id ? 'md-copy-done' : ''}>
@@ -281,27 +316,40 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                   className={operation === 'test' && test?.model.id === model.id ? 'md-testing' : ''}>
                   {operation === 'test' && test?.model.id === model.id ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
                 </Button>
-                {/* combo 虚拟行在目录里没有真实模型行可映射，写入必 404；菜单仅剩写入两项，combo 行无菜单可开则整体隐藏。 */}
-                {model.channel !== 'combo' && <DropdownMenu triggerLabel={`更多操作：${model.name}`} icon={<MoreHorizontal size={15} />}
+                {/* combo 行没有真实模型可写入 WorkBuddy（必 404），菜单只剩「隐藏」；
+                    既无隐藏资格又非可写入渠道时整个菜单不渲染。 */}
+                {(canHide || model.channel !== 'combo') && <DropdownMenu triggerLabel={`更多操作：${model.name}`} icon={<MoreHorizontal size={15} />}
                   triggerClassName="md-more" open={openMenuId === model.id}
                   onOpenChange={next => setOpenMenuId(next ? model.id : undefined)}
                   items={[
-                    {
-                      key: 'export',
-                      label: operation === 'export' && exportingId === model.id ? '写入中…' : '写入 WorkBuddy',
-                      icon: operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
-                      disabled: !!disabledReason || !!operation,
-                      title: disabledReason || `把 ${model.name} 写入 WorkBuddy 配置（~/.workbuddy）`,
-                      onSelect: () => exportModel(model),
-                    },
-                    {
-                      key: 'export-ai',
-                      label: operation === 'export' && exportingId === `${model.id}:ai` ? '写入中…' : '写入 WorkBuddy AI 国际版',
-                      icon: operation === 'export' && exportingId === `${model.id}:ai` ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
-                      disabled: !!disabledReason || !!operation,
-                      title: disabledReason || `把 ${model.name} 写入 WorkBuddy AI 国际版配置（~/.workbuddy-ai）`,
-                      onSelect: () => exportModel(model, 'ai'),
-                    },
+                    ...(canHide ? [{
+                      key: 'visibility',
+                      label: model.hiddenByUser ? visibility.show : visibility.hide,
+                      icon: model.hiddenByUser ? <Eye size={14} /> : <EyeOff size={14} />,
+                      disabled: visibilitySaving || model.hiddenByGroup === true,
+                      title: model.hiddenByGroup ? visibility.groupHidden : model.hiddenByUser ? visibility.show : visibility.hide,
+                      onSelect: () => { void saveVisibility({
+                        hiddenModelIds: nextHiddenIds(summary.settings.hiddenModelIds, model.id),
+                      }) },
+                    }] : []),
+                    ...(model.channel !== 'combo' ? [
+                      {
+                        key: 'export',
+                        label: operation === 'export' && exportingId === model.id ? '写入中…' : '写入 WorkBuddy',
+                        icon: operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
+                        disabled: !!disabledReason || !!operation,
+                        title: disabledReason || `把 ${model.name} 写入 WorkBuddy 配置（~/.workbuddy）`,
+                        onSelect: () => exportModel(model),
+                      },
+                      {
+                        key: 'export-ai',
+                        label: operation === 'export' && exportingId === `${model.id}:ai` ? '写入中…' : '写入 WorkBuddy AI 国际版',
+                        icon: operation === 'export' && exportingId === `${model.id}:ai` ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
+                        disabled: !!disabledReason || !!operation,
+                        title: disabledReason || `把 ${model.name} 写入 WorkBuddy AI 国际版配置（~/.workbuddy-ai）`,
+                        onSelect: () => exportModel(model, 'ai'),
+                      },
+                    ] : []),
                   ]} />}
               </div>
             </div>
