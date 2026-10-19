@@ -644,7 +644,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f2ede4; borde
   font-family: Consolas, monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--cp-cyan); opacity: 0.75;
 }
-[data-theme="dark"] .nav-group-label::before { content: "/// "; opacity: 0.6; }
 [data-theme="dark"] .console-nav-item {
   border-radius: 2px; /* 导航项字体跟随全局正文（含拉丁字母的「API 接入」不再被等宽字体撑宽），仅保留左侧指示条 */
   border-left: 2px solid transparent;
@@ -4031,3 +4030,41 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
     #ffffff !important;
   border-color: rgba(23, 32, 54, 0.08) !important;
 }
+
+/* ==========================================================================
+   侧栏分组标题 · 重设计（收口层，必须留在文件末尾）
+   问题：分组标签被 6 处规则叠加压到 10px / 大写 / 极淡，字号比子项导航（13px）还小，
+        父级视觉重量弱于子级 → 层级倒置，分组读不出来。
+   原则：层级靠「字重 + 色阶 + 分隔线」建立，不靠缩小字号；
+        标签与导航项同为 13px，标签 600 加粗、导航项 400 常规，重量可辨。
+   ========================================================================== */
+
+/* 通用结构：横排 + 右侧渐隐细线做分组锚点（移动端由末尾 media 规则隐藏） */
+:root .nav-group-label {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 12px 8px;
+  font-size: 13px; font-weight: 600; line-height: 1.45;
+  font-family: inherit; letter-spacing: 0.01em;
+  text-transform: none; opacity: 1;
+}
+:root .nav-group-label::after {
+  content: ""; flex: 1 1 auto; height: 1px; border-radius: 1px;
+}
+
+/* 昼：墨色小标题（--ink-quiet 对纸面 5.78:1，过 AA 正文阈值） */
+:root:not([data-theme="dark"]) .nav-group-label { color: var(--ink-quiet); }
+:root:not([data-theme="dark"]) .nav-group-label::after {
+  background: linear-gradient(90deg, var(--line), rgba(233, 228, 219, 0));
+}
+
+/* 夜：去掉等宽大写终端字，回归正文族；--ink-quiet 对夜幕 6.26:1 */
+[data-theme="dark"] .nav-group-label { color: var(--ink-quiet); }
+[data-theme="dark"] .nav-group-label::after {
+  background: linear-gradient(90deg, rgba(130, 149, 190, 0.26), rgba(130, 149, 190, 0));
+}
+
+/* 分组之间给足呼吸，避免三组挤成一坨 */
+:root .nav-group { margin-bottom: 20px; }
+
+/* 窄屏导航横向排布时不显示分组标题（覆盖上面的 display:flex） */
+@media (max-width: 700px) { :root .nav-group-label { display: none; } }
