@@ -29,6 +29,8 @@
  * 推理失败。所有入参截断/钳制，`Object.freeze` 防止调用方修改共享对象。
  */
 
+import { appendFileSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs'
+
 /** 一条请求记录。 */
 export interface TokenLedgerEntry {
   /** 请求**发起**时刻（毫秒时间戳）。 */
@@ -87,6 +89,14 @@ export interface TokenLedgerEntry {
   durationMs: number
   /** 失败原因；成功行省略。 */
   error?: string
+  /**
+   * **请求摘要**（独立端增强）：最后一条 user 消息的纯文本，截前 200 字。
+   *
+   * ⚠️ 上游没有这个字段 —— 本机为「日志详情面板」加的可观测性，缺省省略。
+   */
+  promptPreview?: string
+  /** **返回摘要**（独立端增强）：流内 text-delta 累积，截前 200 字。缺省省略。 */
+  responsePreview?: string
 }
 
 /** 渠道 → provider → 账号 → 模型 聚合里模型粒度的一行。 */
@@ -152,6 +162,24 @@ export const TOKEN_LEDGER_LIMIT = 500
 
 /** 内存中的流水（最新在前）。 */
 let ledger: TokenLedgerEntry[] = []
+
+/**
+ * **逐条请求日志落盘**（独立端增强，2026-10-18）。
+ *
+ * 上游只把逐条明细留在进程内存（重启即丢），日聚合才落盘。这里额外把每条
+ * record 以 JSONL 追加到 `channel-pack/request-log.jsonl`：单文件满
+ * {@link ENTRY_LOG_MAX_BYTES} 轮转成 `.old`，启动时回读最近
+ * {@link TOKEN_LEDGER_LIMIT} 条进内存 —— 日志页在重启后仍能看到逐条记录。
+ *
+ * ⚠️ 路径为空串 = 未启用（无盘环境/未挂载 store），所有落盘操作直接返回。
+ */
+const ENTRY_LOG_MAX_BYTES = 5 * 1024 * 1024
+
+/** 逐条日志路径；由 `createTokenLedgerStore` 通过 {@link configureEntryLog} 注入。 */
+let entryLogPath = ''
+
+/** 请求/返回摘要的截断长度（字符）。 */
+const PREVIEW_MAX_CHARS = 200
 
 /**
  * 「该 provider 最近一次解析出的账号」注册表（第 2 期 · 账号维度）。
@@ -318,6 +346,13 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
     const ttft = clampCount(entry.ttftMs)
     const duration = clampCount(entry.durationMs)
     const outputTokens = clampCount(entry.outputTokens)
+    // 请求/返回摘要（独立端增强）：各截前 200 字，空则省略字段。
+    const promptPreview = typeof entry.promptPreview === 'string'
+      ? entry.promptPreview.slice(0, PREVIEW_MAX_CHARS)
+      : ''
+    const responsePreview = typeof entry.responsePreview === 'string'
+      ? entry.responsePreview.slice(0, PREVIEW_MAX_CHARS)
+      : ''
     // TPS（官方口径）：分子 = 全部输出 token（含思考），分母 = 首块之后 → 结束。
     // 三个前提（有首块 / 分母 > 0 / usage 已报）缺一个都不可测 ⇒ 省略字段。
     const decodeMs = duration - ttft
@@ -334,6 +369,9 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
       usageReported,
       inputTokens: clampCount(entry.inputTokens),
       outputTokens,
+      // 请求/返回摘要（独立端增强）：空则省略（与「没内容」区分不开时缺省更诚实）。
+      ...(promptPreview.length > 0 ? { promptPreview } : {}),
+      ...(responsePreview.length > 0 ? { responsePreview } : {}),
       // ⚠️ 0 / 缺失一律**省略字段**而不是写 0：与接口注释一致，
       // 「没有缓存命中」与「命中 0 个」无从区分时，缺省是更诚实的表示。
       ...(cacheRead > 0 ? { cacheReadTokens: cacheRead } : {}),
@@ -356,9 +394,109 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
     } catch {
       // 持久化失败绝不反噬推理（双重防御：后端违约也不炸）。
     }
+    // 逐条明细落盘（独立端增强）：内部自带兜错，不抛。
+    appendEntryLog(record)
   } catch {
     // 记账失败绝不反噬推理（见函数注释）。
   }
+}
+
+/**
+ * 注入逐条日志路径，并**回读**已有记录进内存（独立端增强）。
+ *
+ * 由 `createTokenLedgerStore` 在定位到 DSH home 后调用 —— 路径解析留在 store
+ * 模块，本模块不碰 home 的定位逻辑（与「账本不 import store 实现」同一条边界）。
+ */
+export function configureEntryLog(path: string): void {
+  entryLogPath = typeof path === 'string' ? path : ''
+  restoreLedgerFromEntryLog()
+}
+
+/**
+ * 追加一条记录到 JSONL（独立端增强）。
+ *
+ * ⚠️ **绝不抛错**（与 recordTokenUsage 同约束）：写盘失败最多丢一条明细，
+ * 不能反噬推理。超限先轮转成 `.old`（只保留一份，旧的覆盖）。
+ */
+function appendEntryLog(record: TokenLedgerEntry): void {
+  if (entryLogPath === '') return
+  try {
+    if (existsSync(entryLogPath) && statSync(entryLogPath).size > ENTRY_LOG_MAX_BYTES) {
+      try {
+        renameSync(entryLogPath, `${entryLogPath}.old`)
+      } catch {
+        // 轮转失败不影响本次追加（继续写原文件即可）。
+      }
+    }
+    appendFileSync(entryLogPath, `${JSON.stringify(record)}\n`)
+  } catch {
+    // 落盘失败绝不反噬推理。
+  }
+}
+
+/**
+ * 启动时从 `.old` + 当前文件回读最近 {@link TOKEN_LEDGER_LIMIT} 条进内存
+ * （独立端增强）。坏行（半截写、手工改坏）逐行跳过，不整份放弃。
+ */
+function restoreLedgerFromEntryLog(): void {
+  if (entryLogPath === '') return
+  try {
+    const readText = (path: string): string => {
+      try {
+        return existsSync(path) ? readFileSync(path, 'utf-8') : ''
+      } catch {
+        return ''
+      }
+    }
+    const lines = `${readText(`${entryLogPath}.old`)}${readText(entryLogPath)}`
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+    for (const line of lines.slice(-TOKEN_LEDGER_LIMIT)) {
+      try {
+        const record = JSON.parse(line) as TokenLedgerEntry
+        if (typeof record?.ts === 'number') ledger.unshift(record)
+      } catch {
+        // 坏行跳过。
+      }
+    }
+    if (ledger.length > TOKEN_LEDGER_LIMIT) ledger.length = TOKEN_LEDGER_LIMIT
+  } catch {
+    // 回读失败等价于「没有历史」。
+  }
+}
+
+/**
+ * 从 `GenerateOptions.messages` 提取「最后一条 user 消息」的纯文本摘要
+ * （独立端增强）。
+ *
+ * 只取最后一条 user：多轮对话里它才是本轮的实际输入；前面的是历史。文本型与
+ * 分块型 content 都支持，空白折叠后截 200 字。任何异常一律返回空串。
+ */
+export function previewTextOfOptions(options: unknown): string {
+  try {
+    const messages = (options as { messages?: unknown })?.messages
+    if (!Array.isArray(messages)) return ''
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index] as { role?: unknown; content?: unknown }
+      if (message?.role !== 'user') continue
+      const content = message.content
+      const text = typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content
+            .map((part) => {
+              if (typeof part === 'string') return part
+              const typed = part as { type?: unknown; text?: unknown }
+              return typed?.type === 'text' && typeof typed.text === 'string' ? typed.text : ''
+            })
+            .join(' ')
+          : ''
+      return text.replace(/\s+/g, ' ').trim().slice(0, PREVIEW_MAX_CHARS)
+    }
+  } catch {
+    // 提取失败不影响记账。
+  }
+  return ''
 }
 
 /** 空聚合行（防重复初始化代码）。返回**累加形态**，finalize 由读取层收尾。 */

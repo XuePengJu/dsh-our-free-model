@@ -63,10 +63,18 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveChannelPackHome } from './channel-pack-store.js'
-import { mergeDayEntry, type TokenLedgerDayBucket, type TokenLedgerDayMap } from './token-ledger.js'
+import { configureEntryLog, mergeDayEntry, type TokenLedgerDayBucket, type TokenLedgerDayMap } from './token-ledger.js'
 
 /** 独立文档的文件名（与 state.json 同目录）。 */
 export const TOKEN_LEDGER_FILE = 'token-ledger.json'
+
+/**
+ * **逐条请求日志**的文件名（独立端增强）。
+ *
+ * JSONL 追加写，满 5MB 轮转成 `.jsonl.old`。与日聚合文件分开存：
+ * 前者是明细（可丢，重启回读最近 500 条），后者是聚合（长期保留 90 天）。
+ */
+export const ENTRY_LOG_FILE = 'request-log.jsonl'
 
 /** 日聚合保留天数（落盘时淘汰更早的日键）。 */
 export const TOKEN_LEDGER_DAYS = 90
@@ -398,5 +406,7 @@ export function createTokenLedgerStore(ctx: Context): TokenLedgerStore {
     ctx.logger?.warn?.('[channel-pack] 无法定位 DSH home，Token 用量历史仅存在于内存中')
     return new MemoryLedgerStore()
   }
+  // 逐条请求日志落盘（独立端增强）：注入路径并回读已有记录，重启不丢明细。
+  configureEntryLog(join(home, 'channel-pack', ENTRY_LOG_FILE))
   return new FileLedgerStore(join(home, 'channel-pack', TOKEN_LEDGER_FILE), ctx.logger)
 }

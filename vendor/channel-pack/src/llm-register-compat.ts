@@ -114,7 +114,7 @@ export interface AdapterRegisterTarget {
   registerAdapter(providers: readonly string[], adapter: unknown): unknown
 }
 
-import { recordTokenUsage, peekLedgerAccount } from './token-ledger.js'
+import { recordTokenUsage, peekLedgerAccount, previewTextOfOptions } from './token-ledger.js'
 import { channelOfOptions } from './openai-gateway/channel.js'
 
 /**
@@ -170,7 +170,9 @@ export function wrapAdapterWithTokenLedger<T extends object>(providers: readonly
   const accountingStream = (options: unknown, open: () => AsyncIterable<unknown>): AsyncIterable<unknown> => {
     const channel = channelOfOptions(options)
     const model = String((options as { model?: unknown })?.model ?? '').slice(0, 160)
-    return recordThroughStream(open, { channel, provider, model, startedAt: Date.now() })
+    // 请求摘要（独立端增强）：在**发起前**提取，热路径上多一次数组遍历，成本可忽略。
+    const promptPreview = previewTextOfOptions(options)
+    return recordThroughStream(open, { channel, provider, model, promptPreview, startedAt: Date.now() })
   }
 
   return new Proxy(adapter, {
@@ -246,9 +248,18 @@ export function wrapAdapterWithTokenLedger<T extends object>(providers: readonly
  */
 export async function* recordThroughStream(
   openStream: () => AsyncIterable<unknown>,
-  meta: { channel: 'direct' | 'gateway'; provider: string; model: string; startedAt: number },
+  meta: {
+    channel: 'direct' | 'gateway'
+    provider: string
+    model: string
+    /** 请求摘要（独立端增强，调用方已提取；缺省 = 不记）。 */
+    promptPreview?: string
+    startedAt: number
+  },
 ): AsyncIterable<unknown> {
   let usageReported = false
+  /** 返回摘要（独立端增强）：流内 text-delta 累积，截前 200 字。 */
+  let responsePreview = ''
   let inputTokens = 0
   let outputTokens = 0
   let cacheReadTokens: number | undefined
@@ -275,6 +286,15 @@ export async function* recordThroughStream(
       // 首块计时：任何 chunk（思考/正文/工具调用都算「模型开始说话」）。
       // ⚠️ 必须在具体类型判断**之前**：漏块会让「只有思考增量的慢启动」被记成 0。
       if (ttftMs === 0) ttftMs = Date.now() - meta.startedAt
+      // 返回摘要（独立端增强）：只累积正文增量，截前 200 字即停（不再拼接）。
+      if (
+        responsePreview.length < 200
+        && typeof chunk === 'object' && chunk !== null
+        && (chunk as { type?: unknown }).type === 'text-delta'
+        && typeof (chunk as { text?: unknown }).text === 'string'
+      ) {
+        responsePreview = (responsePreview + (chunk as { text: string }).text).slice(0, 200)
+      }
       if (
         typeof chunk === 'object' && chunk !== null
         && (chunk as { type?: unknown }).type === 'usage'
@@ -310,6 +330,11 @@ export async function* recordThroughStream(
       usageReported,
       inputTokens,
       outputTokens,
+      // 请求/返回摘要（独立端增强）：prompt 来自 meta，response 来自流内累积。
+      ...(typeof meta.promptPreview === 'string' && meta.promptPreview.length > 0
+        ? { promptPreview: meta.promptPreview }
+        : {}),
+      ...(responsePreview.length > 0 ? { responsePreview } : {}),
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
       ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
