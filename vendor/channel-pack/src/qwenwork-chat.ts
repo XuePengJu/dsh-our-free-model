@@ -84,6 +84,34 @@ function qwenworkStaticHeaders(modelKey: string, requestId: string, machineId: s
 }
 
 /**
+ * 把 DSH 的工具 schema 映射成加密端点认的 `tools[]`。
+ *
+ * 形态与 Qoder 的 `buildQoderTools` 同款（`{type:'function', function:{name,
+ * description?, parameters?}}`，缺省键不出现）。⚠️ 不能把 DSH 裸形态
+ * `{name, description, parameters}` 直接透传 —— 实测（2026-10-19）上游收到
+ * 无 `type/function` 包装的工具定义会让**内部全部模型拒绝请求**，流内返回
+ * `All models failed`（连正文一个字都不出）。WorkBuddy 真实会话必带工具，
+ * 这正是「连通性测试（无工具）通过、真实调用全挂」的根因。
+ */
+export function buildQwenworkTools(
+  tools: readonly Record<string, unknown>[] | undefined,
+): Record<string, unknown>[] {
+  if (tools === undefined || tools.length === 0) return []
+  return tools.map((tool) => {
+    const name = typeof tool.name === 'string' ? tool.name : ''
+    const description = typeof tool.description === 'string' ? tool.description : ''
+    return {
+      ...(name !== '' ? { type: 'function' as const } : {}),
+      ...(name === '' ? {} : { function: {
+        name,
+        ...(description.length > 0 ? { description } : {}),
+        ...(tool.parameters === undefined ? {} : { parameters: tool.parameters }),
+      } }),
+    }
+  }).filter((tool) => (tool as { function?: unknown }).function !== undefined)
+}
+
+/**
  * 构造明文请求体（官方 1.0.4 `build_body` 形状，逐字段对齐）。
  *
  * ⚠️ `business` 决定服务端路由（Qoder 实测：缺失会被路由到故障节点）；
@@ -170,7 +198,9 @@ export function buildQwenworkBody(
     },
     system,
     messages,
-    tools: request.tools ?? [],
+    // ⚠️ 必须经过形态映射（见 buildQwenworkTools 注释）：裸 DSH 形态会让上游
+    // 内部全模型拒绝（All models failed），WorkBuddy 真实会话必踩。
+    tools: buildQwenworkTools(request.tools),
     parameters,
     business: {
       product: QWENWORK_BUSINESS_PRODUCT,

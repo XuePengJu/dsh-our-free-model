@@ -33,6 +33,16 @@ export const QWENWORK_CHAT_QUERY = 'FetchKeys=llm_model_result&AgentId=agent_com
 export const QWENWORK_REFRESH_PATH = '/api/v1/deviceToken/refresh'
 /** 每日赠分领取（OpenAPI 身份，1.3.1，**无 body** POST）。 */
 export const QWENWORK_DAILY_CLAIM_PATH = '/api/v1/adapter/user/daily-credit-notice/claim'
+/**
+ * 账号上下文（含 `quota`）—— 官方客户端查积分余额用的端点
+ * （asar `ACCOUNT_CONTEXT_PATH`；OpenAPI 身份 1.3.1，GET + Bearer）。
+ *
+ * 实测（2026-10-19，真实账号，gateway.qwenwork.cn）200：
+ * `{"code":"ok","data":{..., "quota":{"total":null,"used":null,"remaining":2099.7217,"exceeded":false}}}`
+ * —— 免费版不下发 total/used，只有 `remaining`（小数）与 `exceeded`。
+ */
+export const QWENWORK_ACCOUNT_CONTEXT_PATH =
+  '/api/v1/adapter/user/account-context?include=user,plan,quota,page,data_sharing'
 
 // ===== 版本身份（冻结自官方客户端 asar） =====
 

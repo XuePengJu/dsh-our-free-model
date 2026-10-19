@@ -59335,6 +59335,343 @@ function quotaRejectionHint(text) {
   return text === "" ? "" : `\uFF1A${text.slice(0, 160)}`;
 }
 
+// vendor/channel-pack/src/qwenwork-product.ts
+var QWENWORK = {
+  id: "qwenwork",
+  displayName: "\u5343\u95EE\u529E\u516C QwenWork",
+  gateway: "https://gateway.qwenwork.cn",
+  defaultCredentialRef: "QWENWORK_ACCESS_TOKEN",
+  fallbackModels: []
+};
+
+// vendor/channel-pack/src/qwenwork.ts
+var QWENWORK_GATEWAY = "https://gateway.qwenwork.cn";
+var QWENWORK_REFRESH_PATH = "/api/v1/deviceToken/refresh";
+var QWENWORK_DAILY_CLAIM_PATH = "/api/v1/adapter/user/daily-credit-notice/claim";
+var QWENWORK_ACCOUNT_CONTEXT_PATH = "/api/v1/adapter/user/account-context?include=user,plan,quota,page,data_sharing";
+var QWENWORK_IDE_VERSION = "1.0.4";
+var QWENWORK_RELEASE_VERSION = "1.0.4-26090412";
+var QWENWORK_BUILD = "26090412";
+var QWENWORK_USER_AGENT = "qoderwork/1.0.4";
+var QWENWORK_COSY_VERSION = "1.1.32";
+var QWENWORK_CLIENT_TYPE = "6";
+var QWENWORK_BUSINESS_PRODUCT = "qoder_work";
+var QWENWORK_BUSINESS_TYPE = "agent";
+var QWENWORK_SCENE = "qwork";
+var QWENWORK_MACHINE_OS = "x86_64_win32";
+var QWENWORK_MACHINE_TYPE = "5";
+var QWENWORK_LOGIN_VERSION = "v2";
+var QWENWORK_DATA_POLICY = "disagree";
+var QWENWORK_CLAIM_IDE_VERSION = "1.3.1";
+var QWENWORK_CLAIM_RELEASE_VERSION = "1.3.1-26101419";
+var QWENWORK_CLAIM_BUILD = "26101419";
+var QWENWORK_CLAIM_APP_MODE = "standard";
+var QWENWORK_CLAIM_USER_AGENT = "QwenWork/1.3.1";
+var QWENWORK_OPENAPI_USER_AGENT = "qoderwork/1.3.1";
+var QWENWORK_RSA_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDA8iMH5c02LilrsERw9t6Pv5Nc
+4k6Pz1EaDicBMpdpxKduSZu5OANqUq8er4GM95omAGIOPOh+Nx0spthYA2BqGz+l
+6HRkPJ7S236FZz73In/KVuLnwI8JJ2CbuJap8kvheCCZpmAWpb/cPx/3Vr/J6I17
+XcW+ML9FoCI6AOvOzwIDAQAB
+-----END PUBLIC KEY-----`;
+var QWENWORK_MODEL_ALIASES = {
+  auto: "qwork-advanced",
+  pro: "qwork-advanced",
+  advanced: "qwork-advanced",
+  "qwork-advanced": "qwork-advanced",
+  flash: "qwork-auto",
+  standard: "qwork-auto",
+  "qwork-auto": "qwork-auto",
+  ultimate: "qwork-ultimate",
+  premium: "qwork-ultimate",
+  flagship: "qwork-ultimate",
+  "qwork-ultimate": "qwork-ultimate",
+  lite: "qwork-lite",
+  "qwork-lite": "qwork-lite"
+};
+function normalizeQwenworkModel(model) {
+  const inner = (model || "qwork-advanced").trim() || "qwork-advanced";
+  return QWENWORK_MODEL_ALIASES[inner] ?? inner;
+}
+function qwenworkFallbackEntries() {
+  return QWENWORK_FALLBACK_MODELS;
+}
+function qwenworkIsoToMs(value) {
+  if (value === void 0 || value === null || value === "") return 0;
+  if (typeof value === "number") return value > 1e10 ? value : value * 1e3;
+  const text = String(value).trim();
+  if (text === "") return 0;
+  const parsed = Date.parse(text.endsWith("Z") || text.includes("+") ? text : `${text}Z`);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function qwenworkJwtExpMs(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return 0;
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf-8")
+    );
+    return typeof payload.exp === "number" ? payload.exp * 1e3 : 0;
+  } catch {
+    return 0;
+  }
+}
+function isQwenworkExpired(credential, skewMs = 3e5) {
+  const expiresAt = credential.expires_at || qwenworkJwtExpMs(credential.access_token);
+  if (expiresAt <= 0) return false;
+  return Date.now() >= expiresAt - skewMs;
+}
+function parseQwenworkDocument(doc) {
+  if (doc.schemaVersion !== 2) {
+    throw new Error(`auth-v2.dat schemaVersion \u4E0D\u53D7\u652F\u6301\uFF1A${String(doc.schemaVersion)}`);
+  }
+  if (typeof doc.token !== "string" || typeof doc.refreshToken !== "string" || typeof doc.expiresAt !== "string" || !doc.user || typeof doc.user.id !== "string") {
+    throw new Error("auth-v2.dat \u7F3A\u5C11\u5FC5\u9700\u5B57\u6BB5\uFF08token / refreshToken / expiresAt / user.id\uFF09");
+  }
+  return {
+    access_token: doc.token,
+    refresh_token: doc.refreshToken,
+    expires_at: qwenworkIsoToMs(doc.expiresAt),
+    refresh_expires_at: qwenworkIsoToMs(doc.refreshTokenExpiresAt),
+    uid: doc.user.id,
+    name: doc.user.name ?? "",
+    email: doc.user.email ?? "",
+    machine_id: doc.loginDeviceId ?? "",
+    source: "local"
+  };
+}
+function unwrapQwenworkSsePayload(raw) {
+  const text = (raw || "").trim();
+  if (text === "" || text === "[DONE]" || text === "{}" || text === "null") return [];
+  const envelopeError2 = qwenworkEnvelopeError(text);
+  if (envelopeError2 !== null) return [];
+  let outer;
+  try {
+    outer = JSON.parse(text);
+  } catch {
+    return [text];
+  }
+  if (typeof outer !== "object" || outer === null) return [text];
+  const obj = outer;
+  if ("choices" in obj || obj.object === "chat.completion.chunk" || obj.object === "chat.completion") {
+    return [text];
+  }
+  const inner = obj.body;
+  if (inner === void 0 || inner === null) return [];
+  if (typeof inner === "object") {
+    const dumped = JSON.stringify(inner);
+    return dumped === "{}" || dumped === "[]" ? [] : [dumped];
+  }
+  const innerText = String(inner).trim();
+  if (innerText === "" || innerText === "[DONE]" || innerText === "{}" || innerText === "null") {
+    return [];
+  }
+  return [innerText];
+}
+function qwenworkEnvelopeError(raw) {
+  const text = (raw || "").trim();
+  if (text === "") return null;
+  let outer;
+  try {
+    outer = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof outer !== "object" || outer === null) return null;
+  const obj = outer;
+  const status = obj.statusCodeValue;
+  let payload = obj.body;
+  if (typeof payload === "string") {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      payload = { message: payload };
+    }
+  }
+  if (typeof status === "number" && status >= 400) {
+    if (typeof payload === "object" && payload !== null) {
+      const p = payload;
+      return String(p.message ?? p.code ?? status);
+    }
+    return String(obj.body ?? status);
+  }
+  if (typeof payload === "object" && payload !== null) {
+    const p = payload;
+    const code = String(p.code ?? "");
+    if (code === "400" || code === "401" || code === "403") {
+      return String(p.message ?? code);
+    }
+  }
+  return null;
+}
+var QWENWORK_FALLBACK_MODELS = [
+  {
+    id: "qwork-advanced",
+    name: "qwork-advanced \xB7 \u9AD8\u7EA7\uFF08\u63A8\u8350\uFF09",
+    contextWindow: 1e6,
+    maxTokens: 32e3,
+    supportsImage: true
+  },
+  {
+    id: "qwork-auto",
+    name: "qwork-auto \xB7 \u57FA\u7840\uFF08\u7701\u79EF\u5206\uFF09",
+    contextWindow: 1e6,
+    maxTokens: 32e3,
+    supportsImage: true
+  },
+  {
+    id: "qwork-ultimate",
+    name: "qwork-ultimate \xB7 \u65D7\u8230",
+    contextWindow: 1e6,
+    maxTokens: 32e3,
+    supportsImage: true
+  }
+];
+
+// vendor/channel-pack/src/qwenwork-credits.ts
+function openapiHeaders(requestId, withAuth, accessToken, userAgent) {
+  const headers = {
+    "Accept": "application/json",
+    "User-Agent": userAgent,
+    "X-Request-Id": requestId,
+    "X-QwenWork-Version": QWENWORK_CLAIM_IDE_VERSION,
+    "X-QwenWork-Release-Version": QWENWORK_CLAIM_RELEASE_VERSION,
+    "X-QwenWork-Build": QWENWORK_CLAIM_BUILD,
+    "X-QwenWork-Platform": "win32",
+    "X-QwenWork-Arch": "x64",
+    "X-QwenWork-Channel": "stable",
+    "X-QwenWork-App-Mode": QWENWORK_CLAIM_APP_MODE,
+    "Content-Type": "application/json"
+  };
+  if (withAuth && accessToken !== "") headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
+}
+async function refreshQwenworkCredential(credential, fetchImpl = fetch) {
+  if (credential.refresh_token === "") {
+    throw new Error("qwenwork: \u51ED\u636E\u6CA1\u6709 refresh_token\uFF0C\u65E0\u6CD5\u7EED\u671F");
+  }
+  const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_REFRESH_PATH}`, {
+    method: "POST",
+    headers: openapiHeaders(`ofm-${Date.now()}`, false, "", QWENWORK_OPENAPI_USER_AGENT),
+    body: JSON.stringify({ refresh_token: credential.refresh_token, target: "c" })
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`qwenwork: \u7EED\u671F\u5931\u8D25 HTTP ${response.status} \u2014 ${text.slice(0, 240)}`);
+  }
+  const data = await response.json().catch(() => void 0);
+  if (typeof data !== "object" || data === null) {
+    throw new Error("qwenwork: \u7EED\u671F\u54CD\u5E94\u4E0D\u662F JSON");
+  }
+  const token = firstString(data.device_token, data.token, data.access_token);
+  if (token === "") throw new Error("qwenwork: \u7EED\u671F\u54CD\u5E94\u7F3A\u5C11 device_token");
+  const now = Date.now();
+  return {
+    access_token: token,
+    refresh_token: firstString(data.refresh_token, credential.refresh_token),
+    expires_at: isoOrInMs(data.expires_at, data.expires_in, now),
+    refresh_expires_at: isoOrInMs(data.refresh_token_expires_at, data.refresh_token_expires_in, now)
+  };
+}
+async function claimQwenworkDailyCredit(credential, fetchImpl = fetch) {
+  const headers = openapiHeaders(
+    `ofm-${Date.now()}`,
+    true,
+    credential.access_token,
+    QWENWORK_CLAIM_USER_AGENT
+  );
+  delete headers["Content-Type"];
+  const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_DAILY_CLAIM_PATH}`, {
+    method: "POST",
+    headers,
+    signal: AbortSignal.timeout(2e4)
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("qwenwork: \u9886\u53D6\u88AB\u62D2\uFF08401/403\uFF09\u2014\u2014\u8BBF\u95EE\u4EE4\u724C\u53EF\u80FD\u5DF2\u5931\u6548\uFF0C\u8BF7\u7EED\u671F\u6216\u91CD\u65B0\u5BFC\u5165");
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    return { ok: false, claimed: false, alreadyClaimed: false, credit: 0, message: `HTTP ${response.status} \u2014 ${text.slice(0, 200)}` };
+  }
+  const payload = await response.json().catch(() => void 0);
+  const data = unwrapClaimData(payload);
+  const credits = typeof data.credits === "number" && Number.isInteger(data.credits) && data.credits > 0 ? data.credits : 0;
+  if (data.should_show === true && credits > 0) {
+    return { ok: true, claimed: true, alreadyClaimed: false, credit: credits, message: `\u9886\u53D6\u6210\u529F +${credits}` };
+  }
+  if (credits > 0) {
+    return { ok: true, claimed: false, alreadyClaimed: true, credit: credits, message: `\u4ECA\u65E5\u5DF2\u9886 ${credits}` };
+  }
+  return { ok: true, claimed: false, alreadyClaimed: true, credit: 0, message: "\u4ECA\u65E5\u6CA1\u6709\u65B0\u7684\u8D60\u5206" };
+}
+async function fetchQwenworkQuotaBalance(credential, fetchImpl = fetch) {
+  const headers = openapiHeaders(
+    `ofm-${Date.now()}`,
+    true,
+    credential.access_token,
+    QWENWORK_CLAIM_USER_AGENT
+  );
+  try {
+    const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_ACCOUNT_CONTEXT_PATH}`, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(2e4)
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => void 0);
+    const data = unwrapClaimData(payload);
+    const quota = typeof data.quota === "object" && data.quota !== null ? data.quota : void 0;
+    const remaining = typeof quota?.remaining === "number" && Number.isFinite(quota.remaining) ? quota.remaining : void 0;
+    if (remaining === void 0) return null;
+    const exceeded = quota?.exceeded === true;
+    const plan = typeof data.plan === "object" && data.plan !== null ? data.plan : {};
+    const planName = typeof plan.name === "string" && plan.name.length > 0 ? plan.name : "\u5343\u95EE\u529E\u516C";
+    return {
+      total: roundCredits(remaining),
+      expiredTotal: 0,
+      packages: [{
+        name: `${planName}\u79EF\u5206`,
+        unit: "credit",
+        remaining: roundCredits(remaining),
+        // 上游免费版不下发 total/used（null）—— 如实给 0，UI 只展示 remaining。
+        total: 0,
+        used: 0,
+        active: !exceeded,
+        cycleStartTime: "",
+        cycleEndTime: "",
+        expiredTime: ""
+      }]
+    };
+  } catch {
+    return null;
+  }
+}
+function unwrapClaimData(payload) {
+  let data = payload;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof data === "object" && data !== null && "data" in data) {
+      data = data.data;
+    } else {
+      break;
+    }
+  }
+  return typeof data === "object" && data !== null ? data : {};
+}
+function isoOrInMs(iso, seconds, nowMs) {
+  if (typeof iso === "string" && iso !== "") {
+    const parsed = Date.parse(iso);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  if (typeof seconds === "number" && seconds > 0) return nowMs + seconds * 1e3;
+  return 0;
+}
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return "";
+}
+
 // vendor/channel-pack/src/qoder-machine.ts
 import { execFileSync, spawn as spawn3 } from "node:child_process";
 import { existsSync as existsSync6, readFileSync as readFileSync6, readdirSync } from "node:fs";
@@ -63159,7 +63496,7 @@ function providerIdsOf(llm, modelAdapters) {
   const keys = Object.keys(modelAdapters ?? {});
   return keys.length > 0 ? keys.map((id) => ({ id })) : void 0;
 }
-function registerChannelPackRpc(ctx, pool, codearts, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, modelAdapters, config = {}) {
+function registerChannelPackRpc(ctx, pool, codearts, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, qwenwork, modelAdapters, config = {}) {
   ctx.inject(["connection"], (connectionCtx) => {
     registerChannelPackEndpoints(
       connectionCtx,
@@ -63177,6 +63514,7 @@ function registerChannelPackRpc(ctx, pool, codearts, buddy, workbuddy, lobsterai
       minimax,
       zcode,
       gemini,
+      qwenwork,
       modelAdapters,
       config
     );
@@ -63201,7 +63539,7 @@ async function fullCatalogIds(ctx, modelAdapters, provider) {
     return { error: `\u8BFB\u53D6\u6A21\u578B\u5217\u8868\u5931\u8D25\uFF1A${reason}` };
   }
 }
-function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, modelAdapters, config = {}) {
+function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, qwenwork, modelAdapters, config = {}) {
   const connection = ctx.connection ?? ctx.get("connection");
   if (!connection || typeof connection.fetch?.register !== "function") {
     ctx.logger.warn("[channel-pack] connection.fetch not available, RPC endpoints not registered");
@@ -63780,6 +64118,33 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
             });
           });
           return { ok: true, value: { accountId: id, loginUrl: geminiStarted.loginUrl } };
+        } else if (provider === QWENWORK.id) {
+          const started = await qwenwork.startDeviceLogin(refName);
+          await pool.addAccount({
+            id,
+            provider: QWENWORK.id,
+            nickname: id,
+            enabled: true,
+            credentialRef: refName,
+            // 授权完成后按凭据回填（有 refresh_token 才算可续期）。
+            refreshable: false,
+            createdAt: Date.now()
+          });
+          started.result.then(async (credential) => {
+            await pool.updateAccount(id, {
+              nickname: credential.name.length > 0 ? credential.name : id,
+              expiresAt: credential.expires_at > 0 ? credential.expires_at : void 0,
+              refreshable: credential.refresh_token.length > 0
+            });
+            pendingLoginFailures.delete(id);
+          }).catch((error) => {
+            const reason = error instanceof Error ? error.message : String(error);
+            ctx.logger.warn(`[channel-pack] background ${QWENWORK.id} login failed for ${id}: ${reason}`);
+            pendingLoginFailures.set(id, reason.slice(0, 500));
+            void pool.removeAccount(id).catch(() => {
+            });
+          });
+          return { ok: true, value: { accountId: id, loginUrl: started.loginUrl } };
         } else {
           return { ok: false, error: { code: "bad-request", message: `unknown provider: ${provider}` } };
         }
@@ -63860,6 +64225,9 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
               break;
             case GEMINI.id:
               await gemini.refreshAccountCredential(entry.credentialRef, pool, entry.id);
+              break;
+            case QWENWORK.id:
+              await qwenwork.refreshAccountCredential(entry.credentialRef, pool, entry.id);
               break;
             default:
               throw new Error(`Unknown provider: ${entry.provider}`);
@@ -64270,6 +64638,15 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
           );
           return { ok: true, value: { accounts: value } };
         }
+        if (req.provider === QWENWORK.id) {
+          const accounts2 = await pool.listAccounts(req.provider);
+          return {
+            ok: true,
+            value: {
+              accounts: accounts2.map((entry) => ({ accountId: entry.id, nickname: entry.nickname, status: null }))
+            }
+          };
+        }
         const product = productById(req.provider);
         if (product === void 0) {
           return { ok: false, error: { code: "bad-request", message: `unsupported provider: ${req.provider}` } };
@@ -64294,6 +64671,28 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
             warn: (msg) => ctx.logger?.warn?.(msg)
           });
           return { ok: true, value: value2 };
+        }
+        if (req.provider === QWENWORK.id) {
+          const claimAccounts = await pool.listAccounts(req.provider);
+          const results = [];
+          for (const entry of claimAccounts) {
+            let outcome;
+            try {
+              const claim = await qwenwork.claimDaily(entry.credentialRef);
+              outcome = claim.ok ? claim.alreadyClaimed ? { kind: "already-claimed", message: claim.message } : { kind: "claimed", credit: claim.credit, streakDays: 0, isStreakDay: false } : { kind: "failed", code: 0, message: claim.message };
+            } catch (error) {
+              outcome = {
+                kind: "failed",
+                code: 0,
+                message: error instanceof Error ? error.message : String(error)
+              };
+            }
+            results.push({ accountId: entry.id, nickname: entry.nickname, outcome });
+          }
+          return {
+            ok: true,
+            value: { results, summary: computeClaimSummary(results.map((row) => row.outcome)) }
+          };
         }
         if (req.provider === "codearts") {
           const value2 = await collectClaimResults(accounts, void 0, {
@@ -64777,6 +65176,23 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
                * 前端需要按模型逐行渲染、缺桶的模型显示占位。
                */
               balance: buildZcodeBalance(result)
+            });
+          }
+          return { ok: true, value: { accounts: values2 } };
+        }
+        if (req.provider === QWENWORK.id) {
+          const accounts2 = await pool.listAccounts(req.provider);
+          const values2 = [];
+          for (const entry of accounts2) {
+            const credential = await qwenwork.load(entry.credentialRef);
+            const balance = credential === void 0 ? null : await fetchQwenworkQuotaBalance(credential);
+            values2.push({
+              accountId: entry.id,
+              nickname: entry.nickname,
+              balance,
+              ...balance === null ? {
+                error: credential === void 0 ? "\u51ED\u636E\u672A\u914D\u7F6E" : "\u79EF\u5206\u67E5\u8BE2\u5931\u8D25\uFF08\u51ED\u636E\u5931\u6548\u6216\u54CD\u5E94\u5F02\u5E38\uFF09"
+              } : {}
             });
           }
           return { ok: true, value: { accounts: values2 } };
@@ -68960,191 +69376,6 @@ import {
   constants as cryptoConstants
 } from "node:crypto";
 import { promisify } from "node:util";
-
-// vendor/channel-pack/src/qwenwork.ts
-var QWENWORK_GATEWAY = "https://gateway.qwenwork.cn";
-var QWENWORK_REFRESH_PATH = "/api/v1/deviceToken/refresh";
-var QWENWORK_DAILY_CLAIM_PATH = "/api/v1/adapter/user/daily-credit-notice/claim";
-var QWENWORK_IDE_VERSION = "1.0.4";
-var QWENWORK_RELEASE_VERSION = "1.0.4-26090412";
-var QWENWORK_BUILD = "26090412";
-var QWENWORK_USER_AGENT = "qoderwork/1.0.4";
-var QWENWORK_COSY_VERSION = "1.1.32";
-var QWENWORK_CLIENT_TYPE = "6";
-var QWENWORK_BUSINESS_PRODUCT = "qoder_work";
-var QWENWORK_BUSINESS_TYPE = "agent";
-var QWENWORK_SCENE = "qwork";
-var QWENWORK_MACHINE_OS = "x86_64_win32";
-var QWENWORK_MACHINE_TYPE = "5";
-var QWENWORK_LOGIN_VERSION = "v2";
-var QWENWORK_DATA_POLICY = "disagree";
-var QWENWORK_CLAIM_IDE_VERSION = "1.3.1";
-var QWENWORK_CLAIM_RELEASE_VERSION = "1.3.1-26101419";
-var QWENWORK_CLAIM_BUILD = "26101419";
-var QWENWORK_CLAIM_APP_MODE = "standard";
-var QWENWORK_CLAIM_USER_AGENT = "QwenWork/1.3.1";
-var QWENWORK_OPENAPI_USER_AGENT = "qoderwork/1.3.1";
-var QWENWORK_RSA_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDA8iMH5c02LilrsERw9t6Pv5Nc
-4k6Pz1EaDicBMpdpxKduSZu5OANqUq8er4GM95omAGIOPOh+Nx0spthYA2BqGz+l
-6HRkPJ7S236FZz73In/KVuLnwI8JJ2CbuJap8kvheCCZpmAWpb/cPx/3Vr/J6I17
-XcW+ML9FoCI6AOvOzwIDAQAB
------END PUBLIC KEY-----`;
-var QWENWORK_MODEL_ALIASES = {
-  auto: "qwork-advanced",
-  pro: "qwork-advanced",
-  advanced: "qwork-advanced",
-  "qwork-advanced": "qwork-advanced",
-  flash: "qwork-auto",
-  standard: "qwork-auto",
-  "qwork-auto": "qwork-auto",
-  ultimate: "qwork-ultimate",
-  premium: "qwork-ultimate",
-  flagship: "qwork-ultimate",
-  "qwork-ultimate": "qwork-ultimate",
-  lite: "qwork-lite",
-  "qwork-lite": "qwork-lite"
-};
-function normalizeQwenworkModel(model) {
-  const inner = (model || "qwork-advanced").trim() || "qwork-advanced";
-  return QWENWORK_MODEL_ALIASES[inner] ?? inner;
-}
-function qwenworkFallbackEntries() {
-  return QWENWORK_FALLBACK_MODELS;
-}
-function qwenworkIsoToMs(value) {
-  if (value === void 0 || value === null || value === "") return 0;
-  if (typeof value === "number") return value > 1e10 ? value : value * 1e3;
-  const text = String(value).trim();
-  if (text === "") return 0;
-  const parsed = Date.parse(text.endsWith("Z") || text.includes("+") ? text : `${text}Z`);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-function qwenworkJwtExpMs(token) {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return 0;
-    const payload = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf-8")
-    );
-    return typeof payload.exp === "number" ? payload.exp * 1e3 : 0;
-  } catch {
-    return 0;
-  }
-}
-function isQwenworkExpired(credential, skewMs = 3e5) {
-  const expiresAt = credential.expires_at || qwenworkJwtExpMs(credential.access_token);
-  if (expiresAt <= 0) return false;
-  return Date.now() >= expiresAt - skewMs;
-}
-function parseQwenworkDocument(doc) {
-  if (doc.schemaVersion !== 2) {
-    throw new Error(`auth-v2.dat schemaVersion \u4E0D\u53D7\u652F\u6301\uFF1A${String(doc.schemaVersion)}`);
-  }
-  if (typeof doc.token !== "string" || typeof doc.refreshToken !== "string" || typeof doc.expiresAt !== "string" || !doc.user || typeof doc.user.id !== "string") {
-    throw new Error("auth-v2.dat \u7F3A\u5C11\u5FC5\u9700\u5B57\u6BB5\uFF08token / refreshToken / expiresAt / user.id\uFF09");
-  }
-  return {
-    access_token: doc.token,
-    refresh_token: doc.refreshToken,
-    expires_at: qwenworkIsoToMs(doc.expiresAt),
-    refresh_expires_at: qwenworkIsoToMs(doc.refreshTokenExpiresAt),
-    uid: doc.user.id,
-    name: doc.user.name ?? "",
-    email: doc.user.email ?? "",
-    machine_id: doc.loginDeviceId ?? "",
-    source: "local"
-  };
-}
-function unwrapQwenworkSsePayload(raw) {
-  const text = (raw || "").trim();
-  if (text === "" || text === "[DONE]" || text === "{}" || text === "null") return [];
-  const envelopeError2 = qwenworkEnvelopeError(text);
-  if (envelopeError2 !== null) return [];
-  let outer;
-  try {
-    outer = JSON.parse(text);
-  } catch {
-    return [text];
-  }
-  if (typeof outer !== "object" || outer === null) return [text];
-  const obj = outer;
-  if ("choices" in obj || obj.object === "chat.completion.chunk" || obj.object === "chat.completion") {
-    return [text];
-  }
-  const inner = obj.body;
-  if (inner === void 0 || inner === null) return [];
-  if (typeof inner === "object") {
-    const dumped = JSON.stringify(inner);
-    return dumped === "{}" || dumped === "[]" ? [] : [dumped];
-  }
-  const innerText = String(inner).trim();
-  if (innerText === "" || innerText === "[DONE]" || innerText === "{}" || innerText === "null") {
-    return [];
-  }
-  return [innerText];
-}
-function qwenworkEnvelopeError(raw) {
-  const text = (raw || "").trim();
-  if (text === "") return null;
-  let outer;
-  try {
-    outer = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  if (typeof outer !== "object" || outer === null) return null;
-  const obj = outer;
-  const status = obj.statusCodeValue;
-  let payload = obj.body;
-  if (typeof payload === "string") {
-    try {
-      payload = JSON.parse(payload);
-    } catch {
-      payload = { message: payload };
-    }
-  }
-  if (typeof status === "number" && status >= 400) {
-    if (typeof payload === "object" && payload !== null) {
-      const p = payload;
-      return String(p.message ?? p.code ?? status);
-    }
-    return String(obj.body ?? status);
-  }
-  if (typeof payload === "object" && payload !== null) {
-    const p = payload;
-    const code = String(p.code ?? "");
-    if (code === "400" || code === "401" || code === "403") {
-      return String(p.message ?? code);
-    }
-  }
-  return null;
-}
-var QWENWORK_FALLBACK_MODELS = [
-  {
-    id: "qwork-advanced",
-    name: "qwork-advanced \xB7 \u9AD8\u7EA7\uFF08\u63A8\u8350\uFF09",
-    contextWindow: 1e6,
-    maxTokens: 32e3,
-    supportsImage: true
-  },
-  {
-    id: "qwork-auto",
-    name: "qwork-auto \xB7 \u57FA\u7840\uFF08\u7701\u79EF\u5206\uFF09",
-    contextWindow: 1e6,
-    maxTokens: 32e3,
-    supportsImage: true
-  },
-  {
-    id: "qwork-ultimate",
-    name: "qwork-ultimate \xB7 \u65D7\u8230",
-    contextWindow: 1e6,
-    maxTokens: 32e3,
-    supportsImage: true
-  }
-];
-
-// vendor/channel-pack/src/qwenwork-crypto.ts
 var execFileAsync = promisify(execFile);
 function newAesKeyChars() {
   return randomUUID13().replace(/-/g, "").slice(0, 16);
@@ -69238,18 +69469,18 @@ function parseQwenworkPaste(body) {
   const raw = body;
   const auth = typeof raw.auth === "object" && raw.auth !== null ? raw.auth : {};
   const user = typeof raw.user === "object" && raw.user !== null ? raw.user : {};
-  const token = firstString(
+  const token = firstString2(
     raw.token,
     raw.access_token,
     raw.device_token,
     auth.accessToken,
     auth.token
   );
-  const refreshToken2 = firstString(raw.refreshToken, raw.refresh_token, auth.refreshToken);
+  const refreshToken2 = firstString2(raw.refreshToken, raw.refresh_token, auth.refreshToken);
   if (token === "" && refreshToken2 === "") {
     throw new Error("\u5343\u95EE\u529E\u516C\u51ED\u636E\u9700\u8981 token / refreshToken \u81F3\u5C11\u5176\u4E00");
   }
-  const uid = firstString(
+  const uid = firstString2(
     user.id,
     user.uid,
     raw.uid,
@@ -69259,14 +69490,14 @@ function parseQwenworkPaste(body) {
   return {
     access_token: access,
     refresh_token: refreshToken2,
-    expires_at: qwenworkIsoToMs(firstString(raw.expiresAt, raw.expires_at, auth.expiresAt)) || qwenworkJwtExpMs(access),
+    expires_at: qwenworkIsoToMs(firstString2(raw.expiresAt, raw.expires_at, auth.expiresAt)) || qwenworkJwtExpMs(access),
     refresh_expires_at: qwenworkIsoToMs(
-      firstString(raw.refreshTokenExpiresAt, raw.refresh_expires_at, auth.refreshExpiresAt)
+      firstString2(raw.refreshTokenExpiresAt, raw.refresh_expires_at, auth.refreshExpiresAt)
     ),
     uid,
-    name: firstString(user.name, raw.nickname, raw.name),
-    email: firstString(user.email, raw.email),
-    machine_id: firstString(raw.loginDeviceId, raw.machine_id),
+    name: firstString2(user.name, raw.nickname, raw.name),
+    email: firstString2(user.email, raw.email),
+    machine_id: firstString2(raw.loginDeviceId, raw.machine_id),
     source: "paste"
   };
 }
@@ -69296,108 +69527,6 @@ async function readLocalQwenworkCredential() {
   }
   return void 0;
 }
-function firstString(...values) {
-  for (const value of values) {
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return "";
-}
-
-// vendor/channel-pack/src/qwenwork-credits.ts
-function openapiHeaders(requestId, withAuth, accessToken, userAgent) {
-  const headers = {
-    "Accept": "application/json",
-    "User-Agent": userAgent,
-    "X-Request-Id": requestId,
-    "X-QwenWork-Version": QWENWORK_CLAIM_IDE_VERSION,
-    "X-QwenWork-Release-Version": QWENWORK_CLAIM_RELEASE_VERSION,
-    "X-QwenWork-Build": QWENWORK_CLAIM_BUILD,
-    "X-QwenWork-Platform": "win32",
-    "X-QwenWork-Arch": "x64",
-    "X-QwenWork-Channel": "stable",
-    "X-QwenWork-App-Mode": QWENWORK_CLAIM_APP_MODE,
-    "Content-Type": "application/json"
-  };
-  if (withAuth && accessToken !== "") headers.Authorization = `Bearer ${accessToken}`;
-  return headers;
-}
-async function refreshQwenworkCredential(credential, fetchImpl = fetch) {
-  if (credential.refresh_token === "") {
-    throw new Error("qwenwork: \u51ED\u636E\u6CA1\u6709 refresh_token\uFF0C\u65E0\u6CD5\u7EED\u671F");
-  }
-  const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_REFRESH_PATH}`, {
-    method: "POST",
-    headers: openapiHeaders(`ofm-${Date.now()}`, false, "", QWENWORK_OPENAPI_USER_AGENT),
-    body: JSON.stringify({ refresh_token: credential.refresh_token, target: "c" })
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`qwenwork: \u7EED\u671F\u5931\u8D25 HTTP ${response.status} \u2014 ${text.slice(0, 240)}`);
-  }
-  const data = await response.json().catch(() => void 0);
-  if (typeof data !== "object" || data === null) {
-    throw new Error("qwenwork: \u7EED\u671F\u54CD\u5E94\u4E0D\u662F JSON");
-  }
-  const token = firstString2(data.device_token, data.token, data.access_token);
-  if (token === "") throw new Error("qwenwork: \u7EED\u671F\u54CD\u5E94\u7F3A\u5C11 device_token");
-  const now = Date.now();
-  return {
-    access_token: token,
-    refresh_token: firstString2(data.refresh_token, credential.refresh_token),
-    expires_at: isoOrInMs(data.expires_at, data.expires_in, now),
-    refresh_expires_at: isoOrInMs(data.refresh_token_expires_at, data.refresh_token_expires_in, now)
-  };
-}
-async function claimQwenworkDailyCredit(credential, fetchImpl = fetch) {
-  const headers = openapiHeaders(
-    `ofm-${Date.now()}`,
-    true,
-    credential.access_token,
-    QWENWORK_CLAIM_USER_AGENT
-  );
-  delete headers["Content-Type"];
-  const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_DAILY_CLAIM_PATH}`, {
-    method: "POST",
-    headers,
-    signal: AbortSignal.timeout(2e4)
-  });
-  if (response.status === 401 || response.status === 403) {
-    throw new Error("qwenwork: \u9886\u53D6\u88AB\u62D2\uFF08401/403\uFF09\u2014\u2014\u8BBF\u95EE\u4EE4\u724C\u53EF\u80FD\u5DF2\u5931\u6548\uFF0C\u8BF7\u7EED\u671F\u6216\u91CD\u65B0\u5BFC\u5165");
-  }
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    return { ok: false, claimed: false, alreadyClaimed: false, credit: 0, message: `HTTP ${response.status} \u2014 ${text.slice(0, 200)}` };
-  }
-  const payload = await response.json().catch(() => void 0);
-  const data = unwrapClaimData(payload);
-  const credits = typeof data.credits === "number" && Number.isInteger(data.credits) && data.credits > 0 ? data.credits : 0;
-  if (data.should_show === true && credits > 0) {
-    return { ok: true, claimed: true, alreadyClaimed: false, credit: credits, message: `\u9886\u53D6\u6210\u529F +${credits}` };
-  }
-  if (credits > 0) {
-    return { ok: true, claimed: false, alreadyClaimed: true, credit: credits, message: `\u4ECA\u65E5\u5DF2\u9886 ${credits}` };
-  }
-  return { ok: true, claimed: false, alreadyClaimed: true, credit: 0, message: "\u4ECA\u65E5\u6CA1\u6709\u65B0\u7684\u8D60\u5206" };
-}
-function unwrapClaimData(payload) {
-  let data = payload;
-  for (let depth = 0; depth < 3; depth += 1) {
-    if (typeof data === "object" && data !== null && "data" in data) {
-      data = data.data;
-    } else {
-      break;
-    }
-  }
-  return typeof data === "object" && data !== null ? data : {};
-}
-function isoOrInMs(iso, seconds, nowMs) {
-  if (typeof iso === "string" && iso !== "") {
-    const parsed = Date.parse(iso);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  if (typeof seconds === "number" && seconds > 0) return nowMs + seconds * 1e3;
-  return 0;
-}
 function firstString2(...values) {
   for (const value of values) {
     if (typeof value === "string" && value.length > 0) return value;
@@ -69405,16 +69534,141 @@ function firstString2(...values) {
   return "";
 }
 
-// vendor/channel-pack/src/qwenwork-product.ts
-var QWENWORK = {
-  id: "qwenwork",
-  displayName: "\u5343\u95EE\u529E\u516C QwenWork",
-  gateway: "https://gateway.qwenwork.cn",
-  defaultCredentialRef: "QWENWORK_ACCESS_TOKEN",
-  fallbackModels: []
-};
+// vendor/channel-pack/src/qwenwork-device.ts
+import { createHash as createHash9, randomBytes as randomBytes13, randomUUID as randomUUID14 } from "node:crypto";
+var QWENWORK_DEVICE_AUTH_BASE = QWENWORK_GATEWAY;
+var QWENWORK_DEVICE_CLIENT_ID = "e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb";
+var QWENWORK_DEVICE_REDIRECT_URI = "qwenwork-cn://";
+var QWENWORK_DEVICE_POLL_PATH = "/api/v1/deviceToken/poll";
+var QWENWORK_DEVICE_POLL_INTERVAL_MS = 1500;
+var QWENWORK_DEVICE_POLL_TIMEOUT_MS = 3e5;
+var PKCE_ALPHABET2 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+function createPkce() {
+  const length = 43 + Math.floor(Math.random() * 86);
+  const bytes = randomBytes13(length);
+  let verifier = "";
+  for (let i = 0; i < length; i += 1) {
+    verifier += PKCE_ALPHABET2[bytes[i] % PKCE_ALPHABET2.length];
+  }
+  const challenge = createHash9("sha256").update(verifier).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return { verifier, challenge };
+}
+function createQwenworkDeviceFlow() {
+  const { verifier, challenge } = createPkce();
+  const nonce = randomUUID14();
+  const machineId = randomUUID14();
+  const params = new URLSearchParams({
+    challenge,
+    challenge_method: "S256",
+    nonce,
+    machine_id: machineId,
+    client_id: QWENWORK_DEVICE_CLIENT_ID,
+    redirect_uri: QWENWORK_DEVICE_REDIRECT_URI
+  });
+  return {
+    verifier,
+    challenge,
+    nonce,
+    machineId,
+    authUrl: `${QWENWORK_DEVICE_AUTH_BASE}/device/selectAccounts?${params.toString()}`
+  };
+}
+function deviceHeaders() {
+  return {
+    Accept: "application/json",
+    "X-Request-Id": randomUUID14(),
+    "X-QwenWork-Version": QWENWORK_CLAIM_IDE_VERSION,
+    "X-QwenWork-Release-Version": QWENWORK_CLAIM_RELEASE_VERSION,
+    "X-QwenWork-Build": QWENWORK_CLAIM_BUILD,
+    "X-QwenWork-Platform": "darwin",
+    "X-QwenWork-Arch": "arm64",
+    "X-QwenWork-Channel": "stable",
+    "X-QwenWork-App-Mode": QWENWORK_CLAIM_APP_MODE,
+    "User-Agent": QWENWORK_CLAIM_USER_AGENT
+  };
+}
+function defaultSleep2(ms) {
+  return new Promise((resolve3) => {
+    setTimeout(resolve3, ms);
+  });
+}
+async function pollQwenworkDeviceTokenOnce(flow, fetchImpl = fetch) {
+  const params = new URLSearchParams({
+    nonce: flow.nonce,
+    verifier: flow.verifier,
+    challenge_method: "S256"
+  });
+  const response = await fetchImpl(
+    `${QWENWORK_GATEWAY}${QWENWORK_DEVICE_POLL_PATH}?${params.toString()}`,
+    { method: "GET", headers: deviceHeaders() }
+  );
+  if (response.status === 404) return { status: "pending" };
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let detail = text.slice(0, 200);
+    try {
+      const parsed = JSON.parse(text);
+      detail = [parsed.errorCode, parsed.errorMessage].filter(Boolean).join(": ") || detail;
+    } catch {
+    }
+    throw new Error(
+      `qwenwork: \u8BBE\u5907\u7801\u8F6E\u8BE2\u5931\u8D25\uFF08HTTP ${response.status}\uFF09${detail ? ` \u2014\u2014 ${detail}` : ""}`
+    );
+  }
+  const body = await response.json();
+  if (typeof body.token !== "string" || body.token.length === 0) {
+    return { status: "pending" };
+  }
+  if (body.nonce !== void 0 && body.nonce !== flow.nonce) {
+    throw new Error("qwenwork: \u8BBE\u5907\u7801\u54CD\u5E94 nonce \u4E0D\u5339\u914D\uFF08\u7591\u4F3C\u4E32\u53F7\uFF09\uFF0C\u5DF2\u62D2\u7EDD\u843D\u76D8");
+  }
+  if (body.code_challenge !== void 0 && body.code_challenge !== flow.challenge) {
+    throw new Error("qwenwork: \u8BBE\u5907\u7801\u54CD\u5E94 code_challenge \u4E0D\u5339\u914D\uFF0C\u5DF2\u62D2\u7EDD\u843D\u76D8");
+  }
+  return { status: "done", tokens: body };
+}
+async function waitForQwenworkDeviceLogin(flow, options = {}) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep5 = options.sleep ?? defaultSleep2;
+  const interval = options.intervalMs ?? QWENWORK_DEVICE_POLL_INTERVAL_MS;
+  const timeout = options.timeoutMs ?? QWENWORK_DEVICE_POLL_TIMEOUT_MS;
+  const now = options.now ?? Date.now;
+  const deadline = now() + timeout;
+  while (now() < deadline) {
+    const result = await pollQwenworkDeviceTokenOnce(flow, fetchImpl);
+    if (result.status === "done") return result.tokens;
+    await sleep5(interval);
+  }
+  throw new Error(
+    "qwenwork: \u767B\u5F55\u8D85\u65F6\uFF08\u6388\u6743\u94FE\u63A5\u4E00\u6B21\u6027\uFF0C\u5DF2\u5931\u6548\uFF09\u2014\u2014 \u8BF7\u91CD\u65B0\u70B9\u51FB\u300C\u6DFB\u52A0\u8D26\u53F7\u300D\u83B7\u53D6\u65B0\u94FE\u63A5"
+  );
+}
+function toEpochMs(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+function qwenworkDeviceCredential(flow, tokens) {
+  const expiresAt = toEpochMs(tokens.expires_at) || (typeof tokens.expires_in === "number" && tokens.expires_in > 0 ? Date.now() + tokens.expires_in * 1e3 : 0);
+  return {
+    access_token: tokens.token,
+    refresh_token: tokens.refresh_token ?? "",
+    expires_at: expiresAt,
+    refresh_expires_at: expiresAt,
+    uid: tokens.user_id ?? "",
+    name: tokens.user_name ?? "",
+    email: "",
+    machine_id: flow.machineId,
+    source: "device-flow"
+  };
+}
 
 // vendor/channel-pack/src/qwenwork-auth.ts
+var QWENWORK_REFRESH_LEAD_MS = 12 * 60 * 60 * 1e3;
+var QWENWORK_REFRESH_TERMINAL_RE = /invalid[_ ]grant|refresh[_ ]token.*(invalid|expired|revoked)|unauthorized|401/i;
 var QwenworkAuth = class extends Service11 {
   constructor(ctx, options = {}) {
     const product = options.product ?? QWENWORK;
@@ -69428,9 +69682,9 @@ var QwenworkAuth = class extends Service11 {
   get fetchImpl() {
     return this.options.fetchImpl ?? fetch;
   }
-  /** 读取当前凭据（默认 ref）。 */
-  async load() {
-    const resolved = await this.ctx.credentials.resolve(credentialRef15(this.credentialRefName));
+  /** 读取凭据（默认读默认 ref；可指定账号自己的 ref）。 */
+  async load(refName = this.credentialRefName) {
+    const resolved = await this.ctx.credentials.resolve(credentialRef15(refName));
     if (resolved === void 0) return void 0;
     try {
       return JSON.parse(resolved.value);
@@ -69438,9 +69692,9 @@ var QwenworkAuth = class extends Service11 {
       return void 0;
     }
   }
-  async save(credential) {
+  async save(credential, refName = this.credentialRefName) {
     await this.ctx.credentials.set(
-      credentialRef15(this.credentialRefName),
+      credentialRef15(refName),
       JSON.stringify(credential)
     );
   }
@@ -69473,14 +69727,41 @@ var QwenworkAuth = class extends Service11 {
     return credential;
   }
   /**
+   * 发起**设备码网页登录**（官方客户端同款 OAuth Device Flow）。
+   *
+   * 立刻返回 `loginUrl`（前端要在这个调用返回后马上 `window.open`，否则会被
+   * 弹窗拦截），授权与轮询在后台跑完 —— 与 Qoder / CodeArts 两步式同因。
+   *
+   * ⚠️ `loginUrl` **一次性**：生成后任何人先访问一次，链接即被服务端消费
+   *（`DEVICE_FLOW_REPLAYED`）。所以**不要**在这里做「连通性预检」。
+   *
+   * `refName` 指定凭据落到哪个 ref —— 多账号场景由 `account.create` 传入
+   * `QWENWORK_ACCOUNT_XXX`，各账号互不覆盖（BYO：每人带自己的账号）。
+   */
+  async startDeviceLogin(refName) {
+    const targetRef = refName ?? this.credentialRefName;
+    const flow = createQwenworkDeviceFlow();
+    const result = (async () => {
+      const tokens = await waitForQwenworkDeviceLogin(flow, {
+        fetchImpl: this.fetchImpl
+      });
+      const credential = qwenworkDeviceCredential(flow, tokens);
+      await this.save(credential, targetRef);
+      return credential;
+    })();
+    result.catch(() => {
+    });
+    return { loginUrl: flow.authUrl, result };
+  }
+  /**
    * 续期：用 refresh_token 换新 access_token 并写回。
    *
    * ⚠️ refresh_token 已过期（`refresh_expires_at` 先于 access_token 过期是
    * 实测常态）会抛错 —— 此时 access_token 往往仍可用（对话不受影响），
-   * 仅续期与「过期后续期」不可用，需官方客户端重新登录。
+   * 仅续期与「过期后续期」不可用，需重新走设备码登录。
    */
-  async refresh() {
-    const credential = await this.load();
+  async refresh(refName = this.credentialRefName) {
+    const credential = await this.load(refName);
     if (credential === void 0) return;
     const next = await refreshQwenworkCredential(credential, this.fetchImpl);
     await this.save({
@@ -69489,18 +69770,29 @@ var QwenworkAuth = class extends Service11 {
       refresh_token: next.refresh_token,
       expires_at: next.expires_at,
       refresh_expires_at: next.refresh_expires_at
+    }, refName);
+  }
+  /**
+   * 按账号续期（`account.refresh` 用）：续期该账号自己的 ref，并把新
+   * `expires_at` 写回账号池 —— 否则 UI 一直显示「已过期」而实际可用。
+   */
+  async refreshAccountCredential(refName, pool, accountId) {
+    await this.refresh(refName);
+    const next = await this.load(refName);
+    await pool.updateAccount(accountId, {
+      expiresAt: next === void 0 ? void 0 : next.expires_at
     });
   }
   /** 领取每日赠分（临期先续期一次；续期失败不阻断 —— access_token 仍可用）。 */
-  async claimDaily() {
-    let credential = await this.load();
+  async claimDaily(refName = this.credentialRefName) {
+    let credential = await this.load(refName);
     if (credential === void 0) {
       return { ok: false, claimed: false, alreadyClaimed: false, credit: 0, message: "\u5C1A\u672A\u5BFC\u5165\u5343\u95EE\u529E\u516C\u51ED\u636E" };
     }
     if (isQwenworkExpired(credential)) {
       try {
-        await this.refresh();
-        credential = await this.load();
+        await this.refresh(refName);
+        credential = await this.load(refName);
       } catch {
       }
     }
@@ -69510,8 +69802,8 @@ var QwenworkAuth = class extends Service11 {
     return claimQwenworkDailyCredit(credential, this.fetchImpl);
   }
   /** 凭据摘要（RPC/展示用；token 打码）。 */
-  async status() {
-    const credential = await this.load();
+  async status(refName = this.credentialRefName) {
+    const credential = await this.load(refName);
     if (credential === void 0) return { loggedIn: false };
     return {
       loggedIn: true,
@@ -69522,6 +69814,67 @@ var QwenworkAuth = class extends Service11 {
       refreshExpiresAt: credential.refresh_expires_at,
       expired: isQwenworkExpired(credential)
     };
+  }
+  /**
+   * **自动续期调度入口**（由 `index.ts` 的 30 分钟全局循环调用）。
+   *
+   * ## 为什么不复用 `shouldRefreshNow` 的 1 小时提前量
+   *
+   * 那个提前量是给 1~3 小时寿命的 provider（cline / codearts / raccoon）用的；
+   * 千问办公的 access_token 是 **7 天**寿命，按 1 小时提前量在「30 分钟一轮」
+   * 下只有约 2 次机会，一旦这两轮赶上服务重启就断供。这里用 **12 小时**
+   * 提前量：每轮命中后换新的 7 天 token，下次要到 6.5 天后才再命中，
+   * 既不会频繁轮换 refresh_token，又留足重试窗口。
+   *
+   * ## 失败语义（与其它 provider 对齐）
+   *
+   * - 单账号异常**不中断整批**；
+   * - 凭据缺失 / 无 refresh_token → 只把池里 `refreshable` 对账成 false；
+   * - 续期被服务端明确拒绝（refresh_token 失效）→ 标 `refreshable:false`
+   *   并提示重新「添加账号」，**不清空凭据**（access_token 往往仍可用）；
+   * - 网络类失败 → 保留 `refreshable`，下一轮自然重试。
+   */
+  async refreshAll(pool) {
+    const accounts = await pool.listAccounts(this.product.id);
+    for (const entry of accounts) {
+      try {
+        const credential = await this.load(entry.credentialRef);
+        if (credential === void 0) {
+          if (entry.refreshable === true) {
+            await pool.updateAccount(entry.id, { refreshable: false });
+          }
+          continue;
+        }
+        const hasRefresh = credential.refresh_token.length > 0;
+        if (entry.refreshable !== hasRefresh) {
+          await pool.updateAccount(entry.id, { refreshable: hasRefresh });
+        }
+        if (!hasRefresh) continue;
+        const expiresAt = credential.expires_at;
+        if (expiresAt > 0 && expiresAt - Date.now() > QWENWORK_REFRESH_LEAD_MS) {
+          if (entry.expiresAt !== expiresAt) {
+            await pool.updateAccount(entry.id, { expiresAt });
+          }
+          continue;
+        }
+        await this.refreshAccountCredential(entry.credentialRef, pool, entry.id);
+        this.ctx.logger?.info?.(
+          `[${this.product.id}] \u8D26\u53F7 ${entry.id} \u81EA\u52A8\u7EED\u671F\u6210\u529F\uFF08\u4E0B\u4E00\u4E2A 7 \u5929\u7A97\u53E3\uFF09`
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        this.ctx.logger?.warn?.(
+          `[${this.product.id}] \u8D26\u53F7 ${entry.id} \u81EA\u52A8\u7EED\u671F\u5931\u8D25\uFF1A${detail}`
+        );
+        if (QWENWORK_REFRESH_TERMINAL_RE.test(detail) && entry.refreshable !== false) {
+          await pool.updateAccount(entry.id, { refreshable: false }).catch(() => {
+          });
+          this.ctx.logger?.warn?.(
+            `[${this.product.id}] \u8D26\u53F7 ${entry.id} \u7684 refresh_token \u5DF2\u5931\u6548 \u2014\u2014 \u8BF7\u5728\u9762\u677F\u91CD\u65B0\u300C\u6DFB\u52A0\u8D26\u53F7\u300D\u8D70\u4E00\u6B21\u7F51\u9875\u6388\u6743`
+          );
+        }
+      }
+    }
   }
 };
 
@@ -69792,6 +70145,21 @@ function qwenworkStaticHeaders(modelKey, requestId, machineId) {
   }
   return headers;
 }
+function buildQwenworkTools(tools) {
+  if (tools === void 0 || tools.length === 0) return [];
+  return tools.map((tool) => {
+    const name2 = typeof tool.name === "string" ? tool.name : "";
+    const description = typeof tool.description === "string" ? tool.description : "";
+    return {
+      ...name2 !== "" ? { type: "function" } : {},
+      ...name2 === "" ? {} : { function: {
+        name: name2,
+        ...description.length > 0 ? { description } : {},
+        ...tool.parameters === void 0 ? {} : { parameters: tool.parameters }
+      } }
+    };
+  }).filter((tool) => tool.function !== void 0);
+}
 function buildQwenworkBody(request2, ids = {}) {
   const modelKey = normalizeQwenworkModel(request2.model);
   const requestId = ids.requestId ?? crypto.randomUUID();
@@ -69863,7 +70231,9 @@ function buildQwenworkBody(request2, ids = {}) {
     },
     system,
     messages,
-    tools: request2.tools ?? [],
+    // ⚠️ 必须经过形态映射（见 buildQwenworkTools 注释）：裸 DSH 形态会让上游
+    // 内部全模型拒绝（All models failed），WorkBuddy 真实会话必踩。
+    tools: buildQwenworkTools(request2.tools),
     parameters,
     business: {
       product: QWENWORK_BUSINESS_PRODUCT,
@@ -70219,7 +70589,7 @@ function createChannelFetch(options = {}) {
 
 // vendor/channel-pack/src/gemini-oauth.ts
 import { createServer as createServer8 } from "node:http";
-import { randomBytes as randomBytes13 } from "node:crypto";
+import { randomBytes as randomBytes14 } from "node:crypto";
 var GEMINI_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 var GEMINI_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 var GEMINI_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -70459,7 +70829,7 @@ async function listenCallback(handler, preferredPort) {
   return attempt(preferredPort);
 }
 async function startGeminiOAuthFlow(options = {}) {
-  const state = randomBytes13(16).toString("hex");
+  const state = randomBytes14(16).toString("hex");
   let resolveCode = () => {
   };
   let rejectCode = () => {
@@ -70862,7 +71232,7 @@ var GeminiAuth = class extends Service12 {
 };
 
 // vendor/channel-pack/src/gemini-sigstore.ts
-import { createHash as createHash9 } from "node:crypto";
+import { createHash as createHash10 } from "node:crypto";
 import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync12, renameSync as renameSync9, writeFileSync as writeFileSync10 } from "node:fs";
 import { dirname as dirname3, join as join12 } from "node:path";
 var GEMINI_SIG_FILE = "gemini-sigs.json";
@@ -70870,7 +71240,7 @@ var GEMINI_SIG_MAX_ENTRIES = 2e3;
 var SIG_KEY_BODY_LIMIT = 512;
 function geminiSigKey(role, text) {
   const body = text.length > SIG_KEY_BODY_LIMIT ? text.slice(0, SIG_KEY_BODY_LIMIT) : text;
-  return createHash9("sha256").update(`${role}\0${body}`, "utf8").digest("hex").slice(0, 16);
+  return createHash10("sha256").update(`${role}\0${body}`, "utf8").digest("hex").slice(0, 16);
 }
 function geminiToolSigKey(name2, argsJson) {
   return geminiSigKey(`tool:${name2}`, argsJson);
@@ -72369,9 +72739,11 @@ function apply(ctx, config = {}) {
     product: MINIMAX
   });
   const qwenwork = new QwenworkAuth(ctx, { fetchImpl: network.fetch });
-  registerQwenworkLlm(ctx, {
+  const qwenworkAdapter = registerQwenworkLlm(ctx, {
     credentialRef: credentialRef17(QWENWORK.defaultCredentialRef),
-    resolveCredential: async () => {
+    resolveCredential: async (modelId) => {
+      const available2 = await pool.getAvailableAccount(QWENWORK.id, modelId ?? "");
+      if (available2) return available2.credential;
       const resolved = await ctx.credentials.resolve(credentialRef17(QWENWORK.defaultCredentialRef));
       if (!resolved) return void 0;
       try {
@@ -72380,7 +72752,14 @@ function apply(ctx, config = {}) {
         return void 0;
       }
     },
-    refresh: () => qwenwork.refresh(),
+    refresh: async () => {
+      const available2 = await pool.getAvailableAccount(QWENWORK.id, "");
+      if (available2) {
+        await qwenwork.refreshAccountCredential(available2.entry.credentialRef, pool, available2.entry.id);
+      } else {
+        await qwenwork.refresh();
+      }
+    },
     readImage: makeReadImage(ctx),
     fetchImpl: network.fetch
   });
@@ -72629,7 +73008,10 @@ function apply(ctx, config = {}) {
     // ⚠️ Gemini **可续期**（Google OAuth 的 refresh_token，且会轮换）。
     // ⚠️ 漏了这一行定时器不武装：凭据到期后**不会自动续期**，
     // 用户会看到「每隔一小时就要重新登录」，且日志里一个字都没有。
-    ["gemini", (p) => gemini.refreshAll(p)]
+    ["gemini", (p) => gemini.refreshAll(p)],
+    // 千问办公 **可续期**（deviceToken/refresh + refresh_token 轮换）。
+    // 自有 12 小时提前量（token 寿命 7 天，见 QwenworkAuth.refreshAll）。
+    ["qwenwork", (p) => qwenwork.refreshAll(p)]
   ];
   async function refreshAllCredentials() {
     for (const [tag2, refreshAll] of refreshTargets) {
@@ -72783,6 +73165,7 @@ function apply(ctx, config = {}) {
     raccoon: pruned(RACCOON.id, raccoonAdapter),
     minimax: pruned(MINIMAX.id, minimaxAdapter),
     gemini: pruned(GEMINI.id, geminiAdapter),
+    qwenwork: pruned(QWENWORK.id, qwenworkAdapter),
     zcode: pruned(ZCODE.id, zcodeAdapter),
     ...opencodeAdapter === void 0 ? {} : { opencode: pruned(OPENCODE.id, opencodeAdapter) }
   };
@@ -72790,7 +73173,7 @@ function apply(ctx, config = {}) {
     void geminiSigStore.flush().catch(() => {
     });
   });
-  registerChannelPackRpc(ctx, pool, service, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, modelAdapters, config);
+  registerChannelPackRpc(ctx, pool, service, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, qwenwork, modelAdapters, config);
   mountOpenAiGateway(ctx, pool);
   installLoopResume(ctx);
   ctx.provide("accountPool", pool);

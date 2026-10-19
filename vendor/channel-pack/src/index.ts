@@ -1269,9 +1269,15 @@ export function apply(ctx: Context, config: { disableOpencode?: boolean; outlet?
   // `OFM_QWENWORK_AUTO_IMPORT=1` 时才在启动时导入一次；默认走显式导入
   // （RPC / 粘贴）。
   const qwenwork = new QwenworkAuth(ctx, { fetchImpl: network.fetch })
-  registerQwenworkLlm(ctx, {
+  const qwenworkAdapter = registerQwenworkLlm(ctx, {
     credentialRef: credentialRef(QWENWORK.defaultCredentialRef),
-    resolveCredential: async () => {
+    resolveCredential: async (modelId?: string) => {
+      // **账号池优先**（与 Qoder / Gemini 一致）：多账号 BYO 场景下每个账号
+      // 有自己的 `QWENWORK_ACCOUNT_XXX` ref，取 `getAvailableAccount` 选出的
+      // 那个（enabled + 模型未受限）。
+      const available = await pool.getAvailableAccount(QWENWORK.id, modelId ?? '')
+      if (available) return available.credential as unknown as QwenworkCredential
+      // 回退到默认单凭据 ref（本机导入制时期写入的凭据仍可用）。
       const resolved = await ctx.credentials.resolve(credentialRef(QWENWORK.defaultCredentialRef))
       if (!resolved) return undefined
       try {
@@ -1280,7 +1286,17 @@ export function apply(ctx: Context, config: { disableOpencode?: boolean; outlet?
         return undefined
       }
     },
-    refresh: () => qwenwork.refresh(),
+    refresh: async () => {
+      // 必须刷新**解析凭据时所用的那一个**账号（同 Qoder 的注释）：
+      // 适配器拿到的是池凭据，而 `qwenwork.refresh()` 默认读写默认 ref ——
+      // 错配会导致「续期成功但下次仍取到过期凭据」。
+      const available = await pool.getAvailableAccount(QWENWORK.id, '')
+      if (available) {
+        await qwenwork.refreshAccountCredential(available.entry.credentialRef, pool, available.entry.id)
+      } else {
+        await qwenwork.refresh()
+      }
+    },
     readImage: makeReadImage(ctx),
     fetchImpl: network.fetch,
   })
@@ -1729,6 +1745,9 @@ const zcodeAdapter = registerZcodeLlm(ctx, {
     // ⚠️ 漏了这一行定时器不武装：凭据到期后**不会自动续期**，
     // 用户会看到「每隔一小时就要重新登录」，且日志里一个字都没有。
     ['gemini', (p) => gemini.refreshAll(p)],
+    // 千问办公 **可续期**（deviceToken/refresh + refresh_token 轮换）。
+    // 自有 12 小时提前量（token 寿命 7 天，见 QwenworkAuth.refreshAll）。
+    ['qwenwork', (p) => qwenwork.refreshAll(p)],
   ]
 
   async function refreshAllCredentials(): Promise<void> {
@@ -1988,6 +2007,7 @@ const zcodeAdapter = registerZcodeLlm(ctx, {
     raccoon: pruned(RACCOON.id, raccoonAdapter),
     minimax: pruned(MINIMAX.id, minimaxAdapter),
     gemini: pruned(GEMINI.id, geminiAdapter),
+    qwenwork: pruned(QWENWORK.id, qwenworkAdapter),
     zcode: pruned(ZCODE.id, zcodeAdapter),
     ...(opencodeAdapter === undefined ? {} : { opencode: pruned(OPENCODE.id, opencodeAdapter) }),
   }
@@ -1997,7 +2017,7 @@ const zcodeAdapter = registerZcodeLlm(ctx, {
   // 丢的却是「下一轮工具调用能不能带上签名」。
   ctx.effect(() => () => { void geminiSigStore.flush().catch(() => {}) })
 
-  registerChannelPackRpc(ctx, pool, service, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, modelAdapters, config)
+  registerChannelPackRpc(ctx, pool, service, buddy, workbuddy, lobsterai, qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, qwenwork, modelAdapters, config)
   // 网关是旁路功能：这里传 `pool` 只为读设置页里的开关，其内部任何失败都已
   // 自行降级为日志，绝不会让插件 apply() 失败。
   mountOpenAiGateway(ctx, pool)

@@ -13,6 +13,7 @@
  */
 
 import {
+  QWENWORK_ACCOUNT_CONTEXT_PATH,
   QWENWORK_CLAIM_APP_MODE,
   QWENWORK_CLAIM_BUILD,
   QWENWORK_CLAIM_IDE_VERSION,
@@ -25,6 +26,7 @@ import {
   isQwenworkExpired,
   type QwenworkCredential,
 } from './qwenwork.js'
+import { roundCredits, type CreditBalance } from './credits.js'
 
 /** 续期/领取共享的 OpenAPI 身份头。 */
 function openapiHeaders(requestId: string, withAuth: boolean, accessToken: string, userAgent: string): Record<string, string> {
@@ -137,6 +139,67 @@ export async function claimQwenworkDailyCredit(
 /** 凭据是否需要续期（过期或临期 5 分钟）。 */
 export function qwenworkNeedsRefresh(credential: QwenworkCredential): boolean {
   return isQwenworkExpired(credential)
+}
+
+/**
+ * 查询千问办公积分余额（官方客户端同款端点）。
+ *
+ * `GET {gateway}/api/v1/adapter/user/account-context?include=user,plan,quota,...`
+ * （OpenAPI 身份 1.3.1 + Bearer，与每日领取同源同签名要求）。
+ *
+ * 实测（2026-10-19）响应 `data.quota`：免费版 `total/used` 为 `null`，
+ * 只有 `remaining`（含小数，如 2099.7217）与 `exceeded` 布尔。映射成
+ * **单包** `CreditBalance`：`total/used` 无从得知就如实给 0，`remaining`
+ * 用上游值四舍五入到两位；`exceeded=true` 时包标记为失效（active=false）。
+ * 网络/凭据失败返回 `null`（调用方按「查询失败」呈现，不显示成 0）。
+ */
+export async function fetchQwenworkQuotaBalance(
+  credential: QwenworkCredential,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CreditBalance | null> {
+  const headers = openapiHeaders(
+    `ofm-${Date.now()}`, true, credential.access_token, QWENWORK_CLAIM_USER_AGENT,
+  )
+  try {
+    const response = await fetchImpl(`${QWENWORK_GATEWAY}${QWENWORK_ACCOUNT_CONTEXT_PATH}`, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(20_000),
+    })
+    if (!response.ok) return null
+    const payload = await response.json().catch(() => undefined) as Record<string, unknown> | undefined
+    const data = unwrapClaimData(payload)
+    const quota = typeof data.quota === 'object' && data.quota !== null
+      ? data.quota as Record<string, unknown>
+      : undefined
+    const remaining = typeof quota?.remaining === 'number' && Number.isFinite(quota.remaining)
+      ? quota.remaining
+      : undefined
+    if (remaining === undefined) return null
+    const exceeded = quota?.exceeded === true
+    const plan = typeof data.plan === 'object' && data.plan !== null
+      ? data.plan as Record<string, unknown>
+      : {}
+    const planName = typeof plan.name === 'string' && plan.name.length > 0 ? plan.name : '千问办公'
+    return {
+      total: roundCredits(remaining),
+      expiredTotal: 0,
+      packages: [{
+        name: `${planName}积分`,
+        unit: 'credit',
+        remaining: roundCredits(remaining),
+        // 上游免费版不下发 total/used（null）—— 如实给 0，UI 只展示 remaining。
+        total: 0,
+        used: 0,
+        active: !exceeded,
+        cycleStartTime: '',
+        cycleEndTime: '',
+        expiredTime: '',
+      }],
+    }
+  } catch {
+    return null
+  }
 }
 
 function unwrapClaimData(payload: Record<string, unknown> | undefined): Record<string, unknown> {

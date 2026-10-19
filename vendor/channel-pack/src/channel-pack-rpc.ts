@@ -62,6 +62,9 @@ import { GEMINI, geminiAccountLabel, geminiCredentialExpiresAtMs, isGeminiRefres
 import type { GeminiCredential } from './gemini.js'
 import type { GeminiAuth, StartedGeminiLoginFlow } from './gemini-auth.js'
 import { fetchGeminiCreditBalance } from './gemini-credits.js'
+import { QWENWORK } from './qwenwork-product.js'
+import type { QwenworkAuth } from './qwenwork-auth.js'
+import { fetchQwenworkQuotaBalance } from './qwenwork-credits.js'
 import { LOOMY_TASK_POINTS, LOOMY_TASK_TITLES } from './loomy-onboarding.js'
 import { LOBSTERAI } from './lobsterai-product.js'
 import { QODER, QODER_CN, type QoderProduct } from './qoder-product.js'
@@ -874,6 +877,13 @@ export function registerChannelPackRpc(
    */
   gemini: GeminiAuth,
   /**
+   * 千问办公（QwenWorkCN）实例（**本机导入制**：无网页 OAuth，凭据来自
+   * 本机官方客户端 `auth-v2.dat` 或粘贴 JSON；`account.create` 即导入）。
+   *
+   * ⚠️ 沿用「新 provider 一律追加在末尾」的约定（见上方 gemini 注释）。
+   */
+  qwenwork: QwenworkAuth,
+  /**
    * provider → 适配器实例（可选）。
    *
    * 用于「显示列表」拿到**不受用户黑名单影响**的全量目录（`listAllModels`），
@@ -886,7 +896,7 @@ export function registerChannelPackRpc(
   ctx.inject(['connection'], (connectionCtx) => {
     registerChannelPackEndpoints(
       connectionCtx as Context, pool, codearts, buddy, workbuddy, lobsterai,
-      qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, modelAdapters, config,
+      qoder, qoderCn, trae, cline, loomy, raccoon, minimax, zcode, gemini, qwenwork, modelAdapters, config,
     )
   })
 }
@@ -980,6 +990,8 @@ function registerChannelPackEndpoints(
   minimax: MinimaxAuth,
   zcode: ZcodeAuth,
   gemini: GeminiAuth,
+  /** 千问办公（本机导入制）实例，见 registerChannelPackRpc 同名形参注释。 */
+  qwenwork: QwenworkAuth,
   modelAdapters?: Readonly<Record<string, ModelCatalogSource>>,
   config: { disableOpencode?: boolean } = {},
 ): void {
@@ -1953,6 +1965,49 @@ function registerChannelPackEndpoints(
           })
 
           return { ok: true, value: { accountId: id, loginUrl: geminiStarted.loginUrl } }
+        } else if (provider === QWENWORK.id) {
+          // 千问办公：**设备码网页登录**（官方客户端同款 OAuth Device Flow，
+          // 见 `qwenwork-device.ts`）—— 用户在自己浏览器登录**自己的**阿里
+          // 账号，不装客户端、不碰钥匙串，多人各带各的账号（BYO）。
+          //
+          // 与 Qoder / CodeArts 同款两步式：先立刻返回 loginUrl 让前端马上
+          // `window.open`（阻塞几十秒再返回必被拦截），后台轮询授权结果。
+          //
+          // ⚠️ 池条目 credentialRef 仍指向**默认 ref**（单凭据渠道）：
+          // claimDaily / 余额查询 / 续期都读写同一个 ref，与导入制时期一致。
+          // 多次「添加账号」会覆盖同一份凭据 —— 这是该渠道既有语义，不是缺陷。
+          // ⚠️ 每个账号写**自己的 ref**（`QWENWORK_ACCOUNT_XXX`，与其它渠道
+          // 一致）：多个用户各登各的账号互不覆盖；账号级删除也只清自己的
+          // 凭据（早期共用默认 ref 的写法，删占位账号会把凭据一起删掉 ——
+          // 实测踩过，文件被清成 `{}`）。
+          const started = await qwenwork.startDeviceLogin(refName)
+          await pool.addAccount({
+            id,
+            provider: QWENWORK.id,
+            nickname: id,
+            enabled: true,
+            credentialRef: refName,
+            // 授权完成后按凭据回填（有 refresh_token 才算可续期）。
+            refreshable: false,
+            createdAt: Date.now(),
+          })
+          started.result.then(async (credential) => {
+            await pool.updateAccount(id, {
+              nickname: credential.name.length > 0 ? credential.name : id,
+              expiresAt: credential.expires_at > 0 ? credential.expires_at : undefined,
+              refreshable: credential.refresh_token.length > 0,
+            })
+            pendingLoginFailures.delete(id)
+          }).catch((error: unknown) => {
+            const reason = error instanceof Error ? error.message : String(error)
+            ctx.logger.warn(`[channel-pack] background ${QWENWORK.id} login failed for ${id}: ${reason}`)
+            // 失败原因留在表里，login.poll 会据此回 `done:true, success:false`
+            //（只给 401/超时这类终态用；「尚未授权」是 404 中间态，不进这里）。
+            pendingLoginFailures.set(id, reason.slice(0, 500))
+            // 登录失败：移除占位条目，避免留下无凭据的幽灵账号
+            void pool.removeAccount(id).catch(() => {})
+          })
+          return { ok: true, value: { accountId: id, loginUrl: started.loginUrl } }
         } else {
           return { ok: false, error: { code: 'bad-request', message: `unknown provider: ${provider}` } }
         }
@@ -2086,6 +2141,13 @@ function registerChannelPackEndpoints(
               // 账号池，否则 UI 一直显示「已过期」而实际能正常发消息。
               // ⚠️ Google 会**轮换 refresh_token**，`GeminiAuth` 内部已回写新值。
               await gemini.refreshAccountCredential(entry.credentialRef, pool, entry.id)
+              break
+            case QWENWORK.id:
+              // 千问办公：**按账号自己的 ref 续期**（多账号 BYO）。refresh_token
+              // 过期会抛错（此时 access_token 往往仍可用）——设备码登录拿到的
+              // refresh 有效期与 access 同为 7 天，连续续期即可长期维持；真
+              // 失效时重新「添加账号」走一次网页授权即可，无需再装客户端。
+              await qwenwork.refreshAccountCredential(entry.credentialRef, pool, entry.id)
               break
             default:
               throw new Error(`Unknown provider: ${entry.provider}`)
@@ -2635,6 +2697,18 @@ function registerChannelPackEndpoints(
           )
           return { ok: true, value: { accounts: value } satisfies RpcCreditsStatusResponse }
         }
+        if (req.provider === QWENWORK.id) {
+          // 千问办公没有独立的「签到状态」端点：每日赠分由 claim 触发
+          //（响应自带 alreadyClaimed 幂等）。与 CodeArts / LobsterAI 同口径
+          // 如实返回 null，由 claimAll 内部处理幂等。
+          const accounts = await pool.listAccounts(req.provider)
+          return {
+            ok: true,
+            value: {
+              accounts: accounts.map((entry) => ({ accountId: entry.id, nickname: entry.nickname, status: null })),
+            } satisfies RpcCreditsStatusResponse,
+          }
+        }
         const product = productById(req.provider)
         if (product === undefined) {
           return { ok: false, error: { code: 'bad-request', message: `unsupported provider: ${req.provider}` } }
@@ -2666,6 +2740,36 @@ function registerChannelPackEndpoints(
             warn: (msg) => ctx.logger?.warn?.(msg),
           })
           return { ok: true, value: value satisfies RpcCreditsClaimAllResponse }
+        }
+        if (req.provider === QWENWORK.id) {
+          // 千问办公：**逐账号用自己的 ref 领取**（多账号 BYO，各人消耗各自
+          // 每日 100 积分）。响应自带 `alreadyClaimed` 幂等，故无需状态预检
+          //（本渠道也没有「今日是否已领」端点，见 credits.status 分支）。
+          const claimAccounts = await pool.listAccounts(req.provider)
+          const results: RpcCreditsClaimAllResponse['results'] = []
+          for (const entry of claimAccounts) {
+            let outcome: ClaimOutcome
+            try {
+              const claim = await qwenwork.claimDaily(entry.credentialRef)
+              outcome = claim.ok
+                ? (claim.alreadyClaimed
+                    ? { kind: 'already-claimed', message: claim.message }
+                    : { kind: 'claimed', credit: claim.credit, streakDays: 0, isStreakDay: false })
+                : { kind: 'failed', code: 0, message: claim.message }
+            } catch (error) {
+              // 单账号失败不中断整体（与 collectClaimResults 同口径）
+              outcome = {
+                kind: 'failed',
+                code: 0,
+                message: error instanceof Error ? error.message : String(error),
+              }
+            }
+            results.push({ accountId: entry.id, nickname: entry.nickname, outcome })
+          }
+          return {
+            ok: true,
+            value: { results, summary: computeClaimSummary(results.map((row) => row.outcome)) } satisfies RpcCreditsClaimAllResponse,
+          }
         }
         if (req.provider === 'codearts') {
           // CodeArts（华为云）走**签名**协议，与两个腾讯系 provider 都不同源：
@@ -3305,6 +3409,34 @@ function registerChannelPackEndpoints(
                * 前端需要按模型逐行渲染、缺桶的模型显示占位。
                */
               balance: buildZcodeBalance(result),
+            })
+          }
+          return { ok: true, value: { accounts: values } satisfies RpcCreditsBalancesResponse }
+        }
+        if (req.provider === QWENWORK.id) {
+          // 千问办公余额：走官方客户端同款账号上下文端点
+          // （`GET /api/v1/adapter/user/account-context?include=...,quota,...`，
+          // 实测 200，`data.quota.remaining` 即剩余积分，含小数）。
+          // **逐账号用自己的 ref 查**（多账号 BYO，各人积分各自独立）。
+          // 查不到时如实报错（不显示成 0 —— 0 是「已用光」的语义）。
+          const accounts = await pool.listAccounts(req.provider)
+          const values: RpcCreditsBalancesResponse['accounts'] = []
+          for (const entry of accounts) {
+            const credential = await qwenwork.load(entry.credentialRef)
+            const balance = credential === undefined
+              ? null
+              : await fetchQwenworkQuotaBalance(credential)
+            values.push({
+              accountId: entry.id,
+              nickname: entry.nickname,
+              balance,
+              ...(balance === null
+                ? {
+                    error: credential === undefined
+                      ? '凭据未配置'
+                      : '积分查询失败（凭据失效或响应异常）',
+                  }
+                : {}),
             })
           }
           return { ok: true, value: { accounts: values } satisfies RpcCreditsBalancesResponse }
