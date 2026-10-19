@@ -495,6 +495,13 @@ window.__ModuleLoader__.load({
         'logs.windowNote': '逐条日志保留最近窗口；历史只保留按日聚合（约 90 天），数据看板的「全部历史」即来源于此。',
         'logs.prompt': '提问摘要',
         'logs.response': '返回摘要',
+        'logs.tool': '工具回填',
+        'logs.reasoning': 'AI 思考',
+        'logs.show': '展开',
+        'logs.hide': '收起',
+        'logs.detailLoading': '正在读取全文…',
+        'logs.noContentFailed': '请求失败，没有产生内容。',
+        'logs.noContentThinking': '本轮只产出了思考（agent 续轮常见），没有正文。',
         'logs.expandHint': '点击行查看请求内容',
         'logs.noPreview': '本条没有内容摘要。',
         'logs.perPage': '每页',
@@ -1186,6 +1193,13 @@ window.__ModuleLoader__.load({
         'logs.windowNote': 'Per-request rows cover a recent window only; history is kept as daily aggregates (~90 days) — the dashboard\'s "All time" reads those.',
         'logs.prompt': 'Prompt',
         'logs.response': 'Response',
+        'logs.tool': 'Tool output',
+        'logs.reasoning': 'AI thinking',
+        'logs.show': 'Show',
+        'logs.hide': 'Hide',
+        'logs.detailLoading': 'Loading full text…',
+        'logs.noContentFailed': 'The request failed, so there is no content.',
+        'logs.noContentThinking': 'This turn only produced thinking (common in agent follow-up turns), no answer text.',
         'logs.expandHint': 'Click a row to view its content',
         'logs.noPreview': 'No content preview for this entry.',
         'logs.perPage': 'Rows per page',
@@ -2341,6 +2355,27 @@ window.__ModuleLoader__.load({
 .ofm_reconote{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
 @media (max-width:600px){.ofm_recogrid{grid-template-columns:1fr}.ofm_recoacts{width:100%;margin-left:0}}
 @media (prefers-reduced-motion:reduce){.ofm_recocard,.ofm_recostar,.ofm_recogo,.ofm_recochip,.ofm_recomark{animation:none;transition:border-color .12s ease,background .12s ease,box-shadow .12s ease,opacity .12s ease,color .12s ease}.ofm_recocard:hover,.ofm_recostar:hover,.ofm_recostar:active,.ofm_recogo:hover,.ofm_recochip:hover,.ofm_recocard:hover .ofm_recomark{transform:none}.ofm_recostar::after,.ofm_recostarring,.ofm_recoglow{display:none}}
+/* ══ 运行日志：点击行展开全文（2026-10-19 懒加载） ════════════════════════ */
+.ofm_logrow{cursor:pointer}
+.ofm_logrow:active td{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 8%,transparent)}
+.ofm_logdetail-row td{padding:0}
+.ofm_logdetail-row:hover td{background:transparent}
+.ofm_logdetail{display:flex;flex-direction:column;gap:10px;padding:12px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);border-left:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);animation:ofm_logdetail-in .18s ease}
+@keyframes ofm_logdetail-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.ofm_logdetail-block{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ofm_logdetail-label{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}
+.ofm_logdetail p{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-primary);word-break:break-all;white-space:pre-wrap}
+/* 全文块：保留原始换行（代码/表格），限高滚动，避免一条日志把页面撑爆 */
+.ofm_logdetail-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 60%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 70%,transparent)}
+/* 思考块：次要色 + 虚线边框，默认折叠 */
+.ofm_logdetail-think{color:var(--dsw-alias-label-secondary);font-style:italic;border-style:dashed}
+.ofm_logdetail-toggle{font:inherit;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;padding:1px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l2) 80%,transparent);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:border-color .16s ease,color .16s ease}
+.ofm_logdetail-toggle:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-label-primary)}
+/* 运行日志：底部翻页行（左翻页、右每页条数下拉） */
+.ofm_logpager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+.ofm_logpager-nav{display:flex;align-items:center;gap:10px}
+.ofm_logpager-size{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.ofm_logpager-size select{padding:4px 8px;font-size:12px;border-radius:7px;max-width:none}
 `
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -4967,13 +5002,7 @@ window.__ModuleLoader__.load({
                 h('td', { className: 'ofm_num' }, h('b', null, fmtInt(entry.inputTokens + entry.outputTokens)))),
                 expanded === entry.ts ? h('tr', { key: `x${index}`, className: 'ofm_logdetail-row' },
                   h('td', { colSpan: 14 },
-                    h('div', { className: 'ofm_logdetail' },
-                      h('div', { className: 'ofm_logdetail-block' },
-                        h('span', { className: 'ofm_logdetail-label' }, t('logs.prompt')),
-                        h('p', null, entry.promptPreview || t('logs.noPreview'))),
-                      h('div', { className: 'ofm_logdetail-block' },
-                        h('span', { className: 'ofm_logdetail-label' }, t('logs.response')),
-                        h('p', null, entry.responsePreview || t('logs.noPreview')))))) : null,
+                    h(LogDetail, { t, rpc, entry }))) : null,
               ])))),
           entries.length > 0 ? h('div', { className: 'ofm_logpager' },
             h('div', { className: 'ofm_logpager-nav' },
@@ -4986,6 +5015,76 @@ window.__ModuleLoader__.load({
                 [10, 20, 50, 100].map(size => h('option', { key: size, value: String(size) }, String(size)))),
               t('logs.perPageSuffix'))) : null,
           h('p', { className: 'ofm_note' }, t('logs.windowNote'))) : null)
+    }
+
+    /**
+     * 一条日志的详情（2026-10-19 · 懒加载）。
+     *
+     * ## 为什么不在列表里带全文
+     *
+     * 全文单条中位 345KB。旧实现把 200 字摘要随快照下发（一次 400 条才 150KB），
+     * 若把全文塞进快照，每次刷新要传 135MB —— 开「10 秒自动刷新」就是
+     * 13.5MB/s 的持续 RPC。所以：**列表只要摘要，点开这一行才读全文**。
+     *
+     * ## 三级回退（保证任何情况下都有可读内容）
+     *
+     * 1. `hasDetail` 且 RPC 成功 → 全文四块（提问/工具回填/正文/思考）。
+     * 2. RPC 无详情（旧记录 / 已轮转删除）→ 退回记录里的 200 字摘要。
+     * 3. 连摘要也没有 → 按**原因**给文案，而不是统一说「本条没有内容摘要」：
+     *    - 有 error ⇒ 请求失败，无内容可摘；
+     *    - 有 reasoningTokens 但无正文 ⇒ 本轮只产出思考（agent 续轮常见）；
+     *    - 其余 ⇒ 确实没有内容。
+     */
+    function LogDetail(props) {
+      const { t, rpc, entry } = props
+      const [state, setState] = useState({ status: 'idle', detail: undefined })
+      const [showThinking, setShowThinking] = useState(false)
+      useEffect(() => {
+        // 没有 hasDetail 标记（旧记录）就不必打 RPC —— 直接走摘要回退。
+        if (entry?.hasDetail !== true) { setState({ status: 'none', detail: undefined }); return undefined }
+        let alive = true
+        setState({ status: 'loading', detail: undefined })
+        void (async () => {
+          try {
+            const result = await rpc('usage.tokenLedgerDetail', { ts: entry.ts }, 30_000)
+            if (!alive) return
+            setState({ status: result?.detail ? 'ready' : 'none', detail: result?.detail })
+          } catch {
+            if (alive) setState({ status: 'none', detail: undefined })
+          }
+        })()
+        return () => { alive = false }
+      }, [entry?.ts, entry?.hasDetail, rpc])
+
+      const loaded = state.detail
+      const block = (label, text, extra) => text
+        ? h('div', { className: 'ofm_logdetail-block' },
+            h('span', { className: 'ofm_logdetail-label' }, label, extra),
+            h('pre', { className: 'ofm_logdetail-text' }, text))
+        : null
+      // 摘要回退：RPC 没拿到全文时，至少把记录自带的 200 字摘要显示出来。
+      const promptFallback = loaded?.promptText || entry?.promptPreview || ''
+      const responseFallback = loaded?.responseText || entry?.responsePreview || ''
+      const emptyHint = entry?.error
+        ? t('logs.noContentFailed')
+        : Number.isFinite(entry?.reasoningTokens) && entry.reasoningTokens > 0 && responseFallback === ''
+          ? t('logs.noContentThinking')
+          : t('logs.noPreview')
+      const anyContent = promptFallback !== '' || responseFallback !== '' || loaded?.toolText || loaded?.reasoningText
+      return h('div', { className: 'ofm_logdetail' },
+        state.status === 'loading' ? h('p', { className: 'ofm_note' }, t('logs.detailLoading')) : null,
+        block(t('logs.prompt'), promptFallback),
+        block(t('logs.tool'), loaded?.toolText),
+        block(t('logs.response'), responseFallback),
+        loaded?.reasoningText
+          ? h('div', { className: 'ofm_logdetail-block' },
+              h('span', { className: 'ofm_logdetail-label' },
+                t('logs.reasoning'),
+                h('button', { className: 'ofm_logdetail-toggle', onClick: () => setShowThinking(value => !value) },
+                  showThinking ? t('logs.hide') : t('logs.show'))),
+              showThinking ? h('pre', { className: 'ofm_logdetail-text ofm_logdetail-think' }, loaded.reasoningText) : null)
+          : null,
+        anyContent || state.status === 'loading' ? null : h('p', null, emptyHint))
     }
 
     /** The gateway page: the pack's OpenAI endpoint plus this plugin's relay. */

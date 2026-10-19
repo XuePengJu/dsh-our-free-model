@@ -89,7 +89,7 @@ import type { TraeCredential } from './trae.js'
 import { fetchClineCreditBalance } from './cline-credits.js'
 import { fetchClineUsageLimits } from './cline-quota.js'
 import { clineUpstreamOf, readClineRequestHistory } from './cline-request-log.js'
-import { readTokenLedger, readTokenLedgerDayMap, readTokenLedgerHistory, TOKEN_LEDGER_HISTORY_MAX_DAYS } from './token-ledger.js'
+import { readTokenLedger, readTokenLedgerDayMap, readTokenLedgerHistory, readEntryDetail, TOKEN_LEDGER_HISTORY_MAX_DAYS } from './token-ledger.js'
 import {
   clineCredentialExpiresAtMs,
   isClineRefreshable,
@@ -215,6 +215,8 @@ import type {
   RpcUsageBadgePreferenceResponse,
   RpcUsageTokenLedgerRequest,
   RpcUsageTokenLedgerResponse,
+  RpcUsageTokenLedgerDetailRequest,
+  RpcUsageTokenLedgerDetailResponse,
   RpcUsageTokenLedgerHistoryRequest,
   RpcUsageTokenLedgerHistoryResponse,
   RpcUsageAutoCheckinRequest,
@@ -4268,6 +4270,24 @@ function registerChannelPackEndpoints(
             : {},
         )
         const value: RpcUsageTokenLedgerResponse = { snapshot }
+        return { ok: true, value }
+      }
+
+      /**
+       * **单条记录全文**（2026-10-19 · 日志详情懒加载）。
+       *
+       * 数据源是 JSONL（`channel-pack/request-log*.jsonl`），从文件尾按 64KB
+       * 块回扫直到命中 `ts` —— 用户点的几乎总是最近几条，命中即停。
+       *
+       * ⚠️ 为什么不塞进 `usage.tokenLedger` 快照：全文单条中位 345KB，
+       * 前端一次拉 400 条 = 135MB。列表只要摘要，详情点开才读。
+       */
+      case 'usage.tokenLedgerDetail': {
+        const req = payload as RpcUsageTokenLedgerDetailRequest
+        const ts = typeof req?.ts === 'number' && Number.isFinite(req.ts) ? req.ts : 0
+        if (ts <= 0) return { ok: false, error: { code: 'invalid-request', message: 'ts is required' } }
+        const detail = await readEntryDetail(ts)
+        const value: RpcUsageTokenLedgerDetailResponse = detail === undefined ? {} : { detail }
         return { ok: true, value }
       }
 

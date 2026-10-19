@@ -29,7 +29,9 @@
  * 推理失败。所有入参截断/钳制，`Object.freeze` 防止调用方修改共享对象。
  */
 
-import { appendFileSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { appendFile, chmod, open } from 'node:fs/promises'
+import { Buffer } from 'node:buffer'
 
 /** 一条请求记录。 */
 export interface TokenLedgerEntry {
@@ -90,13 +92,40 @@ export interface TokenLedgerEntry {
   /** 失败原因；成功行省略。 */
   error?: string
   /**
-   * **请求摘要**（独立端增强）：最后一条 user 消息的纯文本，截前 200 字。
+   * **请求摘要**（独立端增强）：最后一条 user 消息的纯文本，截前 {@link PREVIEW_MAX_CHARS} 字。
    *
    * ⚠️ 上游没有这个字段 —— 本机为「日志详情面板」加的可观测性，缺省省略。
    */
   promptPreview?: string
-  /** **返回摘要**（独立端增强）：流内 text-delta 累积，截前 200 字。缺省省略。 */
+  /** **返回摘要**（独立端增强）：流内 text-delta 累积，截前 {@link PREVIEW_MAX_CHARS} 字。缺省省略。 */
   responsePreview?: string
+  /**
+   * **本轮增量内容存在全文**（独立端增强，2026-10-19）。
+   *
+   * ⚠️ 这里只放一个布尔，**全文不放进 record**：内存账本上限 500 条，
+   * 全文（单条中位 77k token）会把常驻内存推到 168MB、把每次快照 RPC 推到
+   * 135MB。全文按需从 JSONL 懒加载，见 {@link readEntryDetail}。
+   */
+  hasDetail?: boolean
+  /**
+   * 本轮**用户真正说的话**（增量，非全量上下文）。
+   *
+   * ⚠️ 与 `promptPreview` 的区别：`promptPreview` 是「最后一条 user 消息」，
+   * 而 agent 续轮的 user 消息实际是 **tool-result**（网关把 `role:'tool'`
+   * 转成 `role:'user'` + `tool-result` 块），文本提取会得到空串 —— 这正是
+   * 改造前 93.6% 提问摘要为空的原因。本字段回退到「最近一条带文本的 user」，
+   * 再退化到 tool-result 的文本，保证续轮也有可读的提问。
+   */
+  promptText?: string
+  /** 本轮 AI **正文**（流内 text-delta 拼接，未截断；落盘时按 {@link DETAIL_FIELD_MAX_CHARS} 截断）。 */
+  responseText?: string
+  /** 本轮 AI **思考**（流内 reasoning-delta 拼接；与正文分开存，UI 默认折叠）。 */
+  reasoningText?: string
+  /**
+   * 本轮**工具回填**（tool-result 文本，用于回答「这一轮 AI 在读什么文件/跑什么命令」）。
+   * 仅当提问来自 tool-result 时才记，避免与 `promptText` 重复。
+   */
+  toolText?: string
 }
 
 /** 渠道 → provider → 账号 → 模型 聚合里模型粒度的一行。 */
@@ -164,22 +193,38 @@ export const TOKEN_LEDGER_LIMIT = 500
 let ledger: TokenLedgerEntry[] = []
 
 /**
- * **逐条请求日志落盘**（独立端增强，2026-10-18）。
+ * **逐条请求日志落盘**（独立端增强，2026-10-18；2026-10-19 改为按天轮转）。
  *
  * 上游只把逐条明细留在进程内存（重启即丢），日聚合才落盘。这里额外把每条
- * record 以 JSONL 追加到 `channel-pack/request-log.jsonl`：单文件满
- * {@link ENTRY_LOG_MAX_BYTES} 轮转成 `.old`，启动时回读最近
+ * record 以 JSONL 追加到 `channel-pack/request-log.jsonl`：启动时回读最近
  * {@link TOKEN_LEDGER_LIMIT} 条进内存 —— 日志页在重启后仍能看到逐条记录。
+ *
+ * ## 2026-10-19 改造：单文件上限 5MB → 200MB，轮转判据改为「按天」
+ *
+ * 旧实现按**字节**轮转（`size > 5MB` 就 rename 成 `.old`，只留一份）。摘要
+ * 只有 200 字时单条 374B，5MB 能装 14000 条；但老板要求记录**全文**
+ * （提问/正文/思考），实测单条中位 345KB（完整上下文快照）—— 5MB 只够
+ * **15 条**，等于把「500 条历史」砍成半小时。
+ *
+ * 现在：①上限提到 200MB；②轮转判据是**UTC+8 日界**（跨天才换文件），
+ * 文件名带日期 `request-log-YYYY-MM-DD.jsonl`；③只保留最近
+ * {@link ENTRY_LOG_KEEP_DAYS} 天，更早的在轮转时删除。
  *
  * ⚠️ 路径为空串 = 未启用（无盘环境/未挂载 store），所有落盘操作直接返回。
  */
-const ENTRY_LOG_MAX_BYTES = 5 * 1024 * 1024
+const ENTRY_LOG_MAX_BYTES = 200 * 1024 * 1024
+
+/** 逐条日志保留天数（按 UTC+8 日界切文件，超期文件在轮转时删除）。 */
+const ENTRY_LOG_KEEP_DAYS = 7
+
+/** 全文单字段落盘上限（字符）。超出截断并标记，避免单条记录无界膨胀。 */
+const DETAIL_FIELD_MAX_CHARS = 200_000
 
 /** 逐条日志路径；由 `createTokenLedgerStore` 通过 {@link configureEntryLog} 注入。 */
 let entryLogPath = ''
 
 /** 请求/返回摘要的截断长度（字符）。 */
-const PREVIEW_MAX_CHARS = 200
+const PREVIEW_MAX_CHARS = 2000
 
 /**
  * 「该 provider 最近一次解析出的账号」注册表（第 2 期 · 账号维度）。
@@ -346,13 +391,15 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
     const ttft = clampCount(entry.ttftMs)
     const duration = clampCount(entry.durationMs)
     const outputTokens = clampCount(entry.outputTokens)
-    // 请求/返回摘要（独立端增强）：各截前 200 字，空则省略字段。
+    // 请求/返回摘要（独立端增强）：各截前 PREVIEW_MAX_CHARS 字，空则省略字段。
     const promptPreview = typeof entry.promptPreview === 'string'
       ? entry.promptPreview.slice(0, PREVIEW_MAX_CHARS)
       : ''
     const responsePreview = typeof entry.responsePreview === 'string'
       ? entry.responsePreview.slice(0, PREVIEW_MAX_CHARS)
       : ''
+    // 全文三段（2026-10-19）：脱敏 + 截断，**只落盘不进 record**（见 hasDetail 注释）。
+    const detail = buildDetail(entry)
     // TPS（官方口径）：分子 = 全部输出 token（含思考），分母 = 首块之后 → 结束。
     // 三个前提（有首块 / 分母 > 0 / usage 已报）缺一个都不可测 ⇒ 省略字段。
     const decodeMs = duration - ttft
@@ -372,6 +419,9 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
       // 请求/返回摘要（独立端增强）：空则省略（与「没内容」区分不开时缺省更诚实）。
       ...(promptPreview.length > 0 ? { promptPreview } : {}),
       ...(responsePreview.length > 0 ? { responsePreview } : {}),
+      // 全文只留一个布尔（2026-10-19）：record 进内存账本（上限 500 条），
+      // 全文进去会把常驻内存推到 168MB —— 全文走 JSONL 懒加载。
+      ...(detail !== undefined ? { hasDetail: true } : {}),
       // ⚠️ 0 / 缺失一律**省略字段**而不是写 0：与接口注释一致，
       // 「没有缓存命中」与「命中 0 个」无从区分时，缺省是更诚实的表示。
       ...(cacheRead > 0 ? { cacheReadTokens: cacheRead } : {}),
@@ -394,8 +444,8 @@ export function recordTokenUsage(entry: Omit<TokenLedgerEntry, 'ts'>): void {
     } catch {
       // 持久化失败绝不反噬推理（双重防御：后端违约也不炸）。
     }
-    // 逐条明细落盘（独立端增强）：内部自带兜错，不抛。
-    appendEntryLog(record)
+    // 逐条明细落盘（独立端增强）：record + 全文三段一起写，内部自带兜错，不抛。
+    appendEntryLog(record, detail)
   } catch {
     // 记账失败绝不反噬推理（见函数注释）。
   }
@@ -412,31 +462,314 @@ export function configureEntryLog(path: string): void {
   restoreLedgerFromEntryLog()
 }
 
+/** 落盘用的全文三段（不进内存 record，见 {@link TokenLedgerEntry.hasDetail}）。 */
+interface EntryDetail {
+  promptText?: string
+  toolText?: string
+  responseText?: string
+  reasoningText?: string
+}
+
+/**
+ * 把单字段脱敏 + 截断（2026-10-19）。
+ *
+ * ## 为什么要脱敏
+ *
+ * 改造前只存 200 字摘要，泄密面有限；改为全文后，落盘文件会包含 API Key、
+ * 私钥、密码、内网地址、客户数据 —— 而文件权限默认是 `-rw-r--r--`（同机
+ * 其他用户可读）。这里做**尽力而为**的替换：命中即打码，宁可误伤也不漏。
+ *
+ * ⚠️ 这是「降低暴露面」而非「保证安全」：正则挡不住所有形态。真正的边界
+ * 是文件权限 `0o600`（见 {@link appendEntryLog}）与「不主动外发」。
+ */
+function redactSecrets(text: string): string {
+  return text
+    // 常见厂商密钥前缀（OpenAI/Anthropic/GitHub/AWS/Google/Slack/Stripe）。
+    .replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{12,}/g, '$1-***REDACTED***')
+    .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}/g, 'gh*_***REDACTED***')
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, 'AKIA***REDACTED***')
+    .replace(/\bAIza[0-9A-Za-z_-]{30,}/g, 'AIza***REDACTED***')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, 'xox*-***REDACTED***')
+    // PEM 私钥整段（跨行的 BEGIN/END 之间全部打码）。
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+      '-----BEGIN PRIVATE KEY-----***REDACTED***-----END PRIVATE KEY-----')
+    // `password=xxx` / `api_key: xxx` / `token=xxx` 形态的键值对。
+    .replace(/((?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\s*[=:]\s*)(['"]?)[^\s'",;]{6,}\2/gi,
+      '$1$2***REDACTED***$2')
+    // 中国大陆手机号与 18 位身份证号（只保留首尾便于核对）。
+    .replace(/\b(1[3-9]\d)\d{4}(\d{4})\b/g, '$1****$2')
+    .replace(/\b(\d{6})\d{8}(\d{3}[0-9Xx])\b/g, '$1********$2')
+}
+
+/**
+ * 组装全文三段：脱敏 → 截断 → 去空。
+ *
+ * 四段全空时返回 `undefined`（= 本条无详情，不写 `hasDetail`，避免前端
+ * 点了展开才发现是空的）。
+ */
+function buildDetail(entry: Omit<TokenLedgerEntry, 'ts'>): EntryDetail | undefined {
+  const clean = (value: unknown): string => {
+    if (typeof value !== 'string' || value.length === 0) return ''
+    const redacted = redactSecrets(value)
+    return redacted.length > DETAIL_FIELD_MAX_CHARS
+      ? `${redacted.slice(0, DETAIL_FIELD_MAX_CHARS)}\n…（已截断，原 ${redacted.length} 字）`
+      : redacted
+  }
+  const promptText = clean(entry.promptText)
+  const toolText = clean(entry.toolText)
+  const responseText = clean(entry.responseText)
+  const reasoningText = clean(entry.reasoningText)
+  if (promptText === '' && toolText === '' && responseText === '' && reasoningText === '') {
+    return undefined
+  }
+  return {
+    ...(promptText.length > 0 ? { promptText } : {}),
+    ...(toolText.length > 0 ? { toolText } : {}),
+    ...(responseText.length > 0 ? { responseText } : {}),
+    ...(reasoningText.length > 0 ? { reasoningText } : {}),
+  }
+}
+
+/**
+ * 写盘队列（2026-10-19）：`appendFileSync` → 异步追加。
+ *
+ * ## 为什么必须异步
+ *
+ * 旧实现是 `appendFileSync`，在请求结束的 `finally` 里同步写。摘要 374B 时
+ * 无所谓；全文单条中位 345KB（含图可达 MB 级），同步写会**卡住事件循环**，
+ * 直接拖慢流式响应尾包与并发请求 —— 而这发生在推理关键路径上。
+ *
+ * 队列保证**顺序**（同一文件并发 append 会交错撕裂行），失败只丢明细。
+ * 队列深度设上限：写盘长期跟不上时丢最旧的，绝不无限堆积内存。
+ */
+const writeQueue: string[] = []
+let writing = false
+const WRITE_QUEUE_MAX = 256
+
+/** 当前落盘文件的「日键」（UTC+8），用于判断是否跨天轮转。 */
+let entryLogDay = ''
+
+/** `request-log.jsonl` → `request-log-YYYY-MM-DD.jsonl`（同目录）。 */
+function dayLogPath(day: string): string {
+  if (entryLogPath === '') return ''
+  const slash = entryLogPath.lastIndexOf('/')
+  const dir = slash >= 0 ? entryLogPath.slice(0, slash + 1) : ''
+  const base = slash >= 0 ? entryLogPath.slice(slash + 1) : entryLogPath
+  const stem = base.endsWith('.jsonl') ? base.slice(0, -'.jsonl'.length) : base
+  return `${dir}${stem}-${day}.jsonl`
+}
+
+/**
+ * 跨天轮转：把当前文件改名为带日期的名字，并删除超期文件。
+ *
+ * ⚠️ 只在**日键变化**时执行一次（每天首次写入），不是每条都 stat —— 旧实现
+ * 每条都要 `existsSync + statSync`，在全文体积下这本身也是可观测开销。
+ */
+function rotateIfNeeded(nowTs: number): void {
+  const day = utc8DayKey(nowTs)
+  if (day === entryLogDay) return
+  entryLogDay = day
+  try {
+    // 先把「还在用旧名」的文件归档到它的真实日期名下。
+    if (existsSync(entryLogPath)) {
+      const stat = statSync(entryLogPath)
+      // 用 mtime 判定这份文件属于哪一天（跨天前的最后写入时刻）。
+      const fileDay = utc8DayKey(stat.mtimeMs)
+      const target = dayLogPath(fileDay)
+      if (target !== '' && target !== entryLogPath) {
+        try {
+          renameSync(entryLogPath, target)
+        } catch {
+          // 归档失败不影响继续写当前文件。
+        }
+      }
+    }
+    pruneOldLogs()
+  } catch {
+    // 轮转失败绝不反噬推理。
+  }
+}
+
+/** 删除超过 {@link ENTRY_LOG_KEEP_DAYS} 天的日志文件。 */
+function pruneOldLogs(): void {
+  if (entryLogPath === '') return
+  try {
+    const slash = entryLogPath.lastIndexOf('/')
+    const dir = slash >= 0 ? entryLogPath.slice(0, slash) : '.'
+    const cutoff = Date.now() - ENTRY_LOG_KEEP_DAYS * 24 * 60 * 60 * 1000
+    for (const name of readdirSync(dir)) {
+      if (!/^request-log-\d{4}-\d{2}-\d{2}\.jsonl$/.test(name)) continue
+      const full = `${dir}/${name}`
+      try {
+        if (statSync(full).mtimeMs < cutoff) rmSync(full, { force: true })
+      } catch {
+        // 单个文件删除失败跳过。
+      }
+    }
+  } catch {
+    // 目录读不到等价于「没有旧文件」。
+  }
+}
+
+/** 取队列里的一行写盘（异步、串行）。写盘失败只丢这一行。 */
+async function drainWriteQueue(): Promise<void> {
+  if (writing) return
+  writing = true
+  try {
+    while (writeQueue.length > 0) {
+      const line = writeQueue.shift() as string
+      try {
+        // 权限 0o600：全文含敏感信息，不能给同机其他用户读（默认 0644）。
+        // ⚠️ `mode` 只在**创建**时生效 —— 老文件（改造前建的 0644）需要显式 chmod，
+        // 否则「权限收紧了」只是假象（实测本机 request-log.jsonl 仍是 -rw-r--r--）。
+        await appendFile(entryLogPath, line, { encoding: 'utf-8', mode: 0o600 })
+        await tightenLogPermissions()
+      } catch {
+        // 单行写失败不中断队列。
+      }
+    }
+  } finally {
+    writing = false
+  }
+}
+
+/** 已收紧过权限的路径（避免每行都 chmod）。 */
+let permissionFixed = ''
+
+/**
+ * 把日志文件权限收到 `0o600`（只在首次写入后做一次）。
+ *
+ * ⚠️ 失败不抛：权限收紧是**尽力而为**的加固，不能因为文件系统不支持（如
+ * Windows / 网络盘）就让写盘失败。
+ */
+async function tightenLogPermissions(): Promise<void> {
+  if (permissionFixed === entryLogPath) return
+  try {
+    await chmod(entryLogPath, 0o600)
+    permissionFixed = entryLogPath
+  } catch {
+    // 平台不支持 / 权限不足：跳过。
+  }
+}
+
 /**
  * 追加一条记录到 JSONL（独立端增强）。
  *
  * ⚠️ **绝不抛错**（与 recordTokenUsage 同约束）：写盘失败最多丢一条明细，
- * 不能反噬推理。超限先轮转成 `.old`（只保留一份，旧的覆盖）。
+ * 不能反噬推理。全文三段拼在 record 同一行里，`readEntryDetail` 按 `ts` 反查。
  */
-function appendEntryLog(record: TokenLedgerEntry): void {
+function appendEntryLog(record: TokenLedgerEntry, detail: EntryDetail | undefined): void {
   if (entryLogPath === '') return
   try {
-    if (existsSync(entryLogPath) && statSync(entryLogPath).size > ENTRY_LOG_MAX_BYTES) {
-      try {
-        renameSync(entryLogPath, `${entryLogPath}.old`)
-      } catch {
-        // 轮转失败不影响本次追加（继续写原文件即可）。
-      }
-    }
-    appendFileSync(entryLogPath, `${JSON.stringify(record)}\n`)
+    rotateIfNeeded(record.ts)
+    const payload = detail === undefined ? record : { ...record, ...detail }
+    writeQueue.push(`${JSON.stringify(payload)}\n`)
+    // 队列超深：丢最旧的（写盘跟不上时保新不保旧）。
+    while (writeQueue.length > WRITE_QUEUE_MAX) writeQueue.shift()
+    void drainWriteQueue()
   } catch {
     // 落盘失败绝不反噬推理。
   }
 }
 
 /**
- * 启动时从 `.old` + 当前文件回读最近 {@link TOKEN_LEDGER_LIMIT} 条进内存
- * （独立端增强）。坏行（半截写、手工改坏）逐行跳过，不整份放弃。
+ * **按 ts 读取一条记录的全文**（2026-10-19 懒加载）。
+ *
+ * ## 为什么不做成内存字段
+ *
+ * 全文单条中位 345KB（完整上下文快照场景），500 条内存账本 = 168MB 常驻，
+ * 且每次 `usage.tokenLedger` 快照 RPC 都要把它序列化下发（前端一次拉 400 条
+ * = 135MB）。所以 record 里只留 `hasDetail: true`，用户**点开某一行**时才读。
+ *
+ * ## 为什么从文件尾往前扫
+ *
+ * 用户点的几乎总是最近几条。从尾部分块读（64KB 一块）直到凑够目标行，
+ * 命中即停 —— 比整文件 parse 快几个数量级，且内存峰值只有几块。
+ *
+ * 返回 `undefined` = 该 ts 没有详情（旧记录 / 已轮转删除 / 读取失败）。
+ */
+export async function readEntryDetail(ts: number): Promise<EntryDetail | undefined> {
+  if (entryLogPath === '' || !Number.isFinite(ts)) return undefined
+  const candidates: string[] = []
+  try {
+    if (existsSync(entryLogPath)) candidates.push(entryLogPath)
+    // 跨天后当前文件可能已经归档到日期名下：把最近几个也纳入候选。
+    for (let back = 0; back < 3; back += 1) {
+      const day = utc8DayKey(ts - back * 24 * 60 * 60 * 1000)
+      const path = dayLogPath(day)
+      if (path !== '' && !candidates.includes(path)) candidates.push(path)
+    }
+  } catch {
+    return undefined
+  }
+  for (const path of candidates) {
+    const hit = await scanFileForTs(path, ts)
+    if (hit !== undefined) return hit
+  }
+  return undefined
+}
+
+/** 从文件尾按 64KB 块回扫，找 `ts` 匹配的行并解析出全文三段。 */
+async function scanFileForTs(path: string, ts: number): Promise<EntryDetail | undefined> {
+  const CHUNK = 64 * 1024
+  let handle
+  try {
+    handle = await open(path, 'r')
+    const { size } = await handle.stat()
+    let position = size
+    let carry = ''
+    while (position > 0) {
+      const length = Math.min(CHUNK, position)
+      position -= length
+      const buffer = Buffer.alloc(length)
+      await handle.read(buffer, 0, length, position)
+      const text = buffer.toString('utf-8') + carry
+      const lines = text.split('\n')
+      // 第一段可能被块边界切断，留到下一轮与更前面的内容拼接。
+      carry = position > 0 ? (lines.shift() as string) : ''
+      // 从后往前：最近的记录优先命中。
+      for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index]
+        if (line.trim().length === 0) continue
+        // 先做廉价的子串预筛，避免对每行都 JSON.parse。
+        if (!line.includes(`"ts":${ts}`) && !line.includes(`"ts": ${ts}`)) continue
+        try {
+          const parsed = JSON.parse(line) as TokenLedgerEntry & EntryDetail
+          if (parsed?.ts !== ts) continue
+          const detail: EntryDetail = {
+            ...(typeof parsed.promptText === 'string' ? { promptText: parsed.promptText } : {}),
+            ...(typeof parsed.toolText === 'string' ? { toolText: parsed.toolText } : {}),
+            ...(typeof parsed.responseText === 'string' ? { responseText: parsed.responseText } : {}),
+            ...(typeof parsed.reasoningText === 'string' ? { reasoningText: parsed.reasoningText } : {}),
+          }
+          return Object.keys(detail).length > 0 ? detail : undefined
+        } catch {
+          // 坏行跳过。
+        }
+      }
+    }
+  } catch {
+    // 文件不存在 / 读失败 = 没有详情。
+  } finally {
+    try {
+      await handle?.close()
+    } catch {
+      // 关闭失败无需处理。
+    }
+  }
+  return undefined
+}
+
+/**
+ * 启动时回读最近 {@link TOKEN_LEDGER_LIMIT} 条进内存（独立端增强）。
+ *
+ * ⚠️ **2026-10-19 起必须剥离全文三段**：JSONL 里现在存了 `promptText` /
+ * `toolText` / `responseText` / `reasoningText`，直接 `unshift` 进 `ledger`
+ * 会把 168MB 常驻内存。回读只保留 record 字段，全文由 {@link readEntryDetail}
+ * 按需读盘。
+ *
+ * 数据源按「新 → 旧」：当天文件 → 最近的日期归档文件 → 旧版 `.old` / 当前名。
+ * 坏行（半截写、手工改坏）逐行跳过，不整份放弃。
  */
 function restoreLedgerFromEntryLog(): void {
   if (entryLogPath === '') return
@@ -448,13 +781,31 @@ function restoreLedgerFromEntryLog(): void {
         return ''
       }
     }
-    const lines = `${readText(`${entryLogPath}.old`)}${readText(entryLogPath)}`
-      .split('\n')
-      .filter(line => line.trim().length > 0)
+    // 候选文件：当天 → 往前 7 天 → 旧命名（兼容改造前的数据）。
+    const paths: string[] = [entryLogPath]
+    for (let back = 0; back < ENTRY_LOG_KEEP_DAYS; back += 1) {
+      const day = utc8DayKey(Date.now() - back * 24 * 60 * 60 * 1000)
+      const path = dayLogPath(day)
+      if (path !== '' && !paths.includes(path)) paths.push(path)
+    }
+    paths.push(`${entryLogPath}.old`)
+    // ⚠️ 顺序：后面的（更旧）先读、unshift 后翻到前面，保证最终「最新在前」。
+    const lines: string[] = []
+    for (const path of [...paths].reverse()) {
+      const text = readText(path)
+      if (text.length === 0) continue
+      lines.push(...text.split('\n').filter(line => line.trim().length > 0))
+    }
     for (const line of lines.slice(-TOKEN_LEDGER_LIMIT)) {
       try {
-        const record = JSON.parse(line) as TokenLedgerEntry
-        if (typeof record?.ts === 'number') ledger.unshift(record)
+        const parsed = JSON.parse(line) as TokenLedgerEntry & EntryDetail
+        if (typeof parsed?.ts !== 'number') continue
+        // 剥离全文：内存只留 record 字段（全文按需读盘）。
+        const {
+          promptText: _p, toolText: _t, responseText: _r, reasoningText: _n,
+          ...record
+        } = parsed
+        ledger.unshift(record as TokenLedgerEntry)
       } catch {
         // 坏行跳过。
       }
@@ -466,37 +817,88 @@ function restoreLedgerFromEntryLog(): void {
 }
 
 /**
- * 从 `GenerateOptions.messages` 提取「最后一条 user 消息」的纯文本摘要
- * （独立端增强）。
+ * 从一条消息的 `content` 里抽文本（多形态兼容）。
  *
- * 只取最后一条 user：多轮对话里它才是本轮的实际输入；前面的是历史。文本型与
- * 分块型 content 都支持，空白折叠后截 200 字。任何异常一律返回空串。
+ * 支持：①纯字符串；②分块数组里的 `{type:'text'}`；③**`tool-result` 块**
+ * （2026-10-19 新增）—— 网关把 `role:'tool'` 转成 `role:'user'` 时，content
+ * 里是 `{type:'tool-result', content:[...]}`，旧实现只认 `type:'text'`，
+ * 于是续轮提问恒为空串（改造前 93.6% 的「本条没有内容摘要」就是这么来的）。
  */
-export function previewTextOfOptions(options: unknown): string {
+function textOfContent(content: unknown, includeToolResult: boolean): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  const walk = (blocks: unknown[]): void => {
+    for (const raw of blocks) {
+      if (typeof raw === 'string') { parts.push(raw); continue }
+      if (typeof raw !== 'object' || raw === null) continue
+      const block = raw as { type?: unknown; text?: unknown; content?: unknown }
+      if (block.type === 'text' && typeof block.text === 'string') { parts.push(block.text); continue }
+      // tool-result 的正文可能再嵌一层块数组（多段输出）。
+      if (includeToolResult && block.type === 'tool-result' && Array.isArray(block.content)) {
+        walk(block.content)
+      }
+    }
+  }
+  walk(content)
+  return parts.join(' ')
+}
+
+/**
+ * 从 `GenerateOptions.messages` 提取「本轮用户真正说的话」（独立端增强）。
+ *
+ * ## 2026-10-19 改造：解决续轮全空
+ *
+ * 旧实现只取**最后一条 `role==='user'`**。但 agent 续轮里那条 user 消息的
+ * content 是 `tool-result`（网关把 `role:'tool'` 转成 `role:'user'`），
+ * 只认 `type:'text'` 的提取器拿到空串 —— 实测 376 条里 352 条（93.6%）
+ * 提问摘要为空，正是这个原因。
+ *
+ * 新策略（只取**本轮**内容，不重记历史）：
+ * 1. 最后一条 user 里**有真正的文本块** → 用它（首轮对话即此路径）。
+ * 2. 最后一条 user 是 tool-result → 继续往前找最近一条带文本的 user
+ *    （= 本轮用户的原话，因为续轮不会再插新的人类消息）；tool-result
+ *    的文本单独记为 `tool`。
+ * 3. 都没有 → 提问为空（`tool` 仍可能非空）。
+ *
+ * ⚠️ 只扫最后若干条：`messages` 可能上万条，扫全量会拖慢热路径。
+ */
+export function promptTextOfOptions(options: unknown): { prompt: string; tool: string } {
+  const EMPTY = { prompt: '', tool: '' }
   try {
     const messages = (options as { messages?: unknown })?.messages
-    if (!Array.isArray(messages)) return ''
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (!Array.isArray(messages)) return EMPTY
+    const SCAN_LIMIT = 40
+    let tool = ''
+    for (let index = messages.length - 1, seen = 0; index >= 0 && seen < SCAN_LIMIT; index -= 1, seen += 1) {
       const message = messages[index] as { role?: unknown; content?: unknown }
       if (message?.role !== 'user') continue
       const content = message.content
-      const text = typeof content === 'string'
-        ? content
-        : Array.isArray(content)
-          ? content
-            .map((part) => {
-              if (typeof part === 'string') return part
-              const typed = part as { type?: unknown; text?: unknown }
-              return typed?.type === 'text' && typeof typed.text === 'string' ? typed.text : ''
-            })
-            .join(' ')
-          : ''
-      return text.replace(/\s+/g, ' ').trim().slice(0, PREVIEW_MAX_CHARS)
+      // 第 1 优先：真正的文本块。
+      const plain = textOfContent(content, false).replace(/\s+/g, ' ').trim()
+      if (plain.length > 0) {
+        return { prompt: plain.slice(0, PREVIEW_MAX_CHARS), tool }
+      }
+      // 第 2 优先：tool-result 的文本 —— 记为工具回填，继续往前找人类原话。
+      if (tool === '') {
+        const viaTool = textOfContent(content, true).replace(/\s+/g, ' ').trim()
+        if (viaTool.length > 0) tool = viaTool.slice(0, PREVIEW_MAX_CHARS)
+      }
     }
+    return { prompt: '', tool }
   } catch {
     // 提取失败不影响记账。
+    return EMPTY
   }
-  return ''
+}
+
+/**
+ * 兼容旧签名的薄封装（只返回提问文本）。
+ *
+ * @deprecated 新代码用 {@link promptTextOfOptions}，它同时给出工具回填文本。
+ */
+export function previewTextOfOptions(options: unknown): string {
+  return promptTextOfOptions(options).prompt
 }
 
 /** 空聚合行（防重复初始化代码）。返回**累加形态**，finalize 由读取层收尾。 */

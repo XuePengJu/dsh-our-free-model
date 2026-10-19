@@ -114,7 +114,7 @@ export interface AdapterRegisterTarget {
   registerAdapter(providers: readonly string[], adapter: unknown): unknown
 }
 
-import { recordTokenUsage, peekLedgerAccount, previewTextOfOptions } from './token-ledger.js'
+import { recordTokenUsage, peekLedgerAccount, promptTextOfOptions } from './token-ledger.js'
 import { channelOfOptions } from './openai-gateway/channel.js'
 
 /**
@@ -170,9 +170,18 @@ export function wrapAdapterWithTokenLedger<T extends object>(providers: readonly
   const accountingStream = (options: unknown, open: () => AsyncIterable<unknown>): AsyncIterable<unknown> => {
     const channel = channelOfOptions(options)
     const model = String((options as { model?: unknown })?.model ?? '').slice(0, 160)
-    // 请求摘要（独立端增强）：在**发起前**提取，热路径上多一次数组遍历，成本可忽略。
-    const promptPreview = previewTextOfOptions(options)
-    return recordThroughStream(open, { channel, provider, model, promptPreview, startedAt: Date.now() })
+    // 请求摘要（独立端增强）：在**发起前**提取，热路径上多一次有界遍历，成本可忽略。
+    // 2026-10-19 起同时取「工具回填」：续轮的 user 消息是 tool-result，只取文本块
+    // 会得到空串（改造前 93.6% 的提问摘要为空）。
+    const extracted = promptTextOfOptions(options)
+    return recordThroughStream(open, {
+      channel,
+      provider,
+      model,
+      promptPreview: extracted.prompt,
+      ...(extracted.tool.length > 0 ? { toolText: extracted.tool } : {}),
+      startedAt: Date.now(),
+    })
   }
 
   return new Proxy(adapter, {
@@ -254,12 +263,23 @@ export async function* recordThroughStream(
     model: string
     /** 请求摘要（独立端增强，调用方已提取；缺省 = 不记）。 */
     promptPreview?: string
+    /** 工具回填文本（续轮的 tool-result 内容；缺省 = 不记）。 */
+    toolText?: string
     startedAt: number
   },
 ): AsyncIterable<unknown> {
   let usageReported = false
-  /** 返回摘要（独立端增强）：流内 text-delta 累积，截前 200 字。 */
+  /**
+   * 返回摘要 + 全文（独立端增强，2026-10-19 起记录全文）。
+   *
+   * ⚠️ 摘要与全文分开攒：摘要截前 200 字用于**列表页**（轻量、随快照下发），
+   * 全文用于**详情页**（点开才从磁盘读）。全文在流内累积是有界成本的
+   * （只拼字符串，不额外遍历），但**绝不进内存账本** —— 见 token-ledger.ts
+   * 的 `hasDetail` 注释。
+   */
   let responsePreview = ''
+  let responseText = ''
+  let reasoningText = ''
   let inputTokens = 0
   let outputTokens = 0
   let cacheReadTokens: number | undefined
@@ -286,14 +306,21 @@ export async function* recordThroughStream(
       // 首块计时：任何 chunk（思考/正文/工具调用都算「模型开始说话」）。
       // ⚠️ 必须在具体类型判断**之前**：漏块会让「只有思考增量的慢启动」被记成 0。
       if (ttftMs === 0) ttftMs = Date.now() - meta.startedAt
-      // 返回摘要（独立端增强）：只累积正文增量，截前 200 字即停（不再拼接）。
-      if (
-        responsePreview.length < 200
-        && typeof chunk === 'object' && chunk !== null
-        && (chunk as { type?: unknown }).type === 'text-delta'
-        && typeof (chunk as { text?: unknown }).text === 'string'
-      ) {
-        responsePreview = (responsePreview + (chunk as { text: string }).text).slice(0, 200)
+      // 返回摘要 + 全文（独立端增强）：
+      // - 摘要只攒前 200 字（列表页用，随快照下发，必须轻）；
+      // - 全文一直攒（详情页用，落盘不进内存）。
+      // 思考增量单独攒到 reasoningText：续轮模型常常只吐思考不吐正文，
+      // 旧实现只认 text-delta，于是「有输出 token 却没有返回摘要」（实测 226 条）。
+      if (typeof chunk === 'object' && chunk !== null) {
+        const typed = chunk as { type?: unknown; text?: unknown }
+        if (typed.type === 'text-delta' && typeof typed.text === 'string') {
+          if (responsePreview.length < 200) {
+            responsePreview = (responsePreview + typed.text).slice(0, 200)
+          }
+          responseText += typed.text
+        } else if (typed.type === 'reasoning-delta' && typeof typed.text === 'string') {
+          reasoningText += typed.text
+        }
       }
       if (
         typeof chunk === 'object' && chunk !== null
@@ -335,6 +362,15 @@ export async function* recordThroughStream(
         ? { promptPreview: meta.promptPreview }
         : {}),
       ...(responsePreview.length > 0 ? { responsePreview } : {}),
+      // 全文三段（2026-10-19）：提问/工具回填/正文/思考，落盘用，不进内存账本。
+      ...(typeof meta.promptPreview === 'string' && meta.promptPreview.length > 0
+        ? { promptText: meta.promptPreview }
+        : {}),
+      ...(typeof meta.toolText === 'string' && meta.toolText.length > 0
+        ? { toolText: meta.toolText }
+        : {}),
+      ...(responseText.length > 0 ? { responseText } : {}),
+      ...(reasoningText.length > 0 ? { reasoningText } : {}),
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
       ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
