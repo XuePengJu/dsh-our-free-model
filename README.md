@@ -1,13 +1,10 @@
-<div align="center">  
-  <img src="icon.svg" alt="Our Free Model — DeepSeek Harness 免费模型插件" width="120">
+![Our Free Model — DeepSeek Harness 免费模型插件](icon.svg)
 
 # dsh-our-free-model · fork
 
 **这是 [`Ebony-Vinyl/dsh-our-free-model`](https://github.com/Ebony-Vinyl/dsh-our-free-model) 的个人 fork。**
 
 ![许可证](https://img.shields.io/badge/license-MIT-263146?style=flat-square)
-
-</div>
 
 ---
 
@@ -25,15 +22,24 @@
 
 **独立本地控制台首页**
 
-<div align="center">  
-  <img src="docs/images/standalone-console-overview.jpg" alt="Our Free Model 独立本地控制台 · 工作空间概览" width="900">  
-    
-  
-  <sub>独立本地服务控制台首页：概览卡片、Token 用量趋势、API 接入信息条（地址 + 打码 Key + 默认模型）、左侧完整导航</sub>  
-</div>
+![Our Free Model 独立本地控制台 · 工作空间概览](docs/images/standalone-console-overview.jpg)
 
-独立控制台共八个页面：**概览**、**模型清单**、**模型组**（本 fork 新增）、**用量统计**、  
-**免费账号渠道**、**EAC 协付渠道**、**服务设置**、**API 接入**。默认夜间主题（夜·赛博终端）。
+*概览页：最近 7 天用量趋势、四个关键指标（可接入模型 / 用户回合 / 累计 Token / 已恢复回合）、右侧「快速接入」卡（API 地址 + 打码 Key + 默认模型）、运行检查与模型来源分布*
+
+独立控制台共**七个页面**，分三组：
+
+| 分组   | 页面                                                  |
+| ---- | --------------------------------------------------- |
+| 工作空间 | 概览、模型清单、**模型组**（本 fork 新增）、用量统计、**请求日志**（本 fork 新增） |
+| 渠道   | 账号池                                                 |
+| 管理   | 服务设置                                                |
+
+默认主题为**三档自动**（白天 / 晚上 / 自动）：自动档按时间表在 19:00–07:00 走夜间主题，  
+其余时间走浅色，每 30 秒自检一次跨档静默切换。右上角可随时手动锁定某一档。
+
+> 原上游的「EAC 协付渠道」与「API 接入」两个独立页已从导航移除：接入信息（地址 / Key /  
+> 默认模型）并入概览页的「快速接入」卡与各页顶部的接入信息条；EAC 的授权与资源池仍保留在  
+> 服务端（`packages/standalone/eac.mjs`），模型清单里以「EAC 协付」渠道标签呈现。
 
 **DSH 插件形态下的模型选择器**
 
@@ -42,29 +48,25 @@
 | Our Free Model                  | 当前网络出口可直接使用的模型         |
 | Our Free Model · region-limited | 上游对该地区不放行的模型，保留可见但单独隔离 |
 
-被判定为「已声明但不路由」的模型不出现在任何分组中——仅在设置页的「不在选择器中」分组保留记录，  
-附带拒因与探测时间；后续探测重新通过后自动回到选择器。
+被判定为「已声明但不路由」的模型不出现在任何分组中——它仍留在插件页面的模型清单里，  
+标注「已从模型选择器中移除」并给出原因；后续探测重新通过后自动回到选择器。
 
 ---
 
 ## 本 fork 的增强
 
-以下 8 项是相对上游的**净增量**（`git diff ddb451c..HEAD`：51 个文件，+2504 / -108 行）。
+以下 11 项是相对上游 `e80c8dd` 的**净增量**（`git diff e80c8dd..HEAD`：121 个文件，  
++16028 / -7859 行）。其中「模型组」「WorkBuddy 同步」「请求日志」「控制台重构」四项是主要改动。
 
 ### 1. 模型组（combo）配置入口 —— 本 fork 的核心新增
 
 原项目的降级链（combo）只能通过配置文件手写；本 fork 把它做成了**完整的可视化配置页**。
 
-<div align="center">  
-  <img src="docs/images/standalone-console-combos.jpg" alt="Our Free Model 独立本地控制台 · 模型组配置页" width="900">  
-    
-  
-  <sub>模型组配置页：每条链一张卡片，成员按调用顺序排列（可上下移）、标注来源渠道与倍率，  
-  
-  支持测试 / 编辑 / 删除 / 启停，页头提供「同步到 WorkBuddy」与「回滚」入口</sub>  
-</div>
+![Our Free Model 独立本地控制台 · 模型组配置页](docs/images/standalone-console-combos.jpg)
 
-- 新增独立控制台「**模型组**」页（`packages/standalone/frontend/combos.tsx`，330 行）：  
+*模型组页：每条链一张卡片，成员按调用顺序编号排列（可上下移）、逐条标注模型 ID 与来源渠道，暂不可用 / 已禁用 / 已启用的成员各自带状态标签；页头提供「同步」「备份」「新建模型组」*
+
+- 新增独立控制台「**模型组**」页（`packages/standalone/frontend/combos.tsx`，360 行）：  
   新建 / 编辑 / 删除 / 启停 / 测试，勾选模型、上下移调整调用顺序
 - 新增管理接口：`GET/POST /api/management/combos`、`POST /api/management/combos/delete`
 - combo 虚拟行改由 **service 层现算**（核心车道 + 账号渠道合并），因此**成员可以跨渠道组队**：  
@@ -73,27 +75,29 @@
   一旦开始产出就绝不拼接
 - **模型组支持中文命名**：`深度求索` → `combo:深度求索`（`src/combos.js` 用 `\p{Letter}` 按字保留）
 - 两种策略：`顺序降级`（fallback）与 `轮询分流`（round-robin，连续 N 轮粘滞）
+- 候选列表只列**已探测可用且未禁用**的模型，避免把已知打不通的模型拖进链里
 
 ### 2. WorkBuddy 配置同步 —— 本 fork 独有
 
 把本服务的模型组与单模型**一键写进 WorkBuddy 的模型配置**，让 WorkBuddy 直接以 OpenAI 兼容方式调用本地网关。
 
-- 新增 `packages/standalone/workbuddy-sync.mjs`（342 行），写入 `~/.workbuddy/models.json`
+- 新增 `packages/standalone/workbuddy-sync.mjs`（416 行），写入 `~/.workbuddy/models.json`
 - **提交管线安全**：tmp 写成功 → 原文备份到 `models.json.backups/`（保留 20 份）→ rename 原子替换；  
   非法 JSON / 顶层非数组一律拒绝写入并明确报错，绝不覆盖
 - **归属判定**：只管理 `url` 为回环地址且 `apiKey` 以 `ofm-` 开头的条目（兼容旧 `combo:` 前缀）；  
   单模型条目「刷新但不清理」，避免误删用户手工写入的配置
 - 新增 4 条路由：`/combos/export-workbuddy`、`/models/export-workbuddy`、`/workbuddy/backups`、  
   `/workbuddy/backups/restore`
-- 前端：模型组页「同步到 WorkBuddy」+ 回滚面板（两段式确认）；模型清单页每行「写入 WorkBuddy」按钮
-- 配套离线单测 `workbuddy-sync.test.mjs`（26 项，临时目录注入，不触碰真实配置）
+- 前端：模型组页「同步」+「备份」两个入口（回滚两段式确认）；模型清单页每行「写入 WorkBuddy」
+- 配套离线单测 `workbuddy-sync.test.mjs`（31 项，临时目录注入，不触碰真实配置）
 
-### 3. 接入地址来源切换 + 接入信息条
+### 3. 接入信息条 + 分项复制
 
-- 接入地址可选「**当前访问的域名 / 本机 127.0.0.1**」，选择持久化并跨页生效  
-  （`frontend/endpoint-origin.ts`）
-- 新增「**接入信息条**」（`components/endpoint-strip.tsx`）：左段完整 API 地址、右段打码 Key，  
-  各自独立复制反馈；Key 明文只在点击瞬间取出写入剪贴板，**永不进 state / render**
+- 新增「**接入信息条**」（`components/endpoint-strip.tsx`，59 行）：左段完整 API 地址、右段打码 Key，  
+  各自独立复制反馈；Key 明文只在点击瞬间经局部变量取出并写入剪贴板，**永不进 state / render**。  
+  模型清单页与模型组页顶部各有一条，概览页的「快速接入」卡是同一套信息的卡片版
+- 接入基地址按当前访问来源解析（`frontend/endpoint-origin.ts`）：页面由 http(s) 打开时用当前域名，  
+  否则回退服务端绑定地址——反向代理部署时复制出来的地址天然是外部可用的那条
 - 概览页新增默认接入模型选择与复制（记住上次选择，优先模型组，再退首个可接入模型）
 - 原「整段 JSON 配置复制」撤掉，改为分项复制按钮
 
@@ -109,36 +113,90 @@
 
 ### 5. 模型清单改版 + 账号渠道真实探测
 
-模型清单页做了整体改版：顶部是接入信息条与推理状态，中间是搜索 / 渠道 / 能力 / 状态四组筛选，
+模型清单页做了整体改版：顶部是接入信息条与推理状态，中间是搜索 / 渠道 / 能力 / 可用状态四组筛选，  
 下方是快捷视图标签与模型表格（上下文窗口、最长输出、可用状态、首响应延迟、逐行操作）。
 
-<div align="center">
-  <img src="docs/images/standalone-console-models.jpg" alt="Our Free Model 独立本地控制台 · 模型清单页" width="900">
-  <br>
-  <sub>模型清单页：131 个模型 / 99 个可接入 / 32 个已禁用，五个互斥视图标签，<br>
-  每行可复制 ID、禁用 / 启用、测试与写入 WorkBuddy</sub>
-</div>
+![Our Free Model 独立本地控制台 · 模型清单页](docs/images/standalone-console-models.jpg)
 
-- 快捷标签改为**五个互斥视图**：全部模型 / 已探测可用 / 可接入 / 未公开 / **已禁用**；  
-  页面默认选中「已探测可用」
+*模型清单页：页头给出「N 个模型 · N 个可接入 · N 个已禁用」总览，六个互斥视图标签带计数；每行可复制 ID、禁用 / 启用、测试，⋯ 菜单里另有写入 WorkBuddy 等操作*
+
+- 快捷标签改为**六个互斥视图**：全部模型 / 已探测可用 / 可接入 / 未公开 / **已禁用** / **已隐藏**；  
+  页面默认选中「已探测可用」。「已禁用」「已隐藏」各自独立成页——这两类模型不出现在其余任何视图里，  
+  避免点了开关却看不出变化
 - 新增**单模型启停**：禁用的模型从公开清单、推理路由、组合链与探测中统一剔除，  
   但保留在「已禁用」页可随时重新启用
-- 新增 `packages/standalone/channel-probe.mjs`（80 行）：修复账号渠道模型永远显示「清单已收录」的问题  
+- 开关文案由「开启 / 关闭」统一为「启用 / 禁用」，与状态标签用词一致
+- 新增 `packages/standalone/channel-probe.mjs`（134 行）：修复账号渠道模型永远显示「清单已收录」的问题  
   ——改走渠道真实推理路径做最小探测（`max_tokens 16`、并发 2），判定写回共享 availability 存储，  
   沿用核心探测的非对称哲学（无错误→available、404→unavailable、429→throttled、其余→unknown 不移动状态）
+- 探测与测试请求前置 system 消息，修复 WorkBuddy 系模型恒「未探测」的问题；  
+  限流不再误报为「未登录」，单独归类为 `needs-login`；凭据改热加载，改完无需重启
 
-### 6. 管理页默认夜间主题
+### 6. 请求日志（独立顶层页）
 
-`frontend/theme.mjs`：默认使用夜间主题（夜·赛博终端），仅在用户手动切换过时才沿用其选择。
+逐条记录每一次推理请求，落盘保存，重启不丢。
 
-### 7. macOS 桌面壳
+![Our Free Model 独立本地控制台 · 请求日志页](docs/images/standalone-console-logs.jpg)
+
+*请求日志页：时间 / 渠道 / 模型 / 账号 / 通道 / 结果 / 耗时 / 首字 / 速度 / 输入 / 输出 / 思考 / 缓存 / 总 Token，十四列逐条明细，每 10 秒自动刷新，失败行悬停可看原因，底部翻页可切每页条数*
+
+- 从账号池的子页提升为**顶层导航页**，拥有独立的 RPC 生命周期，与账号池页互不影响
+- 落盘到数据目录的 `request-log.jsonl`，按自然日轮转（`request-log-YYYY-MM-DD.jsonl`），  
+  单文件上限 200 MB，保留 7 天，过期文件自动清理
+- 点击行可展开提问 / 返回摘要；全文详情按需懒加载，列表页只读摘要，避免大日志拖慢页面
+- 日志文件权限收紧为 0600
+
+### 7. 控制台 V7 重构 + 三档主题
+
+控制台整体重做了一遍视觉与信息架构，不再沿用上游的页面组织。
+
+- **三档主题**：白天 / 晚上 / **自动**（默认）。自动档按时间表在 19:00–07:00 走夜间主题，  
+  其余时间走浅色，每 30 秒自检一次，跨档静默切换（不播扩散动效）；手动切换过才锁定该档
+- **侧栏重排**：分「工作空间 / 渠道 / 管理」三组，图标换成芯片、柱状图、终端、插头、齿轮等具象隐喻，  
+  「免费账号渠道」改名「账号池」，去掉重复条目
+- **概览页重排**：7 天用量趋势 + 四个指标卡 + 快速接入卡 + 运行检查 + 模型来源分布
+- 各菜单内容列统一 1280px 宽，页脚贴底；深色主题下侧栏 sticky 修正
+- 概览 / 用量统计 5 秒轮询，刷新按钮带 600ms 旋转动效
+
+### 8. 用量统计四档口径
+
+用量页原本只有固定口径，现在可切**每日 / 每周 / 每月 / 全部**四档，切换后指标卡、趋势图、  
+按模型统计三块一起联动。
+
+![Our Free Model 独立本地控制台 · 用量统计页](docs/images/standalone-console-usage.jpg)
+
+*用量统计页：四档时间范围切换，六个指标卡（用户回合 / 物理请求 / 输入 Token / 输出 Token / 失败回合 / 已恢复回合），下方是累计 Token 趋势与按模型统计*
+
+- 服务端预聚合：`src/core/usage-periods.js`（379 行）在 `buildStats` 后挂载 `periods` 字段，  
+  页面切换不再重新拉取全部历史
+- 口径铁律：可加和量只做一次除法；`tps` 门槛按周期合并后的 ΣdecodeMs 判断，不逐日判断；  
+  P 层（物理请求）与 T 层（用户回合）绝不互填；「全部」档的 Token / 请求 / 回合取 lifetime，  
+  性能列与趋势图只取保留期内的日桶
+- 日桶补上回合计数，存储版本 3 → 4 迁移
+- 趋势图标题随档位变化（每周 / 每月不再误显示「每日」）
+
+### 9. 账号池多维筛选 + 第 14 个渠道
+
+![Our Free Model 独立本地控制台 · 账号池页](docs/images/standalone-console-channels.jpg)
+
+*账号池主视图：左侧常驻渠道列表（搜索框 + 全部 / 已接入 / 待接入 状态筛选 + 十四家渠道逐行列出），  
+右侧为选中渠道的账号与模型管理；状态之外另有「筛选」浮层做地区与积分方式两个维度的二次过滤*
+
+- 渠道列表支持**状态 + 搜索 + 地区 + 积分方式**四维筛选：地区分「国内 / 国外」，  
+  积分方式可多选「每日 / 一次性 / 额度」（一个渠道可同时属于多档）
+- 新增**千问办公 QwenWork** 渠道（第 14 个）：设备码网页登录 + 多账号 + 积分查询 + 自动续期，  
+  配套 WASM 认证模块（`vendor/channel-pack/src/qwenwork-*.ts`）
+- 渠道顺序重排，已接入 / 待接入一眼可分
+- 渠道错误码跨 worker 边界保留并在管理端透传，测试与探测失败时能看到上游真实原因
+
+### 10. macOS 桌面壳
 
 - `tauri.conf.json`：打包目标加 `dmg`，`minimumSystemVersion: 11.0`
 - `lib.rs`：macOS 菜单栏（Cmd+Q / 编辑菜单走系统实现）、Dock 图标唤回窗口、自绘标题栏适配
 - `PACKAGING.md` 新增「macOS 桌面构建」一节，含产物路径、签名现状与 Gatekeeper 处理说明
 - 桌面壳与独立服务共用同一套服务端，不是另起一套实现
 
-### 8. 双平台 CI 出包
+### 11. 双平台 CI 出包
 
 新增 `.github/workflows/desktop-build.yml`（152 行）：
 
@@ -164,7 +222,7 @@ npm run start:standalone
 - 拥有自己的 API Key，不读取插件数据（`DSH_HOME` 与 `OFM_HOME` 默认互不影响）
 - 提供 Chat Completions、Responses API，以及独立网页管理
 - 启动后打开终端打印的**一次性管理链接**即可使用（10 分钟内有效、仅能兑换一次）
-- 支持匿名 / Kilo 免费车道、EAC 协付与原有十三个账号渠道
+- 支持匿名 / Kilo 免费车道、EAC 协付与十四个账号渠道（含本 fork 新增的千问办公 QwenWork）
 
 启动、参数、鉴权与验证细节见 **[独立服务说明](packages/standalone/README.md)**。
 
@@ -202,7 +260,8 @@ dsh plugin --profile web add /绝对路径/dsh-our-free-model
 输出预算越多；上限为强制下发，因此档位之间存在可测量的差异。思考与可见回答共享同一输出额度，  
 因此思考不可关闭的模型会将三档整体上移（设置页的模型卡上标注了每档的实际数值）。
 
-**供本机其它工具调用**：服务设置 → API 接入，启用后复制 base URL 并生成 Key。支持：
+**供本机其它工具调用**：概览页「快速接入」卡（或模型清单 / 模型组页顶部的接入信息条）里直接复制  
+base URL 与 Key；服务设置页控制推理开关。支持：
 
 - `GET /v1/models`
 - `POST /v1/chat/completions`（流式与非流式）
@@ -210,8 +269,9 @@ dsh plugin --profile web add /绝对路径/dsh-our-free-model
 - `POST /v1/messages`（流式与非流式，Anthropic Messages）
 - `POST /v1/messages/count_tokens`（本地估算，不含 tokenizer）
 
-**写入 WorkBuddy**：模型组页「同步到 WorkBuddy」全量写入并清理残留；模型清单页每行「写入 WorkBuddy」  
-单条写入。两者都会先备份 `~/.workbuddy/models.json`，可在模型组页的回滚面板恢复。**重启 WorkBuddy 后生效。**
+**写入 WorkBuddy**：模型组页「同步」全量写入并清理残留；模型清单页每行的 ⋯ 菜单里可「写入 WorkBuddy」  
+单条写入。两者都会先备份 `~/.workbuddy/models.json`（保留 20 份），可在模型组页「备份」里回滚。  
+**重启 WorkBuddy 后生效。**
 
 **升级**：插件形态支持设置页一键升级（下载 → 校验 → 备份 → 替换 → 热重载，失败自动回滚）。
 
@@ -224,61 +284,17 @@ dsh plugin --profile web add /绝对路径/dsh-our-free-model
 
 以下能力**全部来自原项目**，本 fork 未做改动；详细原理与配置请查阅原仓库。
 
-| 能力      | 一句话                                                                                                                         |
-| ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 免费车道    | OpenCode Zen 网关 + Kilo AI 公共网关，直连不经中转，清单跟随上游实时刷新                                                                            |
-| 账号渠道    | CodeArts、CodeBuddy / WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax Code、ZCode、Gemini 等十三个渠道，含登录 / 账号池 / 每日积分领取 |
-| EAC 渠道  | 桌面端专属协付通道，凭据 AES-256-GCM 密封，需 GitHub 登录 + star 仓库解锁                                                                         |
-| 聚合渠道    | 内置 76 家提供商注册表，自带 Key 即可把第三方模型接进同一条清单                                                                                        |
-| 本地网关    | 兼容 OpenAI 与 Anthropic（`/v1/messages`），可给本机其它工具与局域网设备调用                                                                      |
-| 省 Token | 工具输出压缩（RTK，实测 40 KB 的 `git diff` 省 90% 字节）、提示词瘦身、五个本地应答                                                                     |
-| 路由      | `combo:<name>` 命名降级链（本 fork 补上了可视化配置页，见上文）                                                                                  |
-| 其它      | 公告中心与实时推送、应用内升级（Ed25519 签名 + SHA-256 + 自动回滚）、热重载、用量看板                                                                       |
+| 能力      | 一句话                                                                                                                                                        |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 免费车道    | OpenCode Zen 网关 + Kilo AI 公共网关，直连不经中转，清单跟随上游实时刷新                                                                                                           |
+| 账号渠道    | CodeArts、CodeBuddy / WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax Code、ZCode、Gemini 等十三个渠道，含登录 / 账号池 / 每日积分领取（本 fork 加了第 14 个：千问办公 QwenWork） |
+| EAC 渠道  | 桌面端专属协付通道，凭据 AES-256-GCM 密封，需 GitHub 登录 + star 仓库解锁                                                                                                        |
+| 聚合渠道    | 内置 75 家提供商注册表，自带 Key 即可把第三方模型接进同一条清单                                                                                                                       |
+| 本地网关    | 兼容 OpenAI 与 Anthropic（`/v1/messages`），可给本机其它工具与局域网设备调用                                                                                                     |
+| 省 Token | 工具输出压缩（RTK，实测 40 KB 的 `git diff` 省 90% 字节）、提示词瘦身、五个本地应答                                                                                                    |
+| 路由      | `combo:<name>` 命名降级链（本 fork 补上了可视化配置页，见上文）                                                                                                                 |
+| 其它      | 公告中心与实时推送、应用内升级（Ed25519 签名 + SHA-256 + 自动回滚）、热重载、用量看板                                                                                                      |
 
----
-
-## 实现结构
-
-```
-index.js                    Host 半身：适配器注册、清单与可用性探测、设置/用量存储、
-                            webServer 路由、转发端口生命周期、公告/升级/热重载接线
-adapter/                    内核接缝：全包唯一允许 import @deepseek-ai/* 的位置
-src/adapter.js              结构性 LlmAdapter：providerInfo、listModels、resolveModel、
-                            prepareCall、stream、providerRetryPolicy
-src/upstream.js             网关身份：凭据、session/request id 铸造、工具指纹、按线协议选端点
-src/stream.js               三种线协议解码（chat / messages / responses）归一为 harness StreamChunk
-src/messages.js             harness 消息 -> 各线协议形态，外加工具调用配对修复
-src/effort.js               思考档位 -> 输出预算
-src/forward.js              独立的 OpenAI 兼容监听器（另含 Anthropic Messages 端点）
-src/providers/registry.json 聚合车道注册表：76 家提供商的分类、认证、线协议与端点
-src/aggregate.js            聚合车道：清单行、凭据解析、Key 脱敏、列表探测
-src/anthropic.js            /v1/messages 的 Anthropic Messages 编解码与本地 token 估算
-src/token-saver/            压缩管线：提示词注入 -> 工具输出压缩，按字节留痕、失败开放
-src/local-optimize.js       五个本地应答：额度探测、命令前缀、会话标题、建议模式、文件路径
-src/combos.js               降级链：虚拟清单行、两种策略、容量取交集（本 fork 改为支持中文命名）
-src/trust.js                插件路由的请求信任围栏（connection 服务桥 + 结构化围栏）
-src/push.js                 SSE 推送枢纽：公告到达、更新可用、升级完成
-src/feed.js                 远程公告 feed：多源拉取、校验、缓存、到达检测
-src/updater.js              应用内升级：清单校验、SHA-256 分级校验、备份、原子替换、回滚
-src/reload.js               自热重载：镜像内核 HMR 的缓存清除 + 重导入 + 重注册 + 回滚序列
-client.js                   浏览器半身：手写 ModuleLoader bundle，无构建步骤
-
-packages/standalone/        独立本地服务（本 fork 主推形态）
-  service.mjs               服务入口：HTTP 挂载、渠道运行时、combo 现算与链式分流
-  management.mjs            管理接口：会话、设置、模型、密钥、模型组、WorkBuddy 导出
-  workbuddy-sync.mjs        WorkBuddy 配置同步（本 fork 新增）
-  channel-probe.mjs         账号渠道模型可用性探测（本 fork 新增）
-  frontend/                 前端源码（React + TypeScript）
-  web/                      前端构建产物（提交入库，服务直接载入）
-
-packages/desktop/           Tauri 桌面壳（Windows NSIS + macOS DMG，本 fork 补齐 macOS）
-```
-
-> 几个值得了解的架构决定（一个适配器两条 provider 路由、以结构化方式实现适配器、  
-> 使用自有 JSON 存储、Token 压缩跑在唯一收口上、combo 是虚拟清单行）见  
-> [原项目 README 的「实现结构」一节](https://github.com/Ebony-Vinyl/dsh-our-free-model#实现结构)。
-
----
 
 ## 已知边界
 
@@ -312,8 +328,6 @@ packages/desktop/           Tauri 桌面壳（Windows NSIS + macOS DMG，本 for
 独立服务与插件的数据目录默认互不影响，**不要主动把独立服务的 `OFM_HOME` 指向插件的数据目录**。  
 同一个数据目录只能启动一个独立服务实例。
 
-
-
 ---
 
 ## 开发
@@ -333,91 +347,91 @@ npm run build:standalone-ui     # 重新构建独立控制台前端
 npm run build:standalone-channels
 ```
 
-独立控制台前端为 **React + TypeScript**：`frontend/` 是源码，`web/` 是提交的构建输出。
+独立控制台前端为 **React + TypeScript**：`frontend/` 是源码，`web/` 是提交的构建输出。  
 修改前端后需重新构建并重启服务。开发工具只用于构建，不作为网页资源公开。
 
 需要 Node `^22.19.0 || >=24.0.0`。插件形态无安装步骤、无依赖。
 
-> 完整测试套件清单（retry-safety、speed-stat、sanitize、trust、feed、updater、effort、
-> sniff、release-e2e、picker、tui、host-selftest 等）与发布签名流程，
+> 完整测试套件清单（retry-safety、speed-stat、sanitize、trust、feed、updater、effort、  
+> sniff、release-e2e、picker、tui、host-selftest 等）与发布签名流程，  
 > 见[原项目 README 的「开发」一节](https://github.com/Ebony-Vinyl/dsh-our-free-model#开发)。
 
 ---
 
 ## 上游是哪些源
 
-**以下内容完全属于原项目**，本 fork 未改变任何出网目标。两条公开免密来源均直连、不经第三方中转；
+**以下内容完全属于原项目**，本 fork 未改变任何出网目标。两条公开免密来源均直连、不经第三方中转；  
 另有自建网关为 EAC 渠道。
 
 **免费车道：OpenCode 的 Zen 网关，`https://opencode.ai/zen/v1/*`**
 
-| 用途 | 目标 | 凭据 |
-| --- | --- | --- |
-| 推理请求 | `POST …/zen/v1/chat/completions`、`…/zen/v1/responses`、`…/zen/v1/messages` | `Authorization: Bearer public`——该车道本身即为公开免密额度 |
-| 模型清单 | `GET …/zen/v1/models` | 同上 |
-| 公告与升级清单 | 本仓库的 `feed/*.json`：raw.githubusercontent.com 优先，cdn.jsdelivr.net 兜底 | 无 |
-| 出口地区判定 | api.ipify.org / ipinfo.io / ipapi.co，仅读取本机公网 IP 与国家码 | 无 |
+| 用途      | 目标                                                                        | 凭据                                            |
+| ------- | ------------------------------------------------------------------------- | --------------------------------------------- |
+| 推理请求    | `POST …/zen/v1/chat/completions`、`…/zen/v1/responses`、`…/zen/v1/messages` | `Authorization: Bearer public`——该车道本身即为公开免密额度 |
+| 模型清单    | `GET …/zen/v1/models`                                                     | 同上                                            |
+| 公告与升级清单 | 本仓库的 `feed/*.json`：raw.githubusercontent.com 优先，cdn.jsdelivr.net 兜底       | 无                                             |
+| 出口地区判定  | api.ipify.org / ipinfo.io / ipapi.co，仅读取本机公网 IP 与国家码                      | 无                                             |
 
 **Kilo 渠道：Kilo AI 的公共网关，`https://api.kilo.ai/api/gateway`**
 
-| 用途 | 目标 | 凭据 |
-| --- | --- | --- |
+| 用途   | 目标                                                                       | 凭据                                                         |
+| ---- | ------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | 推理请求 | `POST …/api/gateway/chat/completions`（OpenAI Chat Completions 兼容，SSE 流式） | **无**——免费池（`isFree: true`，含 `kilo-auto/free`）不需账号、Key 或登录态 |
-| 模型清单 | `GET …/api/gateway/models` | 无 |
+| 模型清单 | `GET …/api/gateway/models`                                               | 无                                                          |
 
-没有号池、没有中转、没有二道贩子。`npm test` 的离线套件完全不出网；仅 `host-selftest.mjs`
+没有号池、没有中转、没有二道贩子。`npm test` 的离线套件完全不出网；仅 `host-selftest.mjs`  
 与 `scripts/probes/` 会主动请求这些地址，且需手动运行。
 
-你的 prompt、工具结果与随附图像会作为正常推理请求发送至所选模型对应的上游——与调用任何模型 API 相同。
+你的 prompt、工具结果与随附图像会作为正常推理请求发送至所选模型对应的上游——与调用任何模型 API 相同。  
 除此之外不上传任何内容：用量看板数据、设置、转发 Key 均只落在本机数据目录。
 
-免密不等于无人管理：免费车道通过 `x-opencode-*` 指纹识别客户端、按会话统计免费额度，
-会因地区返回 403、因超量返回 429。**Kilo 免费池在其模型卡中明确声明：prompt 可能被上游提供方记录，
+免密不等于无人管理：免费车道通过 `x-opencode-*` 指纹识别客户端、按会话统计免费额度，  
+会因地区返回 403、因超量返回 429。**Kilo 免费池在其模型卡中明确声明：prompt 可能被上游提供方记录，  
 并用于改进其服务**（原文见 `kilo-auto/free` 模型卡）。模型集合与额度政策由上游决定，随时可能变更。
 
 ---
 
 ## 免责声明
 
-- **本项目是客户端，不是模型服务方。** 所有模型响应均由上述第三方上游生成并传输；不托管、
+- **本项目是客户端，不是模型服务方。** 所有模型响应均由上述第三方上游生成并传输；不托管、  
   不修改、不过滤任何模型输出。模型可能产出错误、过时或有偏颇的内容，请自行核实后再使用。
-- **免费不等于无限，也不等于私有。** 免费额度由上游单方面提供，随时可能限流、收费或下线；
-  Kilo 免费池明确声明 prompt 可能被上游记录并用于改进服务。**请勿通过免费车道发送密码、密钥、
+- **免费不等于无限，也不等于私有。** 免费额度由上游单方面提供，随时可能限流、收费或下线；  
+  Kilo 免费池明确声明 prompt 可能被上游记录并用于改进服务。**请勿通过免费车道发送密码、密钥、  
   个人身份信息、商业机密或任何你不愿第三方处理的内容**；生产与敏感场景请使用自己的付费 API。
-- **上游条款由你遵守。** 使用各渠道即表示你同意对应上游的服务条款与用量政策；
+- **上游条款由你遵守。** 使用各渠道即表示你同意对应上游的服务条款与用量政策；  
   因违反上游政策导致的限流、封禁或其它后果由使用者自行承担。
-- **EAC 渠道为协付性质。** 该渠道的凭据与网关由**原仓库维护者**部署，仅限授权用户使用；
+- **EAC 渠道为协付性质。** 该渠道的凭据与网关由**原仓库维护者**部署，仅限授权用户使用；  
   请勿尝试绕过授权闸门，勿转售或共享渠道访问权。
-- **本项目与上述任何上游厂商无隶属或背书关系。** 各厂商名称与商标归其各自所有者所有，
+- **本项目与上述任何上游厂商无隶属或背书关系。** 各厂商名称与商标归其各自所有者所有，  
   仅在说明来源时引用。
 
 ---
 
 ## 安全与隐私
 
-所有状态写入本服务自己的数据目录（独立服务默认 `~/.our-free-model`，插件形态为
+所有状态写入本服务自己的数据目录（独立服务默认 `~/.our-free-model`，插件形态为  
 `DSH_HOME/our-free-model`）；用量与设置仅落在本机，不上传至任何位置。
 
-聚合车道的 Key 同样不出本机：只写入 0600 权限的 `settings.json`，请求只发往你自己配置的那家提供商，
+聚合车道的 Key 同样不出本机：只写入 0600 权限的 `settings.json`，请求只发往你自己配置的那家提供商，  
 接口只回显 `hasKey` 与 `…abcd` 指纹，从不回显 Key 本身。
 
-**WorkBuddy 同步的写入安全性**（本 fork 新增）：只写 `~/.workbuddy/models.json`，
-写前先 tmp 校验 → 备份原文（保留 20 份）→ rename 原子替换；非法 JSON / 顶层非数组一律拒绝写入。
+**WorkBuddy 同步的写入安全性**（本 fork 新增）：只写 `~/.workbuddy/models.json`，  
+写前先 tmp 校验 → 备份原文（保留 20 份）→ rename 原子替换；非法 JSON / 顶层非数组一律拒绝写入。  
 备份文件名走白名单正则，天然杜绝路径穿越；回滚本身也可回滚。
 
 转发监听仅绑定回环地址，默认 `127.0.0.1`，无 Key 请求一律拒绝。将地址改为可路由接口会被直接拒绝。
 
-局域网访问是另开的一扇门，并不放宽上述规则：需显式启用「局域网访问」，中继绑定可路由地址，
-每个请求都需携带独立的局域网 Key，仅转发白名单路径，入口处把局域网 Key 换为本机 Key，
+局域网访问是另开的一扇门，并不放宽上述规则：需显式启用「局域网访问」，中继绑定可路由地址，  
+每个请求都需携带独立的局域网 Key，仅转发白名单路径，入口处把局域网 Key 换为本机 Key，  
 携带跳数标记的请求直接拒绝（防自环）。
 
 公告 HTML 在客户端经严格白名单渲染，不经过任何 `innerHTML` sink。
 
-应用内升级的完整性链：清单 Ed25519 签名验证（公钥 pin 在 `src/updater.js`）→ 清单校验
-（semver、路径逃逸、哈希格式）→ 下载时逐文件校验 SHA-256 与字节数 → staging 回读校验 →
+应用内升级的完整性链：清单 Ed25519 签名验证（公钥 pin 在 `src/updater.js`）→ 清单校验  
+（semver、路径逃逸、哈希格式）→ 下载时逐文件校验 SHA-256 与字节数 → staging 回读校验 →  
 安装后回读校验 → 任一步失败即恢复备份。
 
-> 完整的信任围栏说明、转发 Key 机制、更新通道与 feedUrl 解耦细节，
+> 完整的信任围栏说明、转发 Key 机制、更新通道与 feedUrl 解耦细节，  
 > 见[原项目 README 的「安全与隐私」一节](https://github.com/Ebony-Vinyl/dsh-our-free-model#安全与隐私)。
 
 ---
@@ -426,18 +440,18 @@ npm run build:standalone-channels
 
 MIT，见 [LICENSE](LICENSE)。
 
-本项目为独立插件，与任何模型提供方无隶属、认可或赞助关系。使用本项目访问免费额度受各提供方
+本项目为独立插件，与任何模型提供方无隶属、认可或赞助关系。使用本项目访问免费额度受各提供方  
 自身条款约束；在超出个人机器的场景中部署前，请先确认这些条款。
 
 ---
 
 ## 来源与许可
 
-本仓库是 **[Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model)**
+本仓库是 **[Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model)**  
 的 fork，基于上游 `ddb451c`（2026-10-12）分叉，在其之上叠加本 fork 的增量增强。
 
-- 原项目采用 **MIT 协议**，`LICENSE` 文件中的
-  `Copyright (c) 2026 Ebony-Vinyl` **完整保留、未做修改**——这是 MIT 协议的要求，
+- 原项目采用 **MIT 协议**，`LICENSE` 文件中的  
+  `Copyright (c) 2026 Ebony-Vinyl` **完整保留、未做修改**——这是 MIT 协议的要求，  
   也是本项目合规的基础。本 fork 不对原作者的代码重新许可。
 - 原项目的功能、原理、上游来源、验收记录与全部细节文档，请以**原仓库**为准。
 - 本 fork 新增代码同样以 MIT 协议发布。
