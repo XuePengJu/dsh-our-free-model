@@ -53,3 +53,9 @@ docs/system_design.md
 
 # 本地备份（README 原件、移除的图片），不进入仓库
 backup/
+
+# channel-pack 的 tsc 编译产物与本地依赖锁
+# lib/ 是 `tsc` 的输出（.js/.d.ts/.map，670 个文件 8.7MB），仓库里无任何引用：
+# 打包走 esbuild 读 src/，类型检查用 `tsc --noEmit`。删了随时可重新生成。
+vendor/channel-pack/lib/
+vendor/channel-pack/package-lock.json
