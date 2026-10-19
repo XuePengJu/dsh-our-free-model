@@ -1477,6 +1477,34 @@ export interface RpcUsageTokenLedgerHistoryResponse {
 }
 
 /**
+ * RPC: 读取**单条记录的全文**（2026-10-19 · 日志详情懒加载）。
+ *
+ * ## 为什么单独一个 RPC
+ *
+ * 全文（提问/工具回填/正文/思考）单条中位 345KB：放进 `usage.tokenLedger`
+ * 的快照会让每次刷新传输 135MB（前端一次拉 400 条）。所以 record 里只有
+ * `hasDetail: true` 标记，用户**点开某一行**才走这个 RPC 从 JSONL 反查。
+ */
+export interface RpcUsageTokenLedgerDetailRequest {
+  /** 目标记录的 `ts`（列表里那一行的唯一键）。 */
+  ts: number
+}
+
+/** 单条记录的全文三段（缺哪段就省略哪个字段，全空时 `detail` 缺省）。 */
+export interface RpcUsageTokenLedgerDetailResponse {
+  detail?: {
+    /** 本轮用户真正说的话（续轮回退到最近一条人类消息）。 */
+    promptText?: string
+    /** 本轮工具回填（tool-result 文本）。 */
+    toolText?: string
+    /** 本轮 AI 正文。 */
+    responseText?: string
+    /** 本轮 AI 思考（UI 默认折叠）。 */
+    reasoningText?: string
+  }
+}
+
+/**
  * 「每日首次启动自动签到」的实时状态。
  *
  * 语义要点（用户 2026-10-02 的需求：「每日第一次打开 DSH 可以按照这个状态是否

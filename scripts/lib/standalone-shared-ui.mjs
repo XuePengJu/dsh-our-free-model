@@ -38,8 +38,14 @@ const css = shared.CSS + `
 .ofm_logdetail{display:flex;flex-direction:column;gap:10px;padding:12px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);border-left:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);animation:ofm_logdetail-in .18s ease}
 @keyframes ofm_logdetail-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .ofm_logdetail-block{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ofm_logdetail-label{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}
+.ofm_logdetail-label{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);display:flex;align-items:center;gap:8px}
 .ofm_logdetail p{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-primary);word-break:break-all;white-space:pre-wrap}
+/* 全文块：保留原始换行（代码/表格），限高滚动，避免一条日志把页面撑爆 */
+.ofm_logdetail-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 60%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 70%,transparent)}
+/* 思考块：与正文视觉区分（次要色 + 斜体感），默认折叠 */
+.ofm_logdetail-think{color:var(--dsw-alias-label-secondary);font-style:italic;border-style:dashed}
+.ofm_logdetail-toggle{font:inherit;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;padding:1px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l2) 80%,transparent);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:border-color .16s ease,color .16s ease}
+.ofm_logdetail-toggle:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-label-primary)}
 /* 运行日志：底部翻页行（左翻页、右每页条数下拉） */
 .ofm_logpager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
 .ofm_logpager-nav{display:flex;align-items:center;gap:10px}
