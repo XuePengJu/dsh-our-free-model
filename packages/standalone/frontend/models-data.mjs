@@ -1,5 +1,7 @@
-/** 筛选只影响当前视图，不改变服务端目录。disabled: 'active' 排除已禁用模型，'only' 只看已禁用。 */
-export function filterModels(catalog, { search = '', channel = 'all', capability = 'all', availability = 'all', access = 'all', disabled = 'active' }) {
+/** 筛选只影响当前视图，不改变服务端目录。disabled: 'active' 排除已禁用模型，'only' 只看已禁用。
+ *  hidden 同构：'active' 排除已隐藏，'only' 只看已隐藏 —— 隐藏要真的从默认视图消失，
+ *  否则用户点了整组开关看不出任何变化（服务端 hiddenByUser 已把组开关算进来）。 */
+export function filterModels(catalog, { search = '', channel = 'all', capability = 'all', availability = 'all', access = 'all', disabled = 'active', hidden = 'active' }) {
   const query = search.trim().toLocaleLowerCase()
   return catalog.filter(model =>
     (channel === 'all' || model.channel === channel)
@@ -7,6 +9,7 @@ export function filterModels(catalog, { search = '', channel = 'all', capability
     && (availability === 'all' || (model.availability ?? 'unknown') === availability)
     && (access === 'all' || (access === 'routable' ? model.routable : !model.routable))
     && (disabled === 'all' || (disabled === 'only' ? model.disabled === true : model.disabled !== true))
+    && (hidden === 'all' || (hidden === 'only' ? model.hiddenByUser === true : model.hiddenByUser !== true))
     && `${model.name} ${model.id}`.toLocaleLowerCase().includes(query))
 }
 

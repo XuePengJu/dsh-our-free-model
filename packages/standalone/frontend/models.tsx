@@ -23,17 +23,19 @@ const channelName = (id: string) => sourceNames[id]
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const capacity = (value?: number) => value && Number.isFinite(value) && value > 0
   ? value >= 1000 ? `${Number((value / 1000).toFixed(1))}K` : number(value) : '未知'
-// 默认视图是「已探测可用」：快捷标签组与该默认值联动，五个标签是互斥视图，
-// 各自完整决定 access × availability × disabled 三个维度（用下拉自由组合时无标签高亮）。
-// 「已禁用」单独一页：禁用的模型不在其余任何视图出现。
+// 默认视图是「已探测可用」：快捷标签组与该默认值联动，六个标签是互斥视图，
+// 各自完整决定 access × availability × disabled × hidden 四个维度（用下拉自由组合时无标签高亮）。
+// 「已禁用」「已隐藏」都是独立一页：这两类模型不在其余任何视图出现，避免点了隐藏看不出变化。
 const views = [
-  { id: 'all', name: '全部模型', patch: { access: 'all', availability: 'all', disabled: 'active' } },
-  { id: 'available', name: '已探测可用', patch: { access: 'all', availability: 'available', disabled: 'active' } },
-  { id: 'routable', name: '可接入', patch: { access: 'routable', availability: 'all', disabled: 'active' } },
-  { id: 'hidden', name: '未公开', patch: { access: 'hidden', availability: 'all', disabled: 'active' } },
-  { id: 'closed', name: '已禁用', patch: { access: 'all', availability: 'all', disabled: 'only' } },
+  { id: 'all', name: '全部模型', patch: { access: 'all', availability: 'all', disabled: 'active', hidden: 'active' } },
+  { id: 'available', name: '已探测可用', patch: { access: 'all', availability: 'available', disabled: 'active', hidden: 'active' } },
+  { id: 'routable', name: '可接入', patch: { access: 'routable', availability: 'all', disabled: 'active', hidden: 'active' } },
+  { id: 'hidden', name: '未公开', patch: { access: 'hidden', availability: 'all', disabled: 'active', hidden: 'active' } },
+  { id: 'closed', name: '已禁用', patch: { access: 'all', availability: 'all', disabled: 'only', hidden: 'active' } },
+  // 已隐藏页要能找回任何被隐藏的模型（含被禁用的），故其余维度全放开。
+  { id: 'concealed', name: '已隐藏', patch: { access: 'all', availability: 'all', disabled: 'all', hidden: 'only' } },
 ] as const
-const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'available', access: 'all', disabled: 'active' }
+const initialFilters = { search: '', channel: 'all', capability: 'all', availability: 'available', access: 'all', disabled: 'active', hidden: 'active' }
 type Operation = 'refresh' | 'probe' | 'test' | 'export'
 type TestState = { model: Model; state: 'pending' | 'success' | 'error' | 'cancelled'; result?: ModelTestResult; error?: string }
 
@@ -197,6 +199,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const filtered = Object.entries(filters).some(([key, value]) => value !== initialFilters[key as keyof typeof initialFilters])
   const routable = summary.catalog.filter(model => model.routable && !model.disabled).length
   const closed = summary.catalog.filter(model => model.disabled).length
+  const concealed = summary.catalog.filter(model => model.hiddenByUser === true).length
   return <div className="model-browser" data-testid="models-ready">
     <header className="dashboard-heading">
       <div><div className="heading-eyebrow">WORKSPACE / MODELS</div><h1>模型清单</h1>
@@ -236,21 +239,24 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     </div>
     <div className="model-list-toolbar">
       <div className="channel-filters" role="group" aria-label="筛选模型视图">
-        {views.map(view => (
-          <button key={view.id} aria-pressed={filters.access === view.patch.access && filters.availability === view.patch.availability && filters.disabled === view.patch.disabled}
-            onClick={() => changeFilters(view.patch)}>{view.name}{view.id === 'closed' && closed > 0 ? ` ${closed}` : ''}</button>
-        ))}
+        {views.map(view => {
+          const count = view.id === 'closed' ? closed : view.id === 'concealed' ? concealed : 0
+          const pressed = filters.access === view.patch.access && filters.availability === view.patch.availability
+            && filters.disabled === view.patch.disabled && filters.hidden === view.patch.hidden
+          return (
+            <button key={view.id} aria-pressed={pressed}
+              onClick={() => changeFilters(view.patch)}>{view.name}{count > 0 ? ` ${count}` : ''}</button>
+          )
+        })}
       </div>
-      <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)} 个模型</span>
-      {filtered && <Button variant="ghost" onClick={() => changeFilters(initialFilters)}><X size={14} />清空筛选</Button>}
-    </div>
-    {/* 上游 v2.5.2 的整组隐藏开关：与本地禁用体系互不影响，只控制清单默认可见性。 */}
-    <div className="model-list-toolbar">
-      <div className="channel-filters" role="group" aria-label="整组隐藏">
-        <label className="model-visibility-toggle"><input type="checkbox" role="switch" checked={summary.settings.hideFreeModels === true}
-          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideFreeModels: event.target.checked }) }} /> {visibility.hideFree}</label>
-        <label className="model-visibility-toggle"><input type="checkbox" role="switch" checked={summary.settings.hideEacModels === true}
-          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideEacModels: event.target.checked }) }} /> {visibility.hideEac}</label>
+      <div className="model-list-tail">
+        {/* 上游 v2.5.2 的整组隐藏开关：与本地禁用体系互不影响，只决定清单默认展示哪些模型。 */}
+        <label className="model-visibility-toggle" title={visibility.hideFree}><input type="checkbox" role="switch" checked={summary.settings.hideFreeModels === true}
+          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideFreeModels: event.target.checked }) }} />{visibility.shortFree}</label>
+        <label className="model-visibility-toggle" title={visibility.hideEac}><input type="checkbox" role="switch" checked={summary.settings.hideEacModels === true}
+          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideEacModels: event.target.checked }) }} />{visibility.shortEac}</label>
+        <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)}<span className="count-unit"> 个模型</span></span>
+        {filtered && <Button variant="ghost" title="清空筛选" aria-label="清空筛选" onClick={() => changeFilters(initialFilters)}><X size={14} /><span className="clear-label">清空筛选</span></Button>}
       </div>
     </div>
     {test && <section className={`model-test-result model-test-${test.state}`} aria-label="模型测试结果" aria-live="polite">

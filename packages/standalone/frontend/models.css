@@ -178,6 +178,25 @@
 .model-visibility-toggle input[type="checkbox"]:checked { background: var(--md-accent); }
 .model-visibility-toggle input[type="checkbox"]:checked::after { transform: translateX(12px); background: #fff; }
 .model-visibility-toggle input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
+/* 开关并入视图标签行右端：与计数、清空筛选同排，省掉单独一行的高度。 */
+.model-list-tail {
+  margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+  justify-content: flex-end; min-width: 0;
+}
+/* 窄屏（笔记本 1080 宽常见）用精简写法，保证标签行与开关仍在一行，不额外占高度。 */
+@media (max-width: 1200px) {
+  .model-list-tail { gap: 8px; }
+  .model-list-tail .count-unit,
+  .model-list-tail .clear-label { display: none; }
+}
+.model-list-tail [data-testid="model-result-count"] { margin-left: 0; }
+.model-list-tail .model-visibility-toggle {
+  font-size: 11px; gap: 5px; padding: 0 2px; color: var(--md-ink-tertiary);
+}
+.model-list-tail .model-visibility-toggle:hover { color: var(--md-ink-secondary); }
+.model-list-tail .model-visibility-toggle input[type="checkbox"] { width: 26px; height: 16px; }
+.model-list-tail .model-visibility-toggle input[type="checkbox"]::after { width: 12px; height: 12px; }
+.model-list-tail .model-visibility-toggle input[type="checkbox"]:checked::after { transform: translateX(10px); }
 
 /* ---- 表格容器：一张有边界的明细纸 ---- */
 .model-table {
