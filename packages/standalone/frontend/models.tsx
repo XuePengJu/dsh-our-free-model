@@ -266,7 +266,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
         {test.state === 'pending' ? <Button variant="outline" onClick={cancel}><Square size={14} />取消测试</Button>
           : <Button variant="ghost" aria-label="关闭测试结果" title="关闭测试结果" onClick={() => setTest(undefined)}><X size={15} /></Button>}
       </div>
-      {test.state === 'success' && <pre>{test.result?.text || '请求已完成，上游没有返回可见正文。'}</pre>}
+      {test.state === 'success' && <><pre>{test.result?.text}</pre>{test.result?.persisted === false && <p role="status">测试已成功，但结果未能保存；请检查数据目录权限或重新测试。</p>}</>}
       {test.state === 'error' && <p>{test.error}</p>}
     </section>}
     {models.length ? <div className="model-table" role="table" aria-label="模型清单" aria-rowcount={models.length + 1} aria-colcount={5}>
@@ -282,7 +282,10 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
         <div className="model-virtual-content" style={{ height: virtual.getTotalSize() }}>
           {virtual.getVirtualItems().map(item => {
             const model = models[item.index]
-            const state = model.availability ?? 'unknown'
+            const state = model.availabilitySource === 'listing' ? 'listed' : model.availability ?? 'unknown'
+            const manual = model.availabilitySource === 'manual'
+            const failed = manual && state === 'unknown'
+            const availabilityName = failed ? '实测失败' : manual && state === 'available' ? '实测可用' : availabilityNames[state] ?? '未知状态'
             const disabledReason = model.disabled ? '模型已禁用，可在「已禁用」页重新启用' : !summary.settings.enabled ? '推理服务已暂停' : !model.routable && !model.hiddenByUser ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
             const canHide = ['anonymous', 'kilo', 'eac', 'aggregate', 'combo'].includes(model.channel)
             return <div role="row" aria-rowindex={item.index + 2} key={item.key} data-index={item.index} data-model-id={model.id}
@@ -295,15 +298,16 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                 <Badge>{model.vision ? '视觉' : '纯文本'}</Badge>{model.reasoning && <Badge tone="blue">思考</Badge>}</div></div>
               <div role="cell" className="model-limits"><span title={model.contextWindow ? `${model.contextWindow} Token` : undefined}>{capacity(model.contextWindow)} <small>上下文</small></span>
                 <span title={model.maxOutput ? `${model.maxOutput} Token` : undefined}>{capacity(model.maxOutput)} <small>输出</small></span></div>
-              <div role="cell" className="model-state" title={model.availabilityDetail ?? undefined}><Badge tone={state === 'available' ? 'success' : warningStates.includes(state) ? 'warning' : 'neutral'}>
-                {model.disabled ? '已禁用' : availabilityNames[state] ?? '未知状态'}</Badge>{!model.routable && !model.disabled && <small>{model.hiddenByUser ? visibility.hidden : '未公开'}</small>}
+              <div role="cell" className="model-state" title={model.availabilityDetail ?? model.detail ?? undefined}><Badge tone={state === 'available' ? 'success' : failed || warningStates.includes(state) ? 'warning' : 'neutral'}>
+                {model.disabled ? '已禁用' : availabilityName}</Badge>{!model.routable && !model.disabled && <small>{model.hiddenByUser ? visibility.hidden : '未公开'}</small>}
                 {model.ttftMs != null && <small>首响应 {number(model.ttftMs)} ms</small>}
                 {/* 判定原文：徽章只放得下状态名，失败原因（限流何时解禁 / 需重新登录 /
                     探测超时）在这里露出；只要状态不是「已探测可用」且确实带了原因就显示，
                     因为用户点开「未探测」视图最想知道的正是它为什么还没通过。
+                    手工实测（availabilitySource=manual）读 detail，自动探测读 availabilityDetail。
                     CSS 截断两行，完整内容挂在单元格的 title 上。 */}
-                {!model.disabled && state !== 'available' && model.availabilityDetail
-                  ? <small className="model-state-detail">{model.availabilityDetail}</small> : null}</div>
+                {!model.disabled && state !== 'available' && (model.availabilityDetail || model.detail)
+                  ? <small className="model-state-detail">{model.availabilityDetail || model.detail}</small> : null}</div>
               {/* 规则 3：行内 ≤2 钮 + ⋯ 菜单。复制=图标钮，禁用/启用与测试=主操作，
                   低频的隐藏与写入收进 ⋯ 菜单（隐藏=上游体系，写入=本地导出）。 */}
               <div role="cell" className="model-row-actions">

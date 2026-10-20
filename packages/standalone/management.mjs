@@ -1,3 +1,4 @@
+import { modelAvailability } from '../../src/model-test.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
@@ -203,7 +204,9 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       settings: managementSettings(stores.settings.get()),
       catalogSyncedAt: stores.settings.get().catalogSyncedAt ?? 0,
       probedAt: available.at ?? 0,
-      catalog: state.catalog.map(entry => ({
+      catalog: state.catalog.map(entry => {
+        const measured = modelAvailability(entry.id, available, Boolean(entry.channel))
+        return ({
         id: entry.id, name: entry.name, channel: entry.channel ?? 'anonymous',
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
         contextWindow: entry.contextWindow ?? entry.context_window, maxOutput: entry.maxOutput ?? entry.max_tokens,
@@ -211,14 +214,16 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         disabled: disabled.has(entry.id),
         hiddenByUser: isModelHidden(entry, state.settings),
         hiddenByGroup: isModelHidden(entry, { ...state.settings, hiddenModelIds: [] }),
-        // 渠道行探测前保持「清单已收录」的原状；一旦有真实探测判定（核心轮或
-        // 渠道轮写入 availability），如实显示，不再一律盖成 listed。
-        availability: available.results?.[entry.id]?.state ?? (entry.channel ? 'listed' : 'unknown'),
+        // 判定来源统一走 modelAvailability：它按请求开始时间比较自动探测与
+        // 手工实测，手工结果不会被迟到的旧探测覆盖。渠道行在无任何判定时
+        // 仍呈现「清单已收录」（listing），而不是「未探测」。
+        ...measured,
+        availability: measured.availabilitySource === 'listing' ? 'listed' : measured.availability,
         // 判定原文（如「…均在限流中，最近一个将于 … 解禁」）：徽章只放得下状态名，
-        // 失败原因靠它在页面上以 title 展开，用户才知道该等解禁还是该去重新登录。
-        availabilityDetail: available.results?.[entry.id]?.detail ?? null,
-        ttftMs: available.results?.[entry.id]?.ttftMs ?? null,
-      })),
+        // 失败原因靠它在页面上展开，用户才知道该等解禁还是该去重新登录。
+        availabilityDetail: measured.detail || null,
+        ttftMs: measured.ttftMs ?? null,
+      }) }),
     }
   }
 
@@ -444,51 +449,23 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       const controller = new AbortController()
       const abort = () => controller.abort()
       res.once('close', abort)
-      const deadline = setTimeout(abort, 60_000)
-      deadline.unref?.()
-      const started = Date.now()
-      let first = 0
       try {
-        const outcome = await runtime.complete({
-          model: body.model, signal: controller.signal,
-          // WorkBuddy 国际版网关硬性要求：请求第一条消息必须是 system，
-          // 否则返回 400 code 11128「first message is not system prompt」
-          // （并伪装成"安全策略拦截"），导致模型/模型组测试恒失败。
-          // 这里前置一条轻量 system，让连通性测试能真实打到上游。
-          // 对其他 OpenAI 兼容渠道无影响：standard 客户端本就以 system 开头。
-          openAi: {
-            messages: [
-              { role: 'system', content: 'You are a connectivity test endpoint. Reply briefly with the requested word.' },
-              { role: 'user', content: 'Reply with OK.' },
-            ],
-            max_tokens: 64,
-          },
-        }, () => { if (!first) first = Date.now() })
-        if (outcome.error) throw fail(502, outcome.error)
-        // 一次成功的显式测试就是「可用」的强证据，写回与探测同一份 availability
-        // 存储，页面上的状态徽章随之从「未探测」变为「已探测可用」——否则用户点
-        // 了测试看到成功，徽章却纹丝不动，与探测链路各说各话。
-        recordVerdict(body.model, {
-          state: 'available', latencyMs: Date.now() - started,
-          ...first ? { ttftMs: first - started } : {},
-        })
-        json(res, 200, { ok: true, text: outcome.text.slice(0, 2000), latencyMs: Date.now() - started })
+        // 走 runtime.testModel：它要求「非空正文 + 正常结束」才判成功，并把
+        // 成功/失败都写进 manualResults（与自动探测分开存，旧探测不能覆盖）。
+        // 总预算 300 秒由 src/model-test.js 统一管，这里不再自带 60 秒截止。
+        const result = await runtime.testModel(body.model, undefined, { signal: controller.signal })
+        if (!controller.signal.aborted) json(res, 200, result)
       } catch (error) {
-        // 失败的显式测试同样把归类写回存储：否则用户点「测试」看到报错，徽章
-        // 却停在「未探测」，无从分辨是限流、凭据失效还是模型真不存在。`unknown`
-        // 不写——那是「没问到答案」，拿它覆盖已有的「可用」会把好模型降级。
-        const verdict = classifyChannelFailure(error, started)
-        if (verdict.state !== 'unknown') recordVerdict(body.model, verdict)
-        // 渠道层抛出的错误（凭据失效、限流、配额耗尽、上游拒绝）不该变成 500
-        // 「管理操作失败」——那会把真实原因吞掉，用户在页面上完全看不到为什么
-        // 测试失败。凡是在渠道边界标记过的判定，按 502 透传原始消息；其余错误
-        // 维持原样上抛，走全局兜底，避免把内部异常细节暴露到页面。
-        if (!error?.statusCode && (error?.name === 'LlmError' || error?.channelVerdict === true)) {
-          throw fail(502, error.message)
+        if (!controller.signal.aborted) {
+          // 渠道层抛出的错误（凭据失效、限流、配额耗尽、上游拒绝）不该变成 500
+          // 「管理操作失败」——那会把真实原因吞掉，用户在页面上完全看不到为什么
+          // 测试失败。凡是在渠道边界标记过的判定，按 502 透传原始消息。
+          if (!error?.statusCode && (error?.name === 'LlmError' || error?.channelVerdict === true)) {
+            throw fail(502, error.message)
+          }
+          throw fail(error.status === 404 ? 404 : error.code === 'TIMEOUT' ? 504 : 502, String(error.message ?? '模型测试失败'))
         }
-        throw error
       } finally {
-        clearTimeout(deadline)
         res.removeListener('close', abort)
       }
     } else throw fail(404, '管理接口不存在')
