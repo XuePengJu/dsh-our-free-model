@@ -13,7 +13,8 @@ import { isLoopbackHost } from '../../src/trust.js'
 import { createManagement } from './management.mjs'
 import { createStandaloneEac } from './eac.mjs'
 import { createChannelRuntime } from './channels/runtime.mjs'
-import { probeChannelModels } from './channel-probe.mjs'
+import { classifyChannelFailure, probeChannelModels, testChannelModel } from './channel-probe.mjs'
+import { MODEL_TEST_TIMEOUT_MS } from '../../src/model-test.js'
 
 const PRODUCT = 'our-free-model-standalone'
 const VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
@@ -135,6 +136,9 @@ export async function startStandalone({
   let refreshInFlight
   let closing
   let stopped = false
+  // 「探测可用性」的实时进度：管理页在探测期间短轮询 GET /models/probe 显示进度条。
+  // phase 走 catalog（核心免费车道，行数未知）→ channels（渠道行，知道总数）→ done。
+  let probeProgress = { running: false, phase: 'idle', done: 0, total: 0, startedAt: 0, finishedAt: 0 }
   // 渠道探测的长生命周期取消器：与上游的 acquireServiceLock 无关，锁释放已由
   // releaseLock（上方 await acquireServiceLock 的返回值）统一负责。
   const lifetime = new AbortController()
@@ -296,8 +300,54 @@ export async function startStandalone({
       }
       return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
     }
+    // 渠道模型的手工实测。
+    //
+    // 核心 testModel 只在 `core.catalog` 里 find，而账号渠道行是 service 层拼进
+    // 目录的（见 realRows 的注释：核心目录只认识免费/Kilo/EAC/聚合车道）。直接把
+    // id 转给 core.testModel，渠道模型一律得到 `Unknown model` —— 页面能列出来、
+    // 能推理（complete 有 handles 分流），偏偏测不了。这里补上同一道分流。
+    //
+    // 判定与持久化仍走上游那一套：成功/失败都写 manualResults（与自动探测分开
+    // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
+    const latestChannelTests = new Map()
+    const testChannelRow = async (id, effort, options = {}) => {
+      if (!channels.handles(id)) return core.testModel(id, effort, options)
+      const { signal } = options
+      const token = {}
+      latestChannelTests.set(id, token)
+      const persist = row => {
+        if (stopped || signal?.aborted || latestChannelTests.get(id) !== token) return false
+        stores.availability.edit(value => ({ ...value, manualResults: { ...value.manualResults, [id]: row } }))
+        stores.availability.flush()
+        return !stores.availability.writeFailed
+      }
+      const started = Date.now()
+      try {
+        const measured = await testChannelModel(channels, id, { signal, timeoutMs: MODEL_TEST_TIMEOUT_MS })
+        const persisted = persist({
+          state: 'available', source: 'manual', at: Date.now(),
+          ttftMs: measured.ttftMs, latencyMs: measured.latencyMs,
+        })
+        return { model: id, effort, ok: true, ...measured, persisted }
+      } catch (error) {
+        // 取消是用户动作，不是对模型的裁决：不写存储，也不把已有的「可用」降级。
+        // 其余失败按渠道归类写回（限流 / 需重新登录 / 明确不支持），页面才看得出
+        // 该等解禁、该去重新登录，还是这个模型真的没有。
+        if (!signal?.aborted) {
+          const verdict = classifyChannelFailure(error, started)
+          persist({
+            state: verdict.state, source: 'manual', at: Date.now(),
+            detail: verdict.detail, latencyMs: verdict.latencyMs,
+          })
+        }
+        throw error
+      } finally {
+        if (latestChannelTests.get(id) === token) latestChannelTests.delete(id)
+      }
+    }
     runtime = {
       ...core,
+      testModel: testChannelRow,
       get egress() { return core.egress },
       get gatewayLatency() { return core.gatewayLatency },
       get catalog() { return [...realRows(), ...comboRows()] },
@@ -332,34 +382,53 @@ export async function startStandalone({
       },
       async refreshCatalog(options) {
         if (stopped) return
-        await Promise.all([core.refreshCatalog(options), channels.refresh().catch(error => { if (!stopped) throw error })])
-        // 渠道模型行不走核心探测（那是对免费网关发的）；核心探测开着的轮次
-        // （手动“探测可用性”或开启自动探测后的周期轮）顺带覆盖账号渠道，
-        // 判定写进同一个 availability 存储，管理页据此显示真实状态。
-        if (options?.probe === true && !stopped) {
-          // 已关闭的模型不再探测，避免白白消耗账号额度。
-          const disabled = disabledSet()
-          const rows = channels.publicModelRows().filter(row => !disabled.has(row.id))
-          await probeChannelModels(channels, rows, { signal: lifetime.signal }, (id, result) => {
-            if (stopped) return
-            stores.availability.edit(value => ({
-              ...value,
-              results: {
-                ...value.results,
-                [id]: {
-                  state: result.state,
-                  ...result.detail === undefined ? {} : { detail: result.detail },
-                  ...result.ttftMs === undefined ? {} : { ttftMs: result.ttftMs },
-                  latencyMs: result.latencyMs, at: Date.now(),
+        const probing = options?.probe === true
+        if (probing) {
+          probeProgress = { running: true, phase: 'catalog', done: 0, total: 0, startedAt: Date.now(), finishedAt: 0 }
+        }
+        try {
+          await Promise.all([core.refreshCatalog(options), channels.refresh().catch(error => { if (!stopped) throw error })])
+          // 渠道模型行不走核心探测（那是对免费网关发的）；核心探测开着的轮次
+          // （手动“探测可用性”或开启自动探测后的周期轮）顺带覆盖账号渠道，
+          // 判定写进同一个 availability 存储，管理页据此显示真实状态。
+          if (probing && !stopped) {
+            // 已关闭的模型不再探测，避免白白消耗账号额度。
+            const disabled = disabledSet()
+            const rows = channels.publicModelRows().filter(row => !disabled.has(row.id))
+            // 核心段跑完才知道渠道行一共多少条，进度条从这一段开始有分母。
+            probeProgress = { ...probeProgress, phase: 'channels', done: 0, total: rows.length }
+            // 渠道段按渠道分组并发（同渠道 2 条、跨渠道最多 8 条）、单条 20 秒截止：
+            // 实测一轮 33 行里 32 条健康行各 1–3 s，旧的全局并发 2 + 45 s 超时会被
+            // 一条死模型独占半个通道，整轮 58 s。分组并发既快又不把同一账号打出 429。
+            // 免费车道那一段（core.refreshCatalog）不动：它的额度按会话算，并发必须低。
+            await probeChannelModels(channels, rows, {
+              signal: lifetime.signal, perChannel: 2, concurrency: 8, timeoutMs: 20_000,
+            }, (id, result) => {
+              if (stopped) return
+              stores.availability.edit(value => ({
+                ...value,
+                results: {
+                  ...value.results,
+                  [id]: {
+                    state: result.state,
+                    ...result.detail === undefined ? {} : { detail: result.detail },
+                    ...result.ttftMs === undefined ? {} : { ttftMs: result.ttftMs },
+                    latencyMs: result.latencyMs, at: Date.now(),
+                  },
                 },
-              },
-            }))
-          })
-          if (stopped) return
-          stores.availability.update({ at: Date.now(), egress: core.egress })
-          stores.availability.flush()
+              }))
+              probeProgress = { ...probeProgress, done: probeProgress.done + 1 }
+            })
+            if (stopped) return
+            stores.availability.update({ at: Date.now(), egress: core.egress })
+            stores.availability.flush()
+          }
+        } finally {
+          // 中途被打断（服务关闭、上游报错）也要收尾，否则管理页会一直显示进度条。
+          if (probing) probeProgress = { ...probeProgress, running: false, phase: 'done', finishedAt: Date.now() }
         }
       },
+      probeProgress: () => ({ ...probeProgress }),
     }
     management = createManagement({
       stores, runtime, channels, eac,

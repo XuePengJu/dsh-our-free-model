@@ -205,7 +205,16 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       catalogSyncedAt: stores.settings.get().catalogSyncedAt ?? 0,
       probedAt: available.at ?? 0,
       catalog: state.catalog.map(entry => {
-        const measured = modelAvailability(entry.id, available, Boolean(entry.channel))
+        // 渠道行是本服务**真实探测**的车道（probeChannelModels 把判定写进 results），
+        // 不能像 EAC / Kilo / 聚合车道那样当「只信清单、不做探测」的 listing 车道
+        // 传给 modelAvailability —— 第三个参数为 true 时它会直接丢弃 results
+        // （`const probe = listed ? undefined : ...`），页面就永远停在「清单已收录」，
+        // 点多少次「探测可用性」都不动。只有**一条判定都没有**的渠道行才回落到
+        // listing，保住原来那句「清单已收录」而不是「未探测」。
+        const hasVerdict = Boolean(available.results?.[entry.id] || available.manualResults?.[entry.id])
+        const measured = entry.channel && !hasVerdict
+          ? { availabilitySource: 'listing', availability: 'unknown', detail: '', probedAt: 0 }
+          : modelAvailability(entry.id, available, false)
         return ({
         id: entry.id, name: entry.name, channel: entry.channel ?? 'anonymous',
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
@@ -215,8 +224,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         hiddenByUser: isModelHidden(entry, state.settings),
         hiddenByGroup: isModelHidden(entry, { ...state.settings, hiddenModelIds: [] }),
         // 判定来源统一走 modelAvailability：它按请求开始时间比较自动探测与
-        // 手工实测，手工结果不会被迟到的旧探测覆盖。渠道行在无任何判定时
-        // 仍呈现「清单已收录」（listing），而不是「未探测」。
+        // 手工实测，手工结果不会被迟到的旧探测覆盖。
         ...measured,
         availability: measured.availabilitySource === 'listing' ? 'listed' : measured.availability,
         // 判定原文（如「…均在限流中，最近一个将于 … 解禁」）：徽章只放得下状态名，
@@ -442,6 +450,10 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (body.probe !== undefined && typeof body.probe !== 'boolean') throw fail(400, 'probe 必须是布尔值')
       await runtime.refreshCatalog({ probe: body.probe === true, force: body.probe === true })
       json(res, 200, summary())
+    } else if (method === 'GET' && pathname === `${PREFIX}/models/probe`) {
+      // 探测进度快照：只读内存状态，不触发任何上游请求。前端在「探测可用性」等待
+      // 期间短轮询这个接口画进度条——POST /models/refresh 本身要等整轮跑完才返回。
+      json(res, 200, runtime.probeProgress?.() ?? { running: false, phase: 'idle', done: 0, total: 0, startedAt: 0, finishedAt: 0 })
     } else if (method === 'POST' && pathname === `${PREFIX}/models/test`) {
       const body = await readBody(req)
       if (stores.settings.get().enabled === false) throw fail(503, '推理服务已暂停，请先在服务设置中启用')

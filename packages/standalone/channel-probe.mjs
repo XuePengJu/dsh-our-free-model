@@ -27,28 +27,83 @@
 const PROBE_SYSTEM = 'You are a helpful assistant.'
 
 /**
- * 探测一批渠道模型行，并发与核心探测保持同样的小扇出。
+ * 探测一批渠道模型行，按**渠道分组**调度。
+ *
+ * ## 为什么不是一个全局并发数
+ *
+ * 渠道的额度是按账号算的：workbuddy 有 5 行、qodercn 6 行、trae 6 行，它们共享
+ * 同一个账号额度。若只给一个全局并发 6，很可能把同一个账号的 6 条 ping 同时打
+ * 出去，换回 429 → 这些模型被标成「限流中」——比慢更糟。所以：
+ *
+ * - 同一渠道内最多 `perChannel` 条在飞（默认 2，与原先全局 2 时单账号看到的
+ *   压力一致，不改变对上游的礼貌程度）；
+ * - 渠道与渠道之间并行跑，总在飞不超过 `concurrency`（默认 8）。
+ *
+ * 收益来自跨渠道并行：实测 33 行里 32 条健康行各 1–3 s，串行合计 53.6 s，
+ * 按渠道并行后这部分只要 ~5–8 s。剩下的长尾是单条超时行，由 `timeoutMs`
+ * 决定（默认 20 s —— 健康行最慢 3 s，20 s 已有 6 倍余量；45 s 会让一条死模型
+ * 独占一个通道近一分钟，整轮被它拖住）。
  *
  * @param {object} channels - createChannelRuntime 返回的渠道运行时
  * @param {Array<{id:string}>} rows - channels.publicModelRows() 的行
- * @param {{concurrency?: number, timeoutMs?: number, signal?: AbortSignal}} [options]
+ * @param {{perChannel?: number, concurrency?: number, timeoutMs?: number, signal?: AbortSignal}} [options]
  * @param {(id: string, result: {state: string, detail?: string, latencyMs: number, ttftMs?: number}) => void} [onResult]
  * @returns {Promise<Record<string, {state: string, detail?: string, latencyMs: number, ttftMs?: number}>>}
  */
 export async function probeChannelModels(channels, rows, options = {}, onResult = () => {}) {
-  const { concurrency = 2, timeoutMs = 45000, signal } = options
+  const { perChannel = 2, concurrency = 8, timeoutMs = 20_000, signal } = options
   const results = {}
-  let cursor = 0
-  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, rows.length)) }, async () => {
-    while (cursor < rows.length) {
-      const row = rows[cursor++]
-      const result = await probeChannelModel(channels, row, { timeoutMs, signal })
-      results[row.id] = result
-      onResult(row.id, result)
+  const groups = new Map()
+  for (const row of rows) {
+    const key = channelOf(row)
+    const group = groups.get(key)
+    if (group === undefined) groups.set(key, [row])
+    else group.push(row)
+  }
+  // 全局名额是跨渠道共享的闸门：渠道再多，同时在飞的请求也不超过 concurrency。
+  const slots = createLimiter(Math.max(1, concurrency))
+  const workers = [...groups.values()].map(async group => {
+    let cursor = 0
+    const run = async () => {
+      while (cursor < group.length) {
+        const row = group[cursor++]
+        const result = await slots(() => probeChannelModel(channels, row, { timeoutMs, signal }))
+        results[row.id] = result
+        onResult(row.id, result)
+      }
     }
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(perChannel, group.length)) }, run))
   })
   await Promise.all(workers)
   return results
+}
+
+/**
+ * 一行的渠道归属：渠道模型 id 是 `渠道/模型`，取前缀即可。
+ *
+ * 同一渠道前缀必然落在同一个账号池里（`channels.handles()` 就是按这个前缀
+ * 分流），所以按前缀分组等价于按账号分组，不会把不同账号混成一池。
+ */
+function channelOf(row) {
+  const id = typeof row?.id === 'string' ? row.id : ''
+  const slash = id.indexOf('/')
+  return slash > 0 ? id.slice(0, slash) : id
+}
+
+/** 最简单的手写闸门：拿到名额才执行，执行完立刻让给下一个等待者。 */
+function createLimiter(max) {
+  let active = 0
+  const waiting = []
+  const release = () => {
+    const next = waiting.shift()
+    if (next === undefined) { active--; return }
+    next()
+  }
+  return async task => {
+    if (active >= max) await new Promise(resolve => waiting.push(resolve))
+    else active++
+    try { return await task() } finally { release() }
+  }
 }
 
 async function probeChannelModel(channels, row, { timeoutMs, signal }) {
@@ -131,4 +186,61 @@ function stateOfChannel({ status, code, message }) {
   if (!gatewayTrouble && NAMED_MODEL_DETAIL.test(message)) return 'unavailable'
   if (Number.isInteger(status) && ROUTING_REFUSAL_STATUS.has(status)) return 'unavailable'
   return 'unknown'
+}
+
+/**
+ * 手工实测一个渠道模型。
+ *
+ * 与探测（{@link probeChannelModels}）共用请求口径 —— 同样的 system 前置、同样的
+ * 最小 user 消息，所以腾讯系网关的「首条必须是 system」约束照样满足 —— 但判定从
+ * 严：探测只问「能不能路由到」（收到任何流帧就算可用），手工测试是用户主动点的那
+ * 一下，必须证明模型真的回了话。空正文或意外工具调用都算失败，否则一次空回复会
+ * 被读成「可用」，比不测更误导。
+ *
+ * 失败一律抛错，由调用方用 {@link classifyChannelFailure} 归类并写入存储。
+ *
+ * @param {object} channels - createChannelRuntime 返回的渠道运行时
+ * @param {string} id - 渠道模型行 id（`provider/model`）
+ * @param {{signal?: AbortSignal, timeoutMs?: number, now?: () => number}} [options]
+ * @returns {Promise<{totalMs: number, latencyMs: number, ttftMs: number, text: string, sample: string}>}
+ */
+export async function testChannelModel(channels, id, { signal, timeoutMs = 300_000, now = Date.now } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error('实测超时')), timeoutMs)
+  timer.unref?.()
+  const relayAbort = () => controller.abort(signal?.reason ?? new Error('实测已取消'))
+  if (signal?.aborted) relayAbort()
+  else signal?.addEventListener('abort', relayAbort, { once: true })
+  const started = now()
+  let first = 0
+  try {
+    const outcome = await channels.complete({
+      model: id, signal: controller.signal,
+      openAi: {
+        messages: [
+          { role: 'system', content: PROBE_SYSTEM },
+          { role: 'user', content: 'Reply with exactly: OK' },
+        ],
+        max_tokens: 32,
+      },
+    }, () => { if (!first) first = now() })
+    const failure = outcome?.error
+    if (failure !== undefined && failure !== null && String(failure).trim() !== '') {
+      throw Object.assign(new Error(String(failure)), { channelVerdict: true })
+    }
+    if (Array.isArray(outcome?.toolCalls) && outcome.toolCalls.length > 0) {
+      throw Object.assign(new Error('实测返回了意外的工具调用'), { channelVerdict: true })
+    }
+    const text = typeof outcome?.text === 'string' ? outcome.text : ''
+    if (text.trim() === '') throw Object.assign(new Error('实测没有返回任何正文'), { channelVerdict: true })
+    const ended = now()
+    return {
+      totalMs: ended - started, latencyMs: ended - started,
+      ttftMs: first === 0 ? ended - started : first - started,
+      text: text.slice(0, 2000), sample: text.slice(0, 60),
+    }
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', relayAbort)
+  }
 }

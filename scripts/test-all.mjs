@@ -59,6 +59,7 @@ const suites = [
   ['standalone-frontend', 'standalone-frontend-test.mjs', []],
   ['standalone-channels', 'standalone-channels-test.mjs', []],
   ['standalone-channel-failure', 'standalone-channel-failure-test.mjs', []],
+  ['standalone-channel-probe-scheduler', 'standalone-channel-probe-scheduler-test.mjs', []],
   // 本项目自己的两个回归：用量页四档周期，以及 WorkBuddy 配置写入（后者放在
   // packages/standalone 里，用相对路径挂进统一入口，避免同一份测试存在两处）。
   ['usage-period', 'usage-period-test.mjs', []],
