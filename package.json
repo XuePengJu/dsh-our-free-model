@@ -1,6 +1,6 @@
 {
   "name": "dsh-our-free-model",
-  "version": "2.5.7",
+  "version": "2.5.8",
   "private": true,
   "type": "module",
   "description": "Our Free Model（Ebony-Vinyl/dsh-our-free-model 的 fork）— 在 dsh 里装上这个插件即可，无需登录、注册或填 API Key，就能使用包括 DeepSeek V4.1 Flash、Kimi K3 在内的前沿模型，桌面端另有 EAC 协付渠道；2.0 起接入 CodeArts、CodeBuddy、WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax、ZCode、Gemini 十三个账号渠道（原有匿名免费通道保留）（登录、账号池、积分领取、本地 OpenAI 网关与局域网转发、数据看板与运行日志），九页毛玻璃界面统一呈现。本 fork 另增强独立本地服务：模型组可视化编排、WorkBuddy 配置同步、macOS 桌面壳。",

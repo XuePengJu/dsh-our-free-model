@@ -1,6 +1,6 @@
 [package]
 name = "ofm-desktop"
-version = "2.5.7"
+version = "2.5.8"
 description = "Our Free Model Desktop"
 authors = ["Ebony-Vinyl"]
 license = "MIT"
