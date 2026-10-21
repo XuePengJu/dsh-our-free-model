@@ -137,6 +137,18 @@ export interface WorkbuddySyncResult { added: number; updated: number; removed: 
 export interface WorkbuddyWriteResult { added: number; updated: number; total: number }
 /** WorkBuddy 配置备份条目；entries 为 null 表示备份文件无法解析（禁用恢复）。 */
 export interface WorkbuddyBackup { file: string; at: number; bytes: number; entries: number | null }
+/**
+ * 「探测可用性」的实时进度快照（GET /models/probe）。
+ * phase: catalog=正在刷新清单（行数未知）；channels=正在逐条探测渠道模型；done=已收尾。
+ */
+export interface ProbeProgress {
+  running: boolean
+  phase: 'idle' | 'catalog' | 'channels' | 'done'
+  done: number
+  total: number
+  startedAt: number
+  finishedAt: number
+}
 export interface Host {
   navigate(page: Page): void
   refresh(): Promise<void>
@@ -147,6 +159,7 @@ export interface Host {
   error(error: Error): void
   testModel(model: string, signal: AbortSignal): Promise<ModelTestResult>
   refreshModels(probe: boolean, signal: AbortSignal): Promise<void>
+  probeProgress(): Promise<ProbeProgress>
   setModelDisabled(id: string, disabled: boolean): Promise<void>
   saveSettings(settings: Partial<ServiceSettings>): Promise<ServiceSettings>
   listCombos(): Promise<Combo[]>

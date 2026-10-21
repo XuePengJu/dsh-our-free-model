@@ -94,6 +94,48 @@
 .model-summary > span:nth-child(2) { font-variant-numeric: tabular-nums; }
 .model-summary > span:last-child { margin-left: auto; color: var(--md-ink-muted); }
 
+/* ---- 探测可用性进度条 ----
+   POST /models/refresh 要等整轮跑完才返回，进度靠轮询 /models/probe。
+   动画只用 transform / width，数字 tabular-nums 避免秒数跳动时抖行。 */
+.probe-progress {
+  margin: 0 0 18px; padding: 12px 14px;
+  border: 1px solid var(--md-line); border-radius: 10px;
+  background: var(--md-surface-raised);
+  animation: probe-progress-in var(--md-duration-normal) var(--md-ease-out) both;
+}
+.probe-progress-head {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--md-ink-secondary); font-size: 12px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.probe-progress-elapsed { margin-left: auto; color: var(--md-ink-muted); font-weight: 400; }
+.probe-progress-track {
+  position: relative; height: 4px; margin-top: 9px; overflow: hidden;
+  border-radius: 999px; background: var(--md-line-strong);
+}
+.probe-progress-fill {
+  height: 100%; width: 0; border-radius: inherit;
+  background: var(--md-accent);
+  transition: width var(--md-duration-slow) var(--md-ease-out);
+}
+/* 还没拿到渠道行总数时用不确定态条纹：一条窄光块循环滑过整条轨道。 */
+.probe-progress-track.is-indeterminate .probe-progress-fill {
+  width: 34%;
+  animation: probe-progress-slide 1.1s var(--md-ease-out) infinite;
+}
+@keyframes probe-progress-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes probe-progress-slide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(320%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .probe-progress { animation: none; }
+  .probe-progress-track.is-indeterminate .probe-progress-fill { animation: none; width: 100%; opacity: 0.5; }
+}
+
 /* ---- 筛选工具栏 ---- */
 .model-filters {
   display: grid; grid-template-columns: minmax(200px, 1fr) repeat(3, minmax(120px, 175px));

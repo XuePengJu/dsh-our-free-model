@@ -520,6 +520,8 @@ window.__ModuleLoader__.load({
         'logs.noPreview': '本条没有内容摘要。',
         'logs.perPage': '每页',
         'logs.perPageSuffix': '条',
+        'logs.loadFailed': '日志加载失败：{error}',
+        'logs.retry': '重试',
         'gw.title': '网关设置',
         'gw.sub': '把渠道模型以 OpenAI 兼容接口发给本机与局域网工具：端点、密钥与转发端口都在这里。',
         'gw.gatewayTitle': '渠道模型网关（OpenAI 兼容）',
@@ -1228,6 +1230,8 @@ window.__ModuleLoader__.load({
         'logs.noPreview': 'No content preview for this entry.',
         'logs.perPage': 'Rows per page',
         'logs.perPageSuffix': '',
+        'logs.loadFailed': 'Could not load the request log: {error}',
+        'logs.retry': 'Retry',
         'gw.title': 'Gateway settings',
         'gw.sub': 'Serve the channel models over an OpenAI-compatible API to this machine and the LAN: endpoint, key and relay port live here.',
         'gw.gatewayTitle': 'Channel gateway (OpenAI compatible)',
@@ -4921,7 +4925,9 @@ window.__ModuleLoader__.load({
         } catch (error) { setState(current => ({ ...current, status: 'error', error: String(error?.message ?? error) })) }
       }, [available, rpc])
       useEffect(() => { void load() }, [load])
-      return { ...state, reload: load }
+      // rpc 必须一起透出：详情行（LogDetail）要用它懒加载全文，而 LogsPage 自身
+      // 的 props 里没有 rpc（那是 useChannelRpc 的内部变量）。
+      return { ...state, reload: load, rpc }
     }
 
     /** KPI cards: one reading per card, exactly like the gateway consoles. */
@@ -5066,6 +5072,8 @@ window.__ModuleLoader__.load({
     function LogsPage(props) {
       const { t, ctx } = props
       const ledger = useLedger(props)
+      // 详情行需要 rpc；本组件自己没有，只能从 useLedger 透出（见该 hook 的注释）。
+      const { rpc } = ledger
       const [pageSize, setPageSize] = useState(20)
       const [auto, setAuto] = useState(false)
       // 点击行展开内容摘要：记条目的 ts（同屏唯一），-1 = 全部收起。
@@ -5088,6 +5096,11 @@ window.__ModuleLoader__.load({
           h(Button, { onClick: () => void reload() }, t('dash.refresh'))),
         ledger.status === 'unavailable' ? h('div', { className: 'ofm_callout' }, h('div', null, t('chan.rpc.unavailable'))) : null,
         ledger.status === 'loading' ? h('div', { className: 'ofm_skel', style: { minHeight: 200 } }) : null,
+        // 失败必须给出口：此前只在 unavailable/loading/ready 三态下渲染，
+        // error 时整页只剩标题，看起来就是一片白屏。
+        ledger.status === 'error' ? h('div', { className: 'ofm_callout' },
+          h('div', null, t('logs.loadFailed').replace('{error}', ledger.error || '')),
+          h('div', null, h(Button, { onClick: () => void reload() }, t('logs.retry')))) : null,
         ledger.status === 'ready' ? h(Section, {
           title: t('logs.title'),
           hint: t('logs.count').replace('{shown}', String(rows.length)).replace('{total}', String(entries.length)),

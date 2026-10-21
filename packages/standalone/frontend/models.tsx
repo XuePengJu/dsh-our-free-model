@@ -7,7 +7,7 @@ import { EndpointStrip } from './components/endpoint-strip'
 import { resolveEndpointBase } from './endpoint-origin'
 import { filterModels, nextHiddenIds } from './models-data.mjs'
 import { visibilityCopy } from './visibility-data.mjs'
-import type { Host, Model, ModelTestResult, ServiceSettings, Summary } from './types'
+import type { Host, Model, ModelTestResult, ProbeProgress, ServiceSettings, Summary } from './types'
 import './models.css'
 
 const availabilityNames: Record<string, string> = {
@@ -39,10 +39,38 @@ const initialFilters = { search: '', channel: 'all', capability: 'all', availabi
 type Operation = 'refresh' | 'probe' | 'test' | 'export'
 type TestState = { model: Model; state: 'pending' | 'success' | 'error' | 'cancelled'; result?: ModelTestResult; error?: string }
 
+/**
+ * 「探测可用性」进度条。POST /models/refresh 要等整轮跑完才返回，前端只能靠
+ * 轮询 /models/probe 拿快照，这里把它画出来。
+ * catalog 阶段还没拿到渠道行总数，用不确定态条纹；channels 阶段按已完成条数填充。
+ */
+function ProbeBar({ progress }: { progress: ProbeProgress }) {
+  const determinate = progress.phase === 'channels' && progress.total > 0
+  const percent = determinate ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0
+  // finishedAt 为 0 表示还在跑；轮询每 600ms 带来新对象，累计秒数随之更新。
+  const end = progress.finishedAt > 0 ? progress.finishedAt : Date.now()
+  const elapsed = progress.startedAt > 0 ? Math.max(0, Math.round((end - progress.startedAt) / 1000)) : 0
+  const label = determinate ? `正在探测可用性 ${progress.done} / ${progress.total}` : '正在刷新模型清单…'
+  return <div className="probe-progress" data-testid="probe-progress" role="status">
+    <div className="probe-progress-head">
+      <LoaderCircle size={14} className="spinning" />
+      <span>{label}</span>
+      <span className="probe-progress-elapsed">已用 {elapsed}s</span>
+    </div>
+    <div className={`probe-progress-track${determinate ? '' : ' is-indeterminate'}`} role="progressbar"
+      aria-label="探测进度" aria-valuemin={0} aria-valuemax={determinate ? progress.total : undefined}
+      aria-valuenow={determinate ? progress.done : undefined}>
+      <div className="probe-progress-fill" style={determinate ? { width: `${percent}%` } : undefined} />
+    </div>
+  </div>
+}
+
 export function Models({ summary, host, active }: { summary: Summary; host: Host; active: boolean }) {
   const visibility = visibilityCopy(document.documentElement.lang)
   const [filters, setFilters] = useState(initialFilters)
   const [operation, setOperation] = useState<Operation>()
+  // 探测进行中的进度快照：只在 operation === 'probe' 期间有值。
+  const [progress, setProgress] = useState<ProbeProgress>()
   const [test, setTest] = useState<TestState>()
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -59,6 +87,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const visibilityPending = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const pending = useRef<AbortController | undefined>(undefined)
+  // 探测进度的轮询停止函数；切走页面/操作结束时必须调用，否则计时器会跟着组件泄漏。
+  const probePoll = useRef<(() => void) | undefined>(undefined)
   const activeRef = useRef(active)
   activeRef.current = active
   const models = useMemo<Model[]>(() => filterModels(summary.catalog, filters), [summary.catalog, filters])
@@ -84,12 +114,15 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     if (!active) {
       pending.current?.abort()
       pending.current = undefined
+      probePoll.current?.()
+      probePoll.current = undefined
+      setProgress(undefined)
       setOperation(undefined)
       setExportingId(undefined)
       setOpenMenuId(undefined)
       setTest(previous => previous?.state === 'pending' ? { ...previous, state: 'cancelled' } : previous)
     }
-    return () => { pending.current?.abort(); pending.current = undefined }
+    return () => { pending.current?.abort(); pending.current = undefined; probePoll.current?.(); probePoll.current = undefined }
   }, [active])
   useEffect(() => {
     if (active && scrollRef.current) {
@@ -98,11 +131,30 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     }
   }, [models.length, active, virtual])
 
+  // 探测期间每 600ms 拉一次进度快照。轮询本身失败不打扰用户——主请求会用真实
+  // 原因报错；服务端说 running=false 就停，避免主请求返回后还在空转。
+  const startProbeProgress = () => {
+    let alive = true
+    let timer: ReturnType<typeof setInterval> | undefined
+    const stop = () => { alive = false; if (timer !== undefined) clearInterval(timer); timer = undefined }
+    const tick = () => {
+      void host.probeProgress().then(next => {
+        if (!alive || !activeRef.current) return
+        setProgress(next)
+        if (!next.running) stop()
+      }).catch(() => {})
+    }
+    timer = setInterval(tick, 600)
+    tick()
+    return stop
+  }
+
   const run = async (kind: Operation, model?: Model) => {
     if (pending.current || !activeRef.current) return
     const controller = new AbortController()
     pending.current = controller
     setOperation(kind); setError(''); setMessage('')
+    if (kind === 'probe') { setProgress(undefined); probePoll.current = startProbeProgress() }
     if (model) setTest({ model, state: 'pending' })
     const isCurrent = () => pending.current === controller && !controller.signal.aborted && activeRef.current
     try {
@@ -128,7 +180,14 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       if (kind === 'test' && model) setTest({ model, state: 'error', error: detail })
       else setError(detail)
     } finally {
-      if (isCurrent()) { pending.current = undefined; setOperation(undefined) }
+      if (isCurrent()) {
+        pending.current = undefined
+        setOperation(undefined)
+        // 主请求已返回，进度条的轮询必须同时停掉，否则会一直打 /models/probe。
+        probePoll.current?.()
+        probePoll.current = undefined
+        setProgress(undefined)
+      }
     }
   }
 
@@ -215,6 +274,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
         </Button>
       </div>
     </header>
+    {operation === 'probe' ? <ProbeBar progress={progress ?? { running: true, phase: 'catalog', done: 0, total: 0, startedAt: Date.now(), finishedAt: 0 }} /> : null}
     <EndpointStrip host={host} summary={summary} />
     <div className="model-summary">
       <span><span className={`status-dot ${summary.settings.enabled ? '' : 'paused'}`} />{summary.settings.enabled ? '推理已启用' : '推理已暂停'}</span>
