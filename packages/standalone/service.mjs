@@ -67,7 +67,9 @@ async function acquireServiceLock(dataDir) {
   try {
     try { lock = fs.openSync(lockFile, 'wx', 0o600) }
     catch (error) {
-      if (error.code !== 'EEXIST' || !releaseGuard) throw error
+      // 无 releaseGuard 的平台（darwin：acquireProcessGuard 返回 null）同样允许回收陈旧锁。
+      // guard 只提供串行化优化，防误删依靠下面的 dev/ino 比对与内容二次核对。
+      if (error.code !== 'EEXIST') throw error
       const previousStat = fs.lstatSync(lockFile)
       if (!previousStat.isFile()) throw error
       const previous = fs.readFileSync(lockFile, 'utf8')
