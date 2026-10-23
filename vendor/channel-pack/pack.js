@@ -60966,8 +60966,10 @@ import { existsSync as existsSync9, mkdirSync as mkdirSync6, readFileSync as rea
 import { join as join7 } from "node:path";
 var AUTO_CHECKIN_FILE = "auto-checkin.json";
 var SCHEMA4 = "dsh-codearts-auth/auto-checkin/v1";
+var DEFAULT_AUTO_CHECKIN_TIME = "10:05";
 var DEFAULT_AUTO_CHECKIN = {
-  enabled: true,
+  enabled: false,
+  time: DEFAULT_AUTO_CHECKIN_TIME,
   lastDate: "",
   lastResult: "",
   lastAt: 0,
@@ -60975,6 +60977,7 @@ var DEFAULT_AUTO_CHECKIN = {
   dismissedRunAt: 0
 };
 var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+var AUTO_CHECKIN_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 var MAX_CHANNEL_ENTRIES = 24;
 function sanitizeChannels(raw) {
   if (!Array.isArray(raw)) return [];
@@ -60989,16 +60992,20 @@ function sanitizeChannels(raw) {
   }
   return out;
 }
+function sanitizeAutoCheckinTime(raw) {
+  return typeof raw === "string" && AUTO_CHECKIN_TIME_RE.test(raw) ? raw : DEFAULT_AUTO_CHECKIN_TIME;
+}
 function sanitizeAutoCheckin(raw) {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...DEFAULT_AUTO_CHECKIN };
   const record = raw;
   const ms = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
   return {
-    // ⚠️ **只有显式 `false` 才算关闭**（默认是打开的，见 `AutoCheckinDoc.enabled`）：
-    // 写成 `=== true` 会让旧文档（没有该字段）与脏数据把开关静默关掉，与
-    // 「默认保持打开状态」相反。`'false'` / `0` 这些非布尔值一律按打开处理 ——
-    // 它们不是用户点出来的值。
-    enabled: record.enabled !== false,
+    // ⚠️ **只有显式 `true` 才算打开**（2026-10-19 判据反转，见文件头）：
+    // 旧写法 `record.enabled !== false` 会把「旧文档没有该字段」与脏数据
+    //（`'false'` / `0` / `null`）统统判成**打开** —— 那是默认值翻转前的语义，
+    // 照抄会让「从没开过这个开关的用户」被静默开启自动签到。
+    enabled: record.enabled === true,
+    time: sanitizeAutoCheckinTime(record.time),
     lastDate: typeof record.lastDate === "string" && DATE_RE.test(record.lastDate) ? record.lastDate : "",
     lastResult: typeof record.lastResult === "string" ? record.lastResult : "",
     lastAt: ms(record.lastAt),
@@ -61009,8 +61016,34 @@ function sanitizeAutoCheckin(raw) {
 function utc8DateString(nowMs = Date.now()) {
   return new Date(nowMs + QODER_BILLING_UTC_OFFSET_MS).toISOString().slice(0, 10);
 }
+function utc8ClockString(nowMs = Date.now()) {
+  const shifted = new Date(nowMs + QODER_BILLING_UTC_OFFSET_MS);
+  const hours = String(shifted.getUTCHours()).padStart(2, "0");
+  const minutes = String(shifted.getUTCMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+function utc8MinutesOfDay(nowMs = Date.now()) {
+  const shifted = new Date(nowMs + QODER_BILLING_UTC_OFFSET_MS);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+function parseTimeOfDay(time) {
+  if (!AUTO_CHECKIN_TIME_RE.test(time)) return void 0;
+  const [hours, minutes] = time.split(":");
+  return Number(hours) * 60 + Number(minutes);
+}
+var MINUTES_PER_DAY = 24 * 60;
+function isCheckinDue(time, nowMs = Date.now(), tickMs = AUTO_CHECKIN_TICK_MS) {
+  const target = parseTimeOfDay(time);
+  if (target === void 0) return { due: false, reason: "waiting" };
+  const minutes = utc8MinutesOfDay(nowMs);
+  if (minutes >= target) return { due: true, reason: "reached" };
+  const tickMinutes = Math.max(1, Math.ceil(tickMs / 6e4));
+  if (minutes + tickMinutes >= MINUTES_PER_DAY) return { due: true, reason: "last-chance" };
+  return { due: false, reason: "waiting" };
+}
 var DSH_CHANNEL_PACK_AUTO_CHECKIN_DELAY_MS = "DSH_CHANNEL_PACK_AUTO_CHECKIN_DELAY_MS";
 var AUTO_CHECKIN_DELAY_MS = 3e4;
+var AUTO_CHECKIN_TICK_MS = 5 * 6e4;
 function autoCheckinDelayMs(env = process.env) {
   const raw = env[DSH_CHANNEL_PACK_AUTO_CHECKIN_DELAY_MS];
   if (typeof raw !== "string" || raw.trim().length === 0) return AUTO_CHECKIN_DELAY_MS;
@@ -61038,7 +61071,7 @@ var FileAutoCheckinStore = class {
       if (!existsSync9(this.path)) return { ...DEFAULT_AUTO_CHECKIN };
       return sanitizeAutoCheckin(JSON.parse(readFileSync9(this.path, "utf-8")));
     } catch (error) {
-      this.logger?.warn(`[channel-pack] \u8BFB\u53D6 ${this.path} \u5931\u8D25\uFF0C\u81EA\u52A8\u7B7E\u5230\u6309\u9ED8\u8BA4\u8BBE\u7F6E\uFF08\u5F00\u542F\uFF09\u5904\u7406: ${String(error)}`);
+      this.logger?.warn(`[channel-pack] \u8BFB\u53D6 ${this.path} \u5931\u8D25\uFF0C\u81EA\u52A8\u7B7E\u5230\u6309\u9ED8\u8BA4\u8BBE\u7F6E\uFF08\u5173\u95ED\uFF09\u5904\u7406: ${String(error)}`);
       return { ...DEFAULT_AUTO_CHECKIN };
     }
   }
@@ -61048,6 +61081,8 @@ var FileAutoCheckinStore = class {
     writeFileSync7(tmp, JSON.stringify({
       schema: SCHEMA4,
       enabled: doc.enabled,
+      // ⚠️ 必须落盘：否则每次重启都回到默认 10:05，用户设的时间静默丢失。
+      time: doc.time,
       lastDate: doc.lastDate,
       lastResult: doc.lastResult,
       lastAt: doc.lastAt,
@@ -61110,12 +61145,16 @@ function createAutoCheckin(deps) {
   const now = deps.now ?? (() => Date.now());
   let doc = deps.store.load();
   let running2 = false;
+  const tickMs = deps.tickMs ?? AUTO_CHECKIN_TICK_MS;
   let inflight = null;
   let pending = null;
+  let ticker = null;
+  let lastSkipReason = null;
   const today = () => utc8DateString(now());
   function state() {
     return {
       enabled: doc.enabled,
+      time: doc.time,
       lastDate: doc.lastDate,
       ranToday: doc.lastDate !== "" && doc.lastDate === today(),
       running: running2,
@@ -61182,7 +61221,7 @@ function createAutoCheckin(deps) {
     }
     if (!shouldMarkToday(totals)) {
       deps.warn?.(
-        `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u672A\u8BB0\u5165\u4ECA\u65E5\uFF08\u4E0B\u6B21\u542F\u52A8\u4F1A\u91CD\u8BD5\uFF09\uFF1A${describeRun(totals)}`
+        `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u672A\u8BB0\u5165\u4ECA\u65E5\uFF08\u4E0B\u4E2A\u5468\u671F\u4F1A\u91CD\u8BD5\uFF09\uFF1A${describeRun(totals)}`
       );
       return;
     }
@@ -61204,9 +61243,37 @@ function createAutoCheckin(deps) {
     deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u5B8C\u6210\uFF08${today()}\uFF09\uFF1A${doc.lastResult}`);
   }
   function runIfDue() {
-    if (inflight !== null) return inflight;
-    if (!doc.enabled) return Promise.resolve();
-    if (doc.lastDate !== "" && doc.lastDate === today()) return Promise.resolve();
+    const skip = (reason) => {
+      if (lastSkipReason !== reason) {
+        lastSkipReason = reason;
+        deps.debug?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A${reason}`);
+      }
+      return Promise.resolve();
+    };
+    if (inflight !== null) {
+      deps.debug?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u4E0A\u4E00\u8F6E\u4ECD\u5728\u8FDB\u884C\u4E2D\uFF08inflight\uFF09`);
+      return inflight;
+    }
+    if (!doc.enabled) return skip("\u5F00\u5173\u672A\u6253\u5F00");
+    if (doc.lastDate !== "" && doc.lastDate === today()) {
+      return skip(`\u4ECA\u5929\uFF08${doc.lastDate}\uFF09\u5DF2\u7ECF\u7B7E\u8FC7`);
+    }
+    if (parseTimeOfDay(doc.time) === void 0) {
+      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u7B7E\u5230\u65F6\u95F4\u914D\u7F6E\u975E\u6CD5\uFF08${JSON.stringify(doc.time)}\uFF09\uFF0C\u8BF7\u91CD\u65B0\u8BBE\u7F6E`);
+      return Promise.resolve();
+    }
+    const decision = isCheckinDue(doc.time, now(), tickMs);
+    if (!decision.due) {
+      return skip(
+        `\u4ECA\u5929\u8FD8\u6CA1\u5230\u70B9\uFF08\u8BBE\u5B9A ${doc.time}\uFF08UTC+8\uFF09\uFF0C\u5F53\u524D UTC+8 ${utc8ClockString(now())}\uFF09`
+      );
+    }
+    if (decision.reason === "last-chance") {
+      deps.warn?.(
+        `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u63D0\u524D\u89E6\u53D1\uFF1A\u8BBE\u5B9A ${doc.time}\uFF08UTC+8\uFF09\uFF0C\u5F53\u524D UTC+8 ${utc8ClockString(now())}\u2014\u2014\u4E0B\u4E00\u6B21\u68C0\u67E5\u4F1A\u8DE8\u8FC7\u5348\u591C\uFF0C\u518D\u7B49\u4ECA\u5929\u5C31\u6C38\u8FDC\u7B49\u4E0D\u5230\uFF08\u65E5\u672B\u76F2\u533A\u8865\u507F\uFF09`
+      );
+    }
+    lastSkipReason = null;
     running2 = true;
     const task = performRun().catch((error) => {
       deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u5F02\u5E38: ${String(error)}`);
@@ -61225,12 +61292,22 @@ function createAutoCheckin(deps) {
       if (enabled) void runIfDue();
       return state();
     },
+    async setTime(time) {
+      doc = { ...doc, time };
+      await deps.store.save(doc);
+      void runIfDue();
+      return state();
+    },
     start() {
-      if (pending !== null) return;
+      if (pending !== null || ticker !== null) return;
       const ms = deps.delayMs ?? autoCheckinDelayMs();
       const fire = () => {
         pending = null;
         void runIfDue();
+        if (ticker !== null) return;
+        ticker = (deps.scheduleInterval ?? defaultScheduleInterval)(() => {
+          void runIfDue();
+        }, tickMs);
       };
       if (ms <= 0) {
         fire();
@@ -61251,6 +61328,8 @@ function createAutoCheckin(deps) {
     stop() {
       pending?.cancel();
       pending = null;
+      ticker?.cancel();
+      ticker = null;
     }
   };
 }
@@ -61258,6 +61337,11 @@ function defaultSchedule(fn, ms) {
   const timer = setTimeout(fn, ms);
   timer.unref?.();
   return { cancel: () => clearTimeout(timer) };
+}
+function defaultScheduleInterval(fn, ms) {
+  const timer = setInterval(fn, ms);
+  timer.unref?.();
+  return { cancel: () => clearInterval(timer) };
 }
 
 // vendor/channel-pack/src/channel-pack-rpc.ts
@@ -61598,7 +61682,11 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
       return [...new Set(accounts.map((entry) => entry.provider))].sort();
     },
     claim: (provider) => handleMethod("credits.claimAll", { provider }),
-    warn: (message2) => ctx.logger?.warn?.(message2)
+    warn: (message2) => ctx.logger?.warn?.(message2),
+    // ⚠️ 守卫拦截（开关关着 / 今天已跑 / 未到点）走 `debug`：周期检查每 5 分钟
+    // 一次，这些是**预期**的静默，用 warn 会把日志刷成噪声。`ctx.logger.debug`
+    // 可能不存在（不同宿主版本的 logger 能力不同），故可选调用。
+    debug: (message2) => ctx.logger?.debug?.(message2)
   });
   autoCheckin.start();
   ctx.effect?.(() => () => autoCheckin.stop(), "channel-pack: auto checkin");
@@ -63980,15 +64068,16 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
         return { ok: true, value };
       }
       /**
-       * 「每日首次启动自动签到」开关（读 / 写，**全局一个**，不分渠道）。
+       * 「每日到点自动签到」开关与签到时间（读 / 写，**全局一个**，不分渠道）。
        *
-       * ⚠️ `enabled` 省略时**只读**；给出时必须是布尔值。非法值拒绝而不是静默
-       * 回落 —— 理由与 `usage.badgePreference` 完全一致（回落会让「设置没生效」
-       * 看起来像「保存成功」）。
+       * ⚠️ `enabled` / `time` 都省略时**只读**；给出时按各自类型严格校验。非法值
+       * 拒绝而不是静默回落 —— 理由与 `usage.badgePreference` 完全一致（回落会让
+       * 「设置没生效」看起来像「保存成功」）。
        *
        * ⚠️ 写入 `true` 时宿主会**立刻尝试跑一轮**（今天已跑过则由执行体内部拦住）：
        * 否则用户今天打开开关要等到明天才有动作，看起来像没生效。返回值里的
-       * `running` 会立刻为 `true`，界面据此显示「进行中」。
+       * `running` 会立刻为 `true`，界面据此显示「进行中」。改 `time` 同理 ——
+       * 改到「已经过点」的时刻应当立刻补签。
        */
       case "usage.autoCheckin": {
         const req = payload;
@@ -64007,6 +64096,21 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
             return { ok: true, value: value2 };
           }
         }
+        if (req.time !== void 0) {
+          if (typeof req.time !== "string" || !AUTO_CHECKIN_TIME_RE.test(req.time)) {
+            return {
+              ok: false,
+              error: {
+                code: "bad-request",
+                message: `time \u5FC5\u987B\u662F HH:mm \u683C\u5F0F\u7684 24 \u5C0F\u65F6\u5236\u65F6\u523B\uFF08\u5982 10:05\uFF09\uFF0C\u6536\u5230\uFF1A${JSON.stringify(req.time)}`
+              }
+            };
+          }
+          if (req.enabled === void 0) {
+            const value2 = { autoCheckin: await autoCheckin.setTime(req.time) };
+            return { ok: true, value: value2 };
+          }
+        }
         if (req.enabled === void 0) {
           const value2 = { autoCheckin: autoCheckin.state() };
           return { ok: true, value: value2 };
@@ -64019,6 +64123,9 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
               message: `enabled \u5FC5\u987B\u662F\u5E03\u5C14\u503C\uFF08\u6536\u5230\uFF1A${JSON.stringify(req.enabled)}\uFF09`
             }
           };
+        }
+        if (req.time !== void 0) {
+          await autoCheckin.setTime(req.time);
         }
         const value = { autoCheckin: await autoCheckin.setEnabled(req.enabled) };
         return { ok: true, value };

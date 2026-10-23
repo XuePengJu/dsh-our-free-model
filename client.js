@@ -567,6 +567,14 @@ window.__ModuleLoader__.load({
         'chan.auto.ran': '今日已自动签到',
         'chan.auto.off': '今日尚未签到',
         'chan.auto.last': '上次结果：{result}',
+        'chan.auto.time': '每天签到时间',
+        // ⚠️ 时间语义是 **UTC+8**（不是本机时区）：各渠道的每日额度按服务端账期
+        // 结算，实测都是 UTC+8（Qoder 每日活动 10:00（UTC+8）才刷新）。文案里
+        // 必须标出来，否则出差 / 改过系统时区的用户会以为要按当地时间填。
+        'chan.auto.timeHint': '（UTC+8）',
+        'chan.auto.waiting': '今日将于 {time} 自动签到（UTC+8）',
+        'chan.auto.timeFailed': '签到时间保存失败：{reason}',
+        'chan.auto.timeInvalid': '请填写 24 小时制时间，如 10:05',
         'nav.tab.aggregate': '聚合渠道',
         'nav.tab.saver': '省 Token',
         'nav.tab.routing': '路由',
@@ -1277,6 +1285,15 @@ window.__ModuleLoader__.load({
         'chan.auto.ran': 'Checked in today',
         'chan.auto.off': 'Not checked in today',
         'chan.auto.last': 'Last result: {result}',
+        'chan.auto.time': 'Daily check-in time',
+        // The time is interpreted in UTC+8, not the machine's zone: every channel
+        // settles its daily quota on the server side, which is UTC+8 in practice
+        // (Qoder's daily campaign only refreshes at 10:00 UTC+8). Say so, or a user
+        // who travelled or changed the system clock will fill in local time.
+        'chan.auto.timeHint': '(UTC+8)',
+        'chan.auto.waiting': 'Auto check-in today at {time} (UTC+8)',
+        'chan.auto.timeFailed': 'Could not save check-in time: {reason}',
+        'chan.auto.timeInvalid': 'Enter a 24-hour time, e.g. 10:05',
         'nav.tab.aggregate': 'Aggregate',
         'nav.tab.saver': 'Token savers',
         'nav.tab.routing': 'Routing',
@@ -4695,14 +4712,54 @@ window.__ModuleLoader__.load({
       // The pack runs a daily auto check-in engine across the credit channels;
       // this page is where it is switched and watched (usage.autoCheckin).
       const [auto, setAuto] = useState(undefined)
+      // Local echo of the time input: the RPC round-trip is debounced, and an
+      // uncontrolled value would snap back to the old time on every keystroke.
+      const [timeDraft, setTimeDraft] = useState('')
+      const timeSaveTimer = useRef(null)
       const loadAuto = useCallback(async () => {
         if (!available) return
         try { const value = await rpc('usage.autoCheckin', {}, 30_000); setAuto(value?.autoCheckin ?? null) } catch { setAuto(null) }
       }, [available, rpc])
       useEffect(() => { void loadAuto() }, [loadAuto])
+      // Keep the draft in step with whatever the pack reports — but only when no
+      // save is pending. A blind overwrite during editing would eat keystrokes:
+      // the debounced save re-reads `auto` after it lands, and that echo must not
+      // race the next character the user is typing.
+      useEffect(() => {
+        if (timeSaveTimer.current !== null) return
+        setTimeDraft(typeof auto?.time === 'string' ? auto.time : '')
+      }, [auto])
+      useEffect(() => () => { clearTimeout(timeSaveTimer.current); timeSaveTimer.current = null }, [])
       const toggleAuto = async () => {
         try { const value = await rpc('usage.autoCheckin', { enabled: auto?.enabled !== true }, 60_000); setAuto(value?.autoCheckin ?? null) } catch { /* the status refresh tells */ }
       }
+      // Same shape the pack validates on the other side (24h, two digits each).
+      // Duplicating the pattern here is deliberate: it lets the input reject a
+      // half-typed value without a round-trip, and the pack still owns the
+      // authoritative check — a client that drifted would just get a bad-request.
+      const AUTO_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+      const saveAutoTime = useCallback(async (value) => {
+        if (!AUTO_TIME_RE.test(value)) return
+        try {
+          const result = await rpc('usage.autoCheckin', { time: value }, 60_000)
+          setAuto(result?.autoCheckin ?? null)
+        } catch (err) {
+          showToast({ title: t('chan.auto.timeFailed').replace('{reason}', String(err?.message ?? err)).slice(0, 120), tone: 'warn' })
+        }
+      }, [rpc, t])
+      const onTimeChange = useCallback((event) => {
+        const value = String(event?.target?.value ?? '')
+        setTimeDraft(value)
+        // Debounce: `<input type="time">` fires on every wheel notch / arrow key,
+        // and each save is a disk write plus a reschedule on the pack side.
+        clearTimeout(timeSaveTimer.current)
+        timeSaveTimer.current = setTimeout(() => {
+          // Cleared **before** the await so the sync effect above can adopt the
+          // echoed value once `setAuto` lands.
+          timeSaveTimer.current = null
+          void saveAutoTime(value)
+        }, 600)
+      }, [saveAutoTime])
       const [statuses, setStatuses] = useState(undefined)
       const [error, setError] = useState('')
       const pack = summary?.channels ?? { state: 'pending', error: '' }
@@ -4783,8 +4840,32 @@ window.__ModuleLoader__.load({
               h(Pill, null, `${t('chan.meta.accounts')} ${statuses === undefined ? '—' : CHANNEL_PROVIDERS.reduce((sum, row) => sum + (statuses[row.id]?.accounts?.enabled ?? 0), 0)}`))),
           auto == null ? null : h('div', { className: 'ofm_row' },
             h(Switch, { checked: auto.enabled === true, label: t('chan.auto.title'), onChange: () => void toggleAuto() }),
+            // The time control only exists while the switch is on: a disabled
+            // engine has no "next run", and showing a time next to a switch that
+            // is off reads as "it will still fire at 10:05". Same reason the
+            // waiting hint below is gated on `enabled`.
+            auto.enabled === true ? h('label', { className: 'ofm_row', style: { gap: 6 } },
+              h('span', { className: 'ofm_note' }, t('chan.auto.time')),
+              h('input', {
+                type: 'time',
+                className: 'ofm_input',
+                // `value` is the UTC+8 wall clock the pack stores — never converted
+                // to the machine zone (the server settles on UTC+8; converting here
+                // would make the displayed time disagree with what actually runs).
+                value: timeDraft !== '' ? timeDraft : (typeof auto.time === 'string' ? auto.time : ''),
+                style: { maxWidth: 120 },
+                onChange: onTimeChange,
+                title: t('chan.auto.timeInvalid'),
+              }),
+              h('span', { className: 'ofm_note' }, t('chan.auto.timeHint'))) : null,
             h(Pill, { tone: auto.running === true ? 'warn' : auto.ranToday === true ? 'ok' : '' },
               auto.running === true ? t('chan.auto.running') : auto.ranToday === true ? t('chan.auto.ran') : t('chan.auto.off')),
+            // "Today at HH:mm" is only true before the run happens; once it ran
+            // (`ranToday`) or is running, the pill above already says so and this
+            // line would contradict it.
+            auto.enabled === true && auto.ranToday !== true && auto.running !== true && typeof auto.time === 'string' && auto.time !== ''
+              ? h('span', { className: 'ofm_note' }, t('chan.auto.waiting').replace('{time}', auto.time))
+              : null,
             typeof auto.lastResult === 'string' && auto.lastResult !== '' ? h('span', { className: 'ofm_note', title: auto.lastResult }, t('chan.auto.last').replace('{result}', auto.lastResult.length > 60 ? `${auto.lastResult.slice(0, 60)}…` : auto.lastResult)) : null)),
         failed ? h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, t('chan.pack.failed').replace('{reason}', pack.error ?? ''), h('div', { className: 'ofm_note' }, t('chan.pack.hint')))) : null,

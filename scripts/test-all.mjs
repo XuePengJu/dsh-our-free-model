@@ -69,6 +69,10 @@ const suites = [
   ['reload', 'reload-test.mjs', []],
   ['channel-source', 'channel-pack-test.mjs', ['--source', '--channels-only']],
   ['channel-credits-rpc', 'channel-credits-rpc-test.mjs', []],
+  // 自动签到「每日到点」调度：默认关闭、`time` 契约、UTC+8 判据、跨天重触发。
+  // 全部注入假时钟/假定时器，零等待零网络；本机时区被强制成非 UTC+8，
+  // 故误用 `getHours()` 的实现会红，而不是在开发者机器上恰好通过。
+  ['auto-checkin-schedule', 'auto-checkin-schedule-test.mjs', []],
   ['channel-credits-ui', 'channel-credits-ui-test.mjs', []],
   ['channel-model-actions', 'channel-model-actions-test.mjs', []],
   ['channel-login', 'channel-login-test.mjs', []],

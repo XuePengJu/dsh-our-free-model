@@ -231,7 +231,7 @@ import {
   createBadgePreferenceStore,
 } from './badge-preferences.js'
 import { createUsageBadge, type BadgeRpcResult } from './usage-badge.js'
-import { createAutoCheckin, createAutoCheckinStore } from './auto-checkin.js'
+import { createAutoCheckin, createAutoCheckinStore, AUTO_CHECKIN_TIME_RE } from './auto-checkin.js'
 
 /** Channel Pack RPC API 路径 */
 export const CHANNEL_PACK_API_PATH = '/api/channel-pack'
@@ -1090,6 +1090,10 @@ function registerChannelPackEndpoints(
     claim: (provider) =>
       handleMethod('credits.claimAll', { provider }) as Promise<BadgeRpcResult<RpcCreditsClaimAllResponse>>,
     warn: (message) => ctx.logger?.warn?.(message),
+    // ⚠️ 守卫拦截（开关关着 / 今天已跑 / 未到点）走 `debug`：周期检查每 5 分钟
+    // 一次，这些是**预期**的静默，用 warn 会把日志刷成噪声。`ctx.logger.debug`
+    // 可能不存在（不同宿主版本的 logger 能力不同），故可选调用。
+    debug: (message) => ctx.logger?.debug?.(message),
   })
   // 启动时排定一轮（延迟 30s；内部自己判开关与「今天是否已跑」）。
   autoCheckin.start()
@@ -4361,22 +4365,23 @@ function registerChannelPackEndpoints(
       }
 
       /**
-       * 「每日首次启动自动签到」开关（读 / 写，**全局一个**，不分渠道）。
+       * 「每日到点自动签到」开关与签到时间（读 / 写，**全局一个**，不分渠道）。
        *
-       * ⚠️ `enabled` 省略时**只读**；给出时必须是布尔值。非法值拒绝而不是静默
-       * 回落 —— 理由与 `usage.badgePreference` 完全一致（回落会让「设置没生效」
-       * 看起来像「保存成功」）。
+       * ⚠️ `enabled` / `time` 都省略时**只读**；给出时按各自类型严格校验。非法值
+       * 拒绝而不是静默回落 —— 理由与 `usage.badgePreference` 完全一致（回落会让
+       * 「设置没生效」看起来像「保存成功」）。
        *
        * ⚠️ 写入 `true` 时宿主会**立刻尝试跑一轮**（今天已跑过则由执行体内部拦住）：
        * 否则用户今天打开开关要等到明天才有动作，看起来像没生效。返回值里的
-       * `running` 会立刻为 `true`，界面据此显示「进行中」。
+       * `running` 会立刻为 `true`，界面据此显示「进行中」。改 `time` 同理 ——
+       * 改到「已经过点」的时刻应当立刻补签。
        */
       case 'usage.autoCheckin': {
         const req = payload as RpcUsageAutoCheckinRequest
         /**
          * 关闭那行**常驻**的自动签到状态文字。
          *
-         * ⚠️ 与 `enabled` 分开判而不是「先 dismiss 再 enabled」：两者语义独立，
+         * ⚠️ 与 `enabled` / `time` 分开判而不是「先 dismiss 再改」：三者语义独立，
          * 一次请求只该做一件事 —— 否则 `{ dismiss: true, enabled: true }` 会
          * 既关文字又改开关，客户端将来误传就难查。
          */
@@ -4395,6 +4400,30 @@ function registerChannelPackEndpoints(
             return { ok: true, value }
           }
         }
+        /**
+         * 签到时间（`HH:mm`，UTC+8 语义）。
+         *
+         * ⚠️ 严格匹配 {@link AUTO_CHECKIN_TIME_RE}：**不接受**变体 —— 单数字小时
+         *（`9:05`）、带秒（`10:05:00`）、带时区（`10:05+08:00`）、前后空格
+         *（`' 10:05'`）一律 `bad-request`。宽松接受会让客户端与服务端的判据漂移，
+         * 表现为「UI 能存、调度不生效」（与 `usage.badgePreference` 同口径）。
+         */
+        if (req.time !== undefined) {
+          if (typeof req.time !== 'string' || !AUTO_CHECKIN_TIME_RE.test(req.time)) {
+            return {
+              ok: false,
+              error: {
+                code: 'bad-request',
+                message: `time 必须是 HH:mm 格式的 24 小时制时刻（如 10:05），收到：${JSON.stringify(req.time)}`,
+              },
+            }
+          }
+          // 只有 time 时走这里；同时给了 enabled 则继续往下走（两个都写）。
+          if (req.enabled === undefined) {
+            const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setTime(req.time) }
+            return { ok: true, value }
+          }
+        }
         if (req.enabled === undefined) {
           const value: RpcUsageAutoCheckinResponse = { autoCheckin: autoCheckin.state() }
           return { ok: true, value }
@@ -4407,6 +4436,13 @@ function registerChannelPackEndpoints(
               message: `enabled 必须是布尔值（收到：${JSON.stringify(req.enabled)}）`,
             },
           }
+        }
+        // ⚠️ 两个都给了：**先写时间再写开关**。反过来的话 `setEnabled(true)` 会
+        // 立刻按**旧时间**判一轮（旧时间可能已过点）—— 用户把时间从 10:05 改到
+        // 22:00 并同时开开关，会当场签一次，然后 22:00 因为 `lastDate` 已记而不再签。
+        // 先写时间可保证「开开关那一刻看到的是新时间」。
+        if (req.time !== undefined) {
+          await autoCheckin.setTime(req.time)
         }
         const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setEnabled(req.enabled) }
         return { ok: true, value }
