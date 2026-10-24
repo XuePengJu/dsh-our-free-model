@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { CircleAlert, Network, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { shared } from 'ofm-shared-client'
@@ -11,6 +11,47 @@ import type { Summary } from '../types'
 
 interface Status { closed?: boolean; accounts?: { total: number; enabled: number }; models?: { total: number; disabled: number } }
 type Rpc = (method: string, payload?: object) => Promise<any>
+/**
+ * 单个渠道的自动签到状态（服务端 `usage.autoCheckin` 的 `providers[]`）。
+ *
+ * `time` 是 UTC+8 的 `HH:mm` 墙上时间 —— 原样显示，**不做本机时区换算**
+ *（服务端按 UTC+8 结算，这里换算会让显示的时间与实际执行时间对不上）。
+ */
+interface AutoProviderState {
+  provider: string
+  enabled: boolean
+  time: string
+  ranToday: boolean
+  lastResult: string
+  lastAt: number
+  /** 该渠道能否自动签到（无签到接口 / 代价过高的为 false，界面置灰）。 */
+  supported: boolean
+  running: boolean
+}
+/** 与服务端 `AUTO_CHECKIN_TIME_RE` 同一形状（24 小时制，各两位）。 */
+const AUTO_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+/**
+ * 默认签到时间，与服务端 `DEFAULT_AUTO_CHECKIN_TIME` 保持一致。
+ *
+ * ⚠️ 两份字面量是**刻意**的（与服务端 `AUTO_CHECKIN_TIME_RE` 同理）：前端要在
+ * 未配置的渠道上先渲染出一个合理值，不可能为此打一次 RPC。漂移的后果只是
+ * 「第一次打开时显示的时间与服务端默认值不同」，保存后即被服务端值覆盖 ——
+ * 不会造成错误行为，故不值得为它建共享常量。
+ */
+const DEFAULT_AUTO_TIME = '10:05'
+/**
+ * 该渠道能否自动签到。
+ *
+ * ⚠️ 判据是 `creditModes` 含 `'daily'`（客户端能力表），**外加**排除 zcode：
+ * zcode 有签到接口，但每次领取要现场产阿里云 captcha（web 版会拉起一个
+ * headful Chromium 进程树，且阿里云按设备限流）。服务端 `supportsAutoCheckin()`
+ * 有同一份判据，两处必须一致 —— 前端只是提前把控件置灰，服务端仍会拒绝写入。
+ */
+function supportsCheckin(provider: string): boolean {
+  if (provider === 'zcode') return false
+  const row = providers.find(entry => entry.id === provider)
+  return Array.isArray(row?.creditModes) && row.creditModes.includes('daily')
+}
 const t = Object.assign((key: string) => shared.DICT.zh[key] ?? key, { locale: 'zh' })
 
 /** 视图结果在组件侧的形状（.mjs 里的对象字面量类型偏窄，这里显式放宽到可索引）。 */
@@ -36,7 +77,13 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
   const [creditModes, setCreditModes] = useState<string[]>([])
   const [panel, setPanel] = useState(false)
   const [selected, select] = useState<string>()
-  const [auto, setAuto] = useState<{ enabled: boolean; running?: boolean; ranToday?: boolean }>()
+  // 逐渠道自动签到状态（键 = 渠道 id）。⚠️ 只有**配置过**的渠道会出现在这里，
+  // 未配置的按「默认关闭 + 默认时间」渲染，见 autoOf()。
+  const [autoProviders, setAutoProviders] = useState<Record<string, AutoProviderState>>({})
+  // 时间输入框的本地回显（键 = 渠道 id）：RPC 是防抖的，受控值若直接绑服务端
+  // 回显，每敲一个字符都会被上一轮回显打回去，输入框看起来「打不进去」。
+  const [timeDrafts, setTimeDrafts] = useState<Record<string, string>>({})
+  const timeSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [busy, setBusy] = useState(false)
   const [enabling, setEnabling] = useState(false)
   const mounted = useRef(false)
@@ -61,15 +108,97 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
       if (mounted.current && started === sequence.current) setError((failure as Error).message)
     }
   }, [rpc])
+  /** 拉取逐渠道签到状态（面板与渠道行都用它）。 */
+  const loadAuto = useCallback(async () => {
+    try {
+      const value = await rpc('usage.autoCheckin', {})
+      if (!mounted.current) return
+      const list: AutoProviderState[] = Array.isArray(value?.autoCheckin?.providers) ? value.autoCheckin.providers : []
+      const next: Record<string, AutoProviderState> = {}
+      for (const entry of list) next[entry.provider] = entry
+      setAutoProviders(next)
+    } catch { /* 状态读取失败不打断页面：控件按「默认关闭」渲染 */ }
+  }, [rpc])
   useEffect(() => {
     mounted.current = true
     void reload()
-    void rpc('usage.autoCheckin', {}).then(value => {
-      if (mounted.current) setAuto(value.autoCheckin)
-    }).catch(() => {})
+    void loadAuto()
     const timer = setInterval(() => { void reload() }, 45000)
-    return () => { mounted.current = false; sequence.current++; clearInterval(timer) }
-  }, [rpc, reload])
+    return () => {
+      mounted.current = false
+      sequence.current++
+      clearInterval(timer)
+      for (const timer of Object.values(timeSaveTimers.current)) clearTimeout(timer)
+      timeSaveTimers.current = {}
+    }
+  }, [rpc, reload, loadAuto])
+  /**
+   * 取某渠道的签到状态。
+   *
+   * ⚠️ 服务端只回**配置过**的渠道（`state()` 是同步的，读不到账号池）。未配置的
+   * 渠道要按「默认关闭 + 默认 10:05」渲染，否则用户点开一个从没配过的渠道会看到
+   * 空白，误以为功能坏了。`supported` 由前端按 `creditModes` 判（见 supportsCheckin）。
+   */
+  const autoOf = useCallback((provider: string): AutoProviderState => {
+    const known = autoProviders[provider]
+    if (known !== undefined) return known
+    return {
+      provider,
+      enabled: false,
+      time: DEFAULT_AUTO_TIME,
+      ranToday: false,
+      lastResult: '',
+      lastAt: 0,
+      supported: supportsCheckin(provider),
+      running: false,
+    }
+  }, [autoProviders])
+  /**
+   * 写某渠道的开关。
+   *
+   * ⚠️ 不用 `!auto.enabled` 取反再发：那会拿**渲染时**的旧值去翻转，连点两次
+   * 可能发出两个相同的值（用户看到「点了没反应」）。这里显式传目标值。
+   */
+  const setAutoEnabled = useCallback(async (provider: string, enabled: boolean) => {
+    setBusy(true)
+    try {
+      const value = await rpc('usage.autoCheckin', { provider, enabled })
+      if (mounted.current) setAutoProviders(prev => ({ ...prev, [provider]: value.autoCheckin.providers.find((row: AutoProviderState) => row.provider === provider) ?? prev[provider] }))
+    } catch (failure) {
+      if (mounted.current) setError(`自动签到设置失败：${(failure as Error).message}`)
+    } finally {
+      if (mounted.current) setBusy(false)
+    }
+  }, [rpc])
+  const saveAutoTime = useCallback(async (provider: string, value: string) => {
+    if (!AUTO_TIME_RE.test(value)) return
+    try {
+      const result = await rpc('usage.autoCheckin', { provider, time: value })
+      if (!mounted.current) return
+      const next = result.autoCheckin.providers.find((row: AutoProviderState) => row.provider === provider)
+      if (next !== undefined) setAutoProviders(prev => ({ ...prev, [provider]: next }))
+    } catch (failure) {
+      if (mounted.current) setError(`签到时间保存失败：${(failure as Error).message}`)
+    }
+  }, [rpc])
+  const onTimeChange = useCallback((provider: string, event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    setTimeDrafts(prev => ({ ...prev, [provider]: value }))
+    // `<input type="time">` 每滚一格、每按一次方向键都会触发 change，
+    // 而每次保存是一次落盘 + 服务端重新排期，必须防抖。
+    const existing = timeSaveTimers.current[provider]
+    if (existing !== undefined) clearTimeout(existing)
+    timeSaveTimers.current[provider] = setTimeout(() => {
+      // 先删掉再 await：这样保存返回后草稿才会被服务端回显认领。
+      delete timeSaveTimers.current[provider]
+      void saveAutoTime(provider, value)
+    }, 600)
+  }, [saveAutoTime])
+  const timeOf = useCallback((provider: string): string => {
+    const draft = timeDrafts[provider]
+    if (draft !== undefined && draft !== '') return draft
+    return autoOf(provider).time
+  }, [timeDrafts, autoOf])
   const onChanged = useCallback(() => {
     void reload()
     window.dispatchEvent(new CustomEvent('ofm:channels'))
@@ -114,6 +243,8 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
   const { rows, counts, facets } = view
   const accounts = view.accounts
   const connected = view.connected
+  /** 已开启自动签到的渠道数（左栏底部汇总用）。 */
+  const autoOnCount = Object.values(autoProviders).filter(entry => entry.enabled === true).length
   const selectedProvider = providers.find(row => row.id === selected)
   const selectedStatus = selectedProvider ? statuses?.[selectedProvider.id] : undefined
   const extraFilters = activeFilterCount({ region, creditModes })
@@ -218,14 +349,11 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
         </div>
         <div className="provider-master-foot">
           <span className="provider-master-stats"><strong>{statuses ? connected : '—'}</strong> / {providers.length} 已接入 · <strong>{statuses ? accounts : '—'}</strong> 账号</span>
-          <span className="checkin-control"><span className="status-dot" /><span>{auto?.running ? '签到进行中' : auto?.ranToday ? '今日签到已执行' : '每日签到'}</span>
-            <button type="button" role="switch" aria-label="每日自动签到" aria-checked={auto?.enabled === true}
-              className={`ui-switch ${auto?.enabled ? 'on' : ''}`} disabled={!auto || busy} onClick={() => {
-                setBusy(true)
-                void rpc('usage.autoCheckin', { enabled: !auto?.enabled }).then(value => { if (mounted.current) setAuto(value.autoCheckin) })
-                  .catch(failure => { if (mounted.current) setError(failure.message) }).finally(() => { if (mounted.current) setBusy(false) })
-              }}><span /></button>
-          </span>
+          {/* 自动签到已改成**逐渠道**（2026-10-24）：控件挪到右栏该渠道的详情里，
+              这里只留一个汇总，告诉用户总共开了几个渠道，不用逐个点开去数。 */}
+          {autoOnCount > 0 ? <span className="checkin-summary" title="自动签到已开启的渠道数">
+            <span className="status-dot" />{autoOnCount} 个渠道自动签到
+          </span> : null}
         </div>
       </div>
       {/* ===== 右详情：选中渠道的头部 + 账号管理卡 + 安全说明 ===== */}
@@ -246,6 +374,49 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
                   className={`ui-switch ${selectedStatus?.closed !== true ? 'on' : ''}`} onClick={toggleProvider}><span /></button>
               </label>
             </div>
+            {/*
+              每日自动签到（**按渠道**，2026-10-24 改造）。
+              ⚠️ 放在渠道详情里而不是页面顶部：自动签到的语义是「这个渠道要不要每天
+              自动领积分」，只有落到具体渠道上才有意义。全局开关无法表达「Qoder 要签、
+              WorkBuddy 国际版不要」，用户原话：「如果是全局的话，我不清楚你要对哪个
+              渠道进行签到」。
+            */}
+            {(() => {
+              const auto = autoOf(selectedProvider.id)
+              const canAuto = auto.supported
+              const on = canAuto && auto.enabled
+              return <div className={`auto-checkin${canAuto ? '' : ' disabled'}`} data-testid="auto-checkin">
+                <div className="auto-checkin-main">
+                  <span className="auto-checkin-label">每日自动签到</span>
+                  {canAuto ? <>
+                    {/* 时间输入只在开关打开时出现：关着的引擎没有「下次执行」，
+                        摆一个时间在旁边会读成「它仍会在 10:05 触发」。 */}
+                    {on ? <label className="auto-checkin-time">
+                      <span>每天</span>
+                      <input type="time" className="auto-checkin-time-input"
+                        aria-label={`${selectedProvider.name} 每日自动签到时间（UTC+8）`}
+                        value={timeOf(selectedProvider.id)}
+                        onChange={event => onTimeChange(selectedProvider.id, event)}
+                        title="24 小时制，UTC+8 时区" />
+                      <span>签到</span>
+                    </label> : null}
+                    <button type="button" role="switch" aria-label={`每日自动签到：${selectedProvider.name}`}
+                      aria-checked={on} disabled={busy}
+                      className={`ui-switch ${on ? 'on' : ''}`}
+                      onClick={() => void setAutoEnabled(selectedProvider.id, !on)}><span /></button>
+                  </> : null}
+                </div>
+                <div className="auto-checkin-note">
+                  {canAuto
+                    ? (auto.running
+                      ? '签到进行中…'
+                      : on
+                        ? (auto.ranToday ? `今日已自动签到${auto.lastResult ? `：${auto.lastResult}` : ''}` : `今日将于 ${auto.time} 自动签到（UTC+8）`)
+                        : '该渠道支持每日签到，打开开关后按设定时间自动领取')
+                    : '该渠道不支持每日签到'}
+                </div>
+              </div>
+            })()}
             <shared.ChannelCard key={selectedProvider.id} channel={selectedProvider} status={selectedStatus} rpc={rpc} t={t} onChanged={onChanged} onError={onError} />
             <div className="detail-security-note">
               <ShieldCheck size={16} />

@@ -231,7 +231,7 @@ import {
   createBadgePreferenceStore,
 } from './badge-preferences.js'
 import { createUsageBadge, type BadgeRpcResult } from './usage-badge.js'
-import { createAutoCheckin, createAutoCheckinStore, AUTO_CHECKIN_TIME_RE } from './auto-checkin.js'
+import { createAutoCheckin, createAutoCheckinStore, AUTO_CHECKIN_TIME_RE, supportsAutoCheckin } from './auto-checkin.js'
 
 /** Channel Pack RPC API 路径 */
 export const CHANNEL_PACK_API_PATH = '/api/channel-pack'
@@ -4418,17 +4418,8 @@ function registerChannelPackEndpoints(
               },
             }
           }
-          // 只有 time 时走这里；同时给了 enabled 则继续往下走（两个都写）。
-          if (req.enabled === undefined) {
-            const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setTime(req.time) }
-            return { ok: true, value }
-          }
         }
-        if (req.enabled === undefined) {
-          const value: RpcUsageAutoCheckinResponse = { autoCheckin: autoCheckin.state() }
-          return { ok: true, value }
-        }
-        if (typeof req.enabled !== 'boolean') {
+        if (req.enabled !== undefined && typeof req.enabled !== 'boolean') {
           return {
             ok: false,
             error: {
@@ -4437,14 +4428,80 @@ function registerChannelPackEndpoints(
             },
           }
         }
-        // ⚠️ 两个都给了：**先写时间再写开关**。反过来的话 `setEnabled(true)` 会
-        // 立刻按**旧时间**判一轮（旧时间可能已过点）—— 用户把时间从 10:05 改到
-        // 22:00 并同时开开关，会当场签一次，然后 22:00 因为 `lastDate` 已记而不再签。
-        // 先写时间可保证「开开关那一刻看到的是新时间」。
-        if (req.time !== undefined) {
-          await autoCheckin.setTime(req.time)
+        /**
+         * `provider` 给出时：只改那一个渠道。
+         *
+         * ⚠️ 打开一个**不支持签到**的渠道要拒绝（`bad-request`），不能静默接受 ——
+         * 否则用户会开出一个永远不会生效的开关，而界面上它看起来是开着的。
+         * 关掉一律允许（关掉本来就不支持的渠道无害）。
+         */
+        if (req.provider !== undefined) {
+          if (typeof req.provider !== 'string' || req.provider.length === 0) {
+            return {
+              ok: false,
+              error: {
+                code: 'bad-request',
+                message: `provider 必须是非空字符串（收到：${JSON.stringify(req.provider)}）`,
+              },
+            }
+          }
+          if (req.enabled === true && !supportsAutoCheckin(req.provider)) {
+            return {
+              ok: false,
+              error: {
+                code: 'bad-request',
+                message: `${req.provider} 不支持每日自动签到（没有签到接口，或签到代价过高需手动执行）`,
+              },
+            }
+          }
+          // ⚠️ 两个都给了：**先写时间再写开关**。反过来的话 `setProviderEnabled(true)`
+          // 会立刻按**旧时间**判一轮（旧时间可能已过点）—— 用户把时间从 10:05 改到
+          // 22:00 并同时开开关，会当场签一次，然后 22:00 因为 `lastDate` 已记而不再签。
+          // 先写时间可保证「开开关那一刻看到的是新时间」。
+          if (req.time !== undefined) {
+            await autoCheckin.setProviderTime(req.provider, req.time)
+          }
+          if (req.enabled !== undefined) {
+            const next = await autoCheckin.setProviderEnabled(req.provider, req.enabled)
+            if (next === null) {
+              // setProviderEnabled 只在这一个条件下返回 null（不支持却要开），
+              // 上面已经拦过，走到这里说明状态在两次调用之间变了 —— 如实报错。
+              return {
+                ok: false,
+                error: {
+                  code: 'bad-request',
+                  message: `${req.provider} 不支持每日自动签到`,
+                },
+              }
+            }
+            const value: RpcUsageAutoCheckinResponse = { autoCheckin: next }
+            return { ok: true, value }
+          }
+          const value: RpcUsageAutoCheckinResponse = { autoCheckin: autoCheckin.state() }
+          return { ok: true, value }
         }
-        const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setEnabled(req.enabled) }
+        /**
+         * ⚠️ **省略 `provider` 的旧路径（全局 fan-out）**：`client.js` 那版全局
+         * 开关 UI 还在用。它把「用户想改哪个渠道」这个信息丢掉后再猜一遍 ——
+         * 正是本次逐渠道改造要消灭的语义，故这里**只做兼容，不再扩展**。
+         * 等 `client.js` 也改成逐渠道后应删掉这一段（届时 `provider` 变必填）。
+         */
+        if (req.time !== undefined) {
+          // 只有 time 时走这里；同时给了 enabled 则继续往下走（两个都写）。
+          if (req.enabled === undefined) {
+            const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setAllTimes(req.time) }
+            return { ok: true, value }
+          }
+        }
+        if (req.enabled === undefined) {
+          const value: RpcUsageAutoCheckinResponse = { autoCheckin: autoCheckin.state() }
+          return { ok: true, value }
+        }
+        // ⚠️ 两个都给了：**先写时间再写开关**（理由同上）。
+        if (req.time !== undefined) {
+          await autoCheckin.setAllTimes(req.time)
+        }
+        const value: RpcUsageAutoCheckinResponse = { autoCheckin: await autoCheckin.setAllEnabled(req.enabled) }
         return { ok: true, value }
       }
 

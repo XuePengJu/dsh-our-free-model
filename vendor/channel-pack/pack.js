@@ -60968,14 +60968,20 @@ var AUTO_CHECKIN_FILE = "auto-checkin.json";
 var SCHEMA4 = "dsh-codearts-auth/auto-checkin/v1";
 var DEFAULT_AUTO_CHECKIN_TIME = "10:05";
 var DEFAULT_AUTO_CHECKIN = {
-  enabled: false,
-  time: DEFAULT_AUTO_CHECKIN_TIME,
-  lastDate: "",
-  lastResult: "",
-  lastAt: 0,
+  providers: {},
   channels: [],
-  dismissedRunAt: 0
+  dismissedRunAt: 0,
+  lastAt: 0
 };
+function defaultProviderDoc() {
+  return {
+    enabled: false,
+    time: DEFAULT_AUTO_CHECKIN_TIME,
+    lastDate: "",
+    lastResult: "",
+    lastAt: 0
+  };
+}
 var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 var AUTO_CHECKIN_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 var MAX_CHANNEL_ENTRIES = 24;
@@ -60995,22 +61001,38 @@ function sanitizeChannels(raw) {
 function sanitizeAutoCheckinTime(raw) {
   return typeof raw === "string" && AUTO_CHECKIN_TIME_RE.test(raw) ? raw : DEFAULT_AUTO_CHECKIN_TIME;
 }
-function sanitizeAutoCheckin(raw) {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...DEFAULT_AUTO_CHECKIN };
+function sanitizeProviderDoc(raw) {
+  const base = defaultProviderDoc();
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return base;
   const record = raw;
   const ms = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
   return {
-    // ⚠️ **只有显式 `true` 才算打开**（2026-10-19 判据反转，见文件头）：
-    // 旧写法 `record.enabled !== false` 会把「旧文档没有该字段」与脏数据
-    //（`'false'` / `0` / `null`）统统判成**打开** —— 那是默认值翻转前的语义，
-    // 照抄会让「从没开过这个开关的用户」被静默开启自动签到。
     enabled: record.enabled === true,
     time: sanitizeAutoCheckinTime(record.time),
     lastDate: typeof record.lastDate === "string" && DATE_RE.test(record.lastDate) ? record.lastDate : "",
-    lastResult: typeof record.lastResult === "string" ? record.lastResult : "",
-    lastAt: ms(record.lastAt),
+    lastResult: typeof record.lastResult === "string" ? record.lastResult.slice(0, 200) : "",
+    lastAt: ms(record.lastAt)
+  };
+}
+function sanitizeAutoCheckin(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ...DEFAULT_AUTO_CHECKIN, providers: {} };
+  }
+  const record = raw;
+  const ms = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+  const providers = {};
+  if (typeof record.providers === "object" && record.providers !== null && !Array.isArray(record.providers)) {
+    for (const [id, value] of Object.entries(record.providers)) {
+      if (id.length === 0 || id.length > 64) continue;
+      providers[id] = sanitizeProviderDoc(value);
+      if (Object.keys(providers).length >= MAX_CHANNEL_ENTRIES) break;
+    }
+  }
+  return {
+    providers,
     channels: sanitizeChannels(record.channels),
-    dismissedRunAt: ms(record.dismissedRunAt)
+    dismissedRunAt: ms(record.dismissedRunAt),
+    lastAt: ms(record.lastAt)
   };
 }
 function utc8DateString(nowMs = Date.now()) {
@@ -61080,13 +61102,11 @@ var FileAutoCheckinStore = class {
     const tmp = `${this.path}.tmp`;
     writeFileSync7(tmp, JSON.stringify({
       schema: SCHEMA4,
-      enabled: doc.enabled,
-      // ⚠️ 必须落盘：否则每次重启都回到默认 10:05，用户设的时间静默丢失。
-      time: doc.time,
-      lastDate: doc.lastDate,
-      lastResult: doc.lastResult,
-      lastAt: doc.lastAt,
+      // ⚠️ `providers` 必须落盘：否则每次重启都回到「全部关闭 + 默认 10:05」，
+      // 用户设的开关与时间静默丢失 —— 那是本功能最容易被当成「又坏了」的形态。
+      providers: doc.providers,
       channels: doc.channels,
+      lastAt: doc.lastAt,
       dismissedRunAt: doc.dismissedRunAt
     }, null, 2), "utf-8");
     renameSync7(tmp, this.path);
@@ -61109,18 +61129,9 @@ function isUnsupportedCheckin(message2) {
 function isAutoCheckinExcluded(provider) {
   return provider === ZCODE.id;
 }
-function describeRun(totals) {
-  const parts = [];
-  if (totals.claimed > 0) {
-    const amounts = formatClaimGains(totals.totalByUnit ?? { credit: totals.totalCredit });
-    parts.push(`${totals.claimed} \u4E2A\u8D26\u53F7\u9886\u53D6\u6210\u529F${amounts === null ? "" : `\uFF08${amounts}\uFF09`}`);
-  }
-  if (totals.alreadyClaimed > 0) parts.push(`${totals.alreadyClaimed} \u4E2A\u4ECA\u5929\u5DF2\u9886`);
-  if (totals.failed > 0) parts.push(`${totals.failed} \u4E2A\u5931\u8D25`);
-  if (totals.errors > 0) parts.push(`${totals.errors} \u4E2A\u6E20\u9053\u51FA\u9519`);
-  if (totals.skipped > 0) parts.push(`${totals.skipped} \u4E2A\u6E20\u9053\u4E0D\u652F\u6301\u7B7E\u5230`);
-  if (parts.length === 0) return `${totals.providers} \u4E2A\u6E20\u9053\uFF1A\u6CA1\u6709\u9700\u8981\u9886\u53D6\u7684\u8D26\u53F7`;
-  return `${totals.providers} \u4E2A\u6E20\u9053\uFF1A${parts.join("\uFF0C")}`;
+var AUTO_CHECKIN_UNSUPPORTED = /* @__PURE__ */ new Set(["cline", "workbuddy", "raccoon"]);
+function supportsAutoCheckin(provider) {
+  return !AUTO_CHECKIN_UNSUPPORTED.has(provider) && !isAutoCheckinExcluded(provider);
 }
 function shouldMarkToday(totals) {
   return totals.coversToday > 0;
@@ -61144,92 +61155,115 @@ function describeChannel(summary) {
 function createAutoCheckin(deps) {
   const now = deps.now ?? (() => Date.now());
   let doc = deps.store.load();
-  let running2 = false;
   const tickMs = deps.tickMs ?? AUTO_CHECKIN_TICK_MS;
   let inflight = null;
   let pending = null;
   let ticker = null;
+  const runningProviders = /* @__PURE__ */ new Set();
   let lastSkipReason = null;
+  let invalidTimeWarned = null;
   const today = () => utc8DateString(now());
+  function providerDoc(provider) {
+    return doc.providers[provider] ?? defaultProviderDoc();
+  }
   function state() {
+    const ids = Object.keys(doc.providers).sort();
+    const providers = ids.map((provider) => {
+      const entry = doc.providers[provider];
+      return {
+        provider,
+        enabled: entry.enabled,
+        time: entry.time,
+        lastDate: entry.lastDate,
+        ranToday: entry.lastDate !== "" && entry.lastDate === today(),
+        lastResult: entry.lastResult,
+        lastAt: entry.lastAt,
+        supported: supportsAutoCheckin(provider),
+        running: runningProviders.has(provider)
+      };
+    });
+    const enabledEntries = providers.filter((entry) => entry.enabled);
+    const latest = providers.reduce(
+      (best, entry) => entry.lastAt > (best?.lastAt ?? 0) ? entry : best,
+      void 0
+    );
     return {
-      enabled: doc.enabled,
-      time: doc.time,
-      lastDate: doc.lastDate,
-      ranToday: doc.lastDate !== "" && doc.lastDate === today(),
-      running: running2,
-      lastResult: doc.lastResult,
+      providers,
+      enabled: enabledEntries.length > 0,
+      time: enabledEntries[0]?.time ?? DEFAULT_AUTO_CHECKIN_TIME,
+      lastDate: latest?.lastDate ?? "",
+      ranToday: providers.some((entry) => entry.ranToday),
+      running: runningProviders.size > 0,
+      lastResult: latest?.lastResult ?? "",
       lastAt: doc.lastAt,
       channels: doc.channels.map((entry) => ({ ...entry })),
-      // 面板据它决定要不要渲染那行常驻状态文字
       dismissed: doc.lastAt > 0 && doc.dismissedRunAt === doc.lastAt
     };
   }
-  async function performRun() {
+  async function performProviderRun(provider) {
     const totals = emptyTotals2();
-    let providers = [];
+    if (isAutoCheckinExcluded(provider)) {
+      return { text: "\u9700\u624B\u52A8\u7B7E\u5230", markToday: false };
+    }
+    let result;
     try {
-      providers = [...new Set(await deps.listProviderIds())].sort();
+      result = await deps.claim(provider);
     } catch (error) {
-      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A\u8BFB\u53D6\u8D26\u53F7\u6C60\u5931\u8D25\uFF0C\u672C\u6B21\u8DF3\u8FC7: ${String(error)}`);
-      return;
+      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A${provider} \u8C03\u7528\u5F02\u5E38: ${String(error)}`);
+      return { text: "\u51FA\u9519", markToday: false };
     }
+    if (!result.ok) {
+      const message2 = typeof result.error?.message === "string" ? result.error.message : "";
+      if (isUnsupportedCheckin(message2)) return { text: "\u65E0\u7B7E\u5230\u63A5\u53E3", markToday: false };
+      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A${provider} \u5931\u8D25: ${message2 || "\u672A\u77E5\u9519\u8BEF"}`);
+      return { text: "\u51FA\u9519", markToday: false };
+    }
+    totals.providers += 1;
+    const summary = result.value?.summary;
+    if (summary === void 0) return { text: "\u65E0\u53EF\u9886", markToday: false };
+    totals.claimed += summary.claimed;
+    totals.totalCredit += summary.totalCredit;
+    const byUnit = summary.totalByUnit ?? { credit: summary.totalCredit, token: 0 };
+    totals.totalByUnit.credit += Number(byUnit.credit) || 0;
+    totals.totalByUnit.token += Number(byUnit.token) || 0;
+    totals.alreadyClaimed += summary.alreadyClaimed;
+    totals.inactive += summary.inactive;
+    totals.failed += summary.failed;
+    totals.coversToday += summary.coversToday ?? summary.claimed + summary.alreadyClaimed;
+    return { text: describeChannel(summary), markToday: shouldMarkToday(totals) };
+  }
+  async function performRun(only) {
+    const targets = only ?? await resolveDueProviders();
+    if (targets.length === 0) return;
     const channels = [];
-    for (const provider of providers) {
-      if (isAutoCheckinExcluded(provider)) {
-        totals.skipped += 1;
-        channels.push({ provider, text: "\u9700\u624B\u52A8\u7B7E\u5230" });
-        continue;
-      }
-      let result;
+    let changed = false;
+    for (const provider of targets) {
+      runningProviders.add(provider);
       try {
-        result = await deps.claim(provider);
-      } catch (error) {
-        totals.errors += 1;
-        channels.push({ provider, text: "\u51FA\u9519" });
-        deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A${provider} \u8C03\u7528\u5F02\u5E38: ${String(error)}`);
-        continue;
-      }
-      if (!result.ok) {
-        const message2 = typeof result.error?.message === "string" ? result.error.message : "";
-        if (isUnsupportedCheckin(message2)) {
-          totals.skipped += 1;
-          channels.push({ provider, text: "\u65E0\u7B7E\u5230\u63A5\u53E3" });
-          continue;
+        const { text, markToday } = await performProviderRun(provider);
+        channels.push({ provider, text });
+        const entry = doc.providers[provider] ?? defaultProviderDoc();
+        if (markToday) {
+          doc.providers[provider] = { ...entry, lastDate: today(), lastResult: text, lastAt: now() };
+          changed = true;
+        } else if (text !== entry.lastResult) {
+          doc.providers[provider] = { ...entry, lastResult: text, lastAt: now() };
+          changed = true;
         }
-        totals.errors += 1;
-        channels.push({ provider, text: "\u51FA\u9519" });
-        deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A${provider} \u5931\u8D25: ${message2 || "\u672A\u77E5\u9519\u8BEF"}`);
-        continue;
+        if (markToday) {
+          deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u5B8C\u6210\uFF08${today()}\uFF09\uFF1A${provider} ${text}`);
+        } else {
+          deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u672A\u8BB0\u5165\u4ECA\u65E5\uFF08\u4E0B\u4E2A\u5468\u671F\u4F1A\u91CD\u8BD5\uFF09\uFF1A${provider} ${text}`);
+        }
+      } finally {
+        runningProviders.delete(provider);
       }
-      totals.providers += 1;
-      const summary = result.value?.summary;
-      if (summary === void 0) {
-        channels.push({ provider, text: "\u65E0\u53EF\u9886" });
-        continue;
-      }
-      totals.claimed += summary.claimed;
-      totals.totalCredit += summary.totalCredit;
-      const byUnit = summary.totalByUnit ?? { credit: summary.totalCredit, token: 0 };
-      totals.totalByUnit.credit += Number(byUnit.credit) || 0;
-      totals.totalByUnit.token += Number(byUnit.token) || 0;
-      totals.alreadyClaimed += summary.alreadyClaimed;
-      totals.inactive += summary.inactive;
-      totals.failed += summary.failed;
-      totals.coversToday += summary.coversToday ?? summary.claimed + summary.alreadyClaimed;
-      channels.push({ provider, text: describeChannel(summary) });
     }
-    if (!shouldMarkToday(totals)) {
-      deps.warn?.(
-        `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u672A\u8BB0\u5165\u4ECA\u65E5\uFF08\u4E0B\u4E2A\u5468\u671F\u4F1A\u91CD\u8BD5\uFF09\uFF1A${describeRun(totals)}`
-      );
-      return;
-    }
+    if (!changed) return;
     doc = {
       ...doc,
-      lastDate: today(),
-      lastResult: describeRun(totals),
       lastAt: now(),
+      // 汇总用的 channels 只保留这一轮跑过的（旧 UI 的常驻状态文字读它）。
       channels,
       // ⚠️ 新一轮跑完要**清掉上一次的「已关闭」标记**：否则用户关过一次后，
       // 明天的新结果会被旧标记静默藏住（`dismissed` 的判据是 lastAt 相等）。
@@ -61240,9 +61274,45 @@ function createAutoCheckin(deps) {
     } catch (error) {
       deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u7ED3\u679C\u5199\u5165\u5931\u8D25\uFF08\u4ECA\u5929\u53EF\u80FD\u91CD\u590D\u89E6\u53D1\u4E00\u6B21\uFF09: ${String(error)}`);
     }
-    deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u5B8C\u6210\uFF08${today()}\uFF09\uFF1A${doc.lastResult}`);
   }
-  function runIfDue() {
+  async function resolveDueProviders(only) {
+    let inPool = [];
+    try {
+      inPool = [...new Set(await deps.listProviderIds())].sort();
+    } catch (error) {
+      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A\u8BFB\u53D6\u8D26\u53F7\u6C60\u5931\u8D25\uFF0C\u672C\u6B21\u8DF3\u8FC7: ${String(error)}`);
+      return [];
+    }
+    const scope = only === void 0 ? inPool : inPool.filter((provider) => only.includes(provider));
+    const due = [];
+    for (const provider of scope) {
+      const entry = doc.providers[provider];
+      if (entry === void 0 || entry.enabled !== true) continue;
+      if (!supportsAutoCheckin(provider)) continue;
+      if (entry.lastDate !== "" && entry.lastDate === today()) continue;
+      if (runningProviders.has(provider)) continue;
+      if (parseTimeOfDay(entry.time) === void 0) {
+        const key = `${provider}:${entry.time}`;
+        if (invalidTimeWarned !== key) {
+          invalidTimeWarned = key;
+          deps.warn?.(
+            `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF08${provider}\uFF09\uFF1A\u7B7E\u5230\u65F6\u95F4\u914D\u7F6E\u975E\u6CD5\uFF08${JSON.stringify(entry.time)}\uFF09\uFF0C\u8BE5\u6E20\u9053\u4E0D\u4F1A\u81EA\u52A8\u7B7E\u5230\uFF0C\u8BF7\u91CD\u65B0\u8BBE\u7F6E`
+          );
+        }
+        continue;
+      }
+      const decision = isCheckinDue(entry.time, now(), tickMs);
+      if (!decision.due) continue;
+      if (decision.reason === "last-chance") {
+        deps.warn?.(
+          `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u63D0\u524D\u89E6\u53D1\uFF08${provider}\uFF09\uFF1A\u8BBE\u5B9A ${entry.time}\uFF08UTC+8\uFF09\uFF0C\u5F53\u524D UTC+8 ${utc8ClockString(now())}\u2014\u2014\u4E0B\u4E00\u6B21\u68C0\u67E5\u4F1A\u8DE8\u8FC7\u5348\u591C\uFF0C\u518D\u7B49\u4ECA\u5929\u5C31\u6C38\u8FDC\u7B49\u4E0D\u5230\uFF08\u65E5\u672B\u76F2\u533A\u8865\u507F\uFF09`
+        );
+      }
+      due.push(provider);
+    }
+    return due;
+  }
+  function runIfDue(only) {
     const skip = (reason) => {
       if (lastSkipReason !== reason) {
         lastSkipReason = reason;
@@ -61250,35 +61320,37 @@ function createAutoCheckin(deps) {
       }
       return Promise.resolve();
     };
-    if (inflight !== null) {
-      deps.debug?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u4E0A\u4E00\u8F6E\u4ECD\u5728\u8FDB\u884C\u4E2D\uFF08inflight\uFF09`);
-      return inflight;
+    if (only !== void 0 && only.every((provider) => runningProviders.has(provider))) {
+      deps.debug?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u76EE\u6807\u6E20\u9053\u4ECD\u5728\u8FDB\u884C\u4E2D\uFF08inflight\uFF09`);
+      return inflight ?? Promise.resolve();
     }
-    if (!doc.enabled) return skip("\u5F00\u5173\u672A\u6253\u5F00");
-    if (doc.lastDate !== "" && doc.lastDate === today()) {
-      return skip(`\u4ECA\u5929\uFF08${doc.lastDate}\uFF09\u5DF2\u7ECF\u7B7E\u8FC7`);
+    if (only === void 0) {
+      if (!Object.values(doc.providers).some((entry) => entry.enabled === true)) {
+        return skip("\u6CA1\u6709\u4EFB\u4F55\u6E20\u9053\u5F00\u542F\u81EA\u52A8\u7B7E\u5230");
+      }
+      if (inflight !== null) {
+        deps.debug?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u4E0A\u4E00\u8F6E\u4ECD\u5728\u8FDB\u884C\u4E2D\uFF08inflight\uFF09`);
+        return inflight;
+      }
     }
-    if (parseTimeOfDay(doc.time) === void 0) {
-      deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u8DF3\u8FC7\uFF1A\u7B7E\u5230\u65F6\u95F4\u914D\u7F6E\u975E\u6CD5\uFF08${JSON.stringify(doc.time)}\uFF09\uFF0C\u8BF7\u91CD\u65B0\u8BBE\u7F6E`);
-      return Promise.resolve();
-    }
-    const decision = isCheckinDue(doc.time, now(), tickMs);
-    if (!decision.due) {
-      return skip(
-        `\u4ECA\u5929\u8FD8\u6CA1\u5230\u70B9\uFF08\u8BBE\u5B9A ${doc.time}\uFF08UTC+8\uFF09\uFF0C\u5F53\u524D UTC+8 ${utc8ClockString(now())}\uFF09`
-      );
-    }
-    if (decision.reason === "last-chance") {
-      deps.warn?.(
-        `[channel-pack] \u81EA\u52A8\u7B7E\u5230\u63D0\u524D\u89E6\u53D1\uFF1A\u8BBE\u5B9A ${doc.time}\uFF08UTC+8\uFF09\uFF0C\u5F53\u524D UTC+8 ${utc8ClockString(now())}\u2014\u2014\u4E0B\u4E00\u6B21\u68C0\u67E5\u4F1A\u8DE8\u8FC7\u5348\u591C\uFF0C\u518D\u7B49\u4ECA\u5929\u5C31\u6C38\u8FDC\u7B49\u4E0D\u5230\uFF08\u65E5\u672B\u76F2\u533A\u8865\u507F\uFF09`
-      );
-    }
+    const targets = only ?? null;
     lastSkipReason = null;
-    running2 = true;
-    const task = performRun().catch((error) => {
+    const task = (async () => {
+      let list;
+      if (targets === null) {
+        list = await resolveDueProviders();
+        if (list.length === 0) {
+          skip(`\u4ECA\u5929\u6CA1\u6709\u5230\u70B9\u7684\u6E20\u9053\uFF08\u5F53\u524D UTC+8 ${utc8ClockString(now())}\uFF09`);
+          return;
+        }
+      } else {
+        list = await resolveDueProviders(targets);
+        if (list.length === 0) return;
+      }
+      await performRun(list);
+    })().catch((error) => {
       deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\u5F02\u5E38: ${String(error)}`);
     }).finally(() => {
-      running2 = false;
       inflight = null;
     });
     inflight = task;
@@ -61286,16 +61358,71 @@ function createAutoCheckin(deps) {
   }
   return {
     state,
-    async setEnabled(enabled) {
-      doc = { ...doc, enabled };
+    async setProviderEnabled(provider, enabled) {
+      if (enabled && !supportsAutoCheckin(provider)) return null;
+      const entry = doc.providers[provider] ?? defaultProviderDoc();
+      doc = { ...doc, providers: { ...doc.providers, [provider]: { ...entry, enabled } } };
       await deps.store.save(doc);
-      if (enabled) void runIfDue();
+      if (enabled) void runIfDue([provider]);
       return state();
     },
-    async setTime(time) {
-      doc = { ...doc, time };
+    async setProviderTime(provider, time) {
+      const entry = doc.providers[provider] ?? defaultProviderDoc();
+      doc = { ...doc, providers: { ...doc.providers, [provider]: { ...entry, time } } };
       await deps.store.save(doc);
-      void runIfDue();
+      if (entry.enabled) void runIfDue([provider]);
+      return state();
+    },
+    /**
+     * ⚠️ 兼容旧 UI 的全局 fan-out，见接口注释。**新代码不要调用**。
+     *
+     * ## ⚠️ 为什么必须读账号池，而不是只遍历已有条目（真实缺陷，2026-10-24 自查）
+     *
+     * 最初这里只遍历 `doc.providers` 的现有键。但**全新安装**时那个对象是空的
+     *（默认全部关闭 ⇒ 没有任何条目），于是「打开全局开关」什么都不会发生 ——
+     * 旧 UI 上表现为「点了开关，状态没变，也永远不签到」。
+     *
+     * 正确做法：以**账号池**为范围（那才是「哪些渠道存在」的权威），逐个建条目。
+     * 只跳过不支持签到的渠道（不凭空给它们建 `enabled: true`，否则界面会显示
+     * 一个永远不生效的开关）。
+     */
+    async setAllEnabled(enabled) {
+      let inPool = [];
+      try {
+        inPool = [...new Set(await deps.listProviderIds())].sort();
+      } catch (error) {
+        deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A\u8BFB\u53D6\u8D26\u53F7\u6C60\u5931\u8D25\uFF0C\u65E0\u6CD5\u6279\u91CF\u6539\u5F00\u5173: ${String(error)}`);
+        return state();
+      }
+      const providers = { ...doc.providers };
+      const touched = [];
+      for (const id of inPool) {
+        if (enabled && !supportsAutoCheckin(id)) continue;
+        providers[id] = { ...providers[id] ?? defaultProviderDoc(), enabled };
+        if (enabled) touched.push(id);
+      }
+      doc = { ...doc, providers };
+      await deps.store.save(doc);
+      if (touched.length > 0) void runIfDue(touched);
+      return state();
+    },
+    /** ⚠️ 兼容旧 UI：把所有渠道的时间都设成 `time`，见接口注释。**新代码不要调用**。 */
+    async setAllTimes(time) {
+      let inPool = [];
+      try {
+        inPool = [...new Set(await deps.listProviderIds())].sort();
+      } catch (error) {
+        deps.warn?.(`[channel-pack] \u81EA\u52A8\u7B7E\u5230\uFF1A\u8BFB\u53D6\u8D26\u53F7\u6C60\u5931\u8D25\uFF0C\u65E0\u6CD5\u6279\u91CF\u6539\u65F6\u95F4: ${String(error)}`);
+        return state();
+      }
+      const providers = { ...doc.providers };
+      for (const id of inPool) {
+        providers[id] = { ...providers[id] ?? defaultProviderDoc(), time };
+      }
+      doc = { ...doc, providers };
+      await deps.store.save(doc);
+      const enabledIds = inPool.filter((id) => providers[id]?.enabled === true && supportsAutoCheckin(id));
+      if (enabledIds.length > 0) void runIfDue(enabledIds);
       return state();
     },
     start() {
@@ -64106,16 +64233,8 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
               }
             };
           }
-          if (req.enabled === void 0) {
-            const value2 = { autoCheckin: await autoCheckin.setTime(req.time) };
-            return { ok: true, value: value2 };
-          }
         }
-        if (req.enabled === void 0) {
-          const value2 = { autoCheckin: autoCheckin.state() };
-          return { ok: true, value: value2 };
-        }
-        if (typeof req.enabled !== "boolean") {
+        if (req.enabled !== void 0 && typeof req.enabled !== "boolean") {
           return {
             ok: false,
             error: {
@@ -64124,10 +64243,59 @@ function registerChannelPackEndpoints(ctx, pool, codearts, buddy, workbuddy, lob
             }
           };
         }
-        if (req.time !== void 0) {
-          await autoCheckin.setTime(req.time);
+        if (req.provider !== void 0) {
+          if (typeof req.provider !== "string" || req.provider.length === 0) {
+            return {
+              ok: false,
+              error: {
+                code: "bad-request",
+                message: `provider \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u6536\u5230\uFF1A${JSON.stringify(req.provider)}\uFF09`
+              }
+            };
+          }
+          if (req.enabled === true && !supportsAutoCheckin(req.provider)) {
+            return {
+              ok: false,
+              error: {
+                code: "bad-request",
+                message: `${req.provider} \u4E0D\u652F\u6301\u6BCF\u65E5\u81EA\u52A8\u7B7E\u5230\uFF08\u6CA1\u6709\u7B7E\u5230\u63A5\u53E3\uFF0C\u6216\u7B7E\u5230\u4EE3\u4EF7\u8FC7\u9AD8\u9700\u624B\u52A8\u6267\u884C\uFF09`
+              }
+            };
+          }
+          if (req.time !== void 0) {
+            await autoCheckin.setProviderTime(req.provider, req.time);
+          }
+          if (req.enabled !== void 0) {
+            const next = await autoCheckin.setProviderEnabled(req.provider, req.enabled);
+            if (next === null) {
+              return {
+                ok: false,
+                error: {
+                  code: "bad-request",
+                  message: `${req.provider} \u4E0D\u652F\u6301\u6BCF\u65E5\u81EA\u52A8\u7B7E\u5230`
+                }
+              };
+            }
+            const value3 = { autoCheckin: next };
+            return { ok: true, value: value3 };
+          }
+          const value2 = { autoCheckin: autoCheckin.state() };
+          return { ok: true, value: value2 };
         }
-        const value = { autoCheckin: await autoCheckin.setEnabled(req.enabled) };
+        if (req.time !== void 0) {
+          if (req.enabled === void 0) {
+            const value2 = { autoCheckin: await autoCheckin.setAllTimes(req.time) };
+            return { ok: true, value: value2 };
+          }
+        }
+        if (req.enabled === void 0) {
+          const value2 = { autoCheckin: autoCheckin.state() };
+          return { ok: true, value: value2 };
+        }
+        if (req.time !== void 0) {
+          await autoCheckin.setAllTimes(req.time);
+        }
+        const value = { autoCheckin: await autoCheckin.setAllEnabled(req.enabled) };
         return { ok: true, value };
       }
       default:

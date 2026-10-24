@@ -97,7 +97,7 @@ import { resolveChannelPackHome } from './channel-pack-store.js'
 import { formatClaimGains } from './credits.js'
 import { ZCODE } from './zcode-product.js'
 import type { BadgeRpcResult } from './usage-badge.js'
-import type { RpcCreditsClaimAllResponse, RpcUsageAutoCheckinState } from './types.js'
+import type { RpcCreditsClaimAllResponse, RpcUsageAutoCheckinProviderState, RpcUsageAutoCheckinState } from './types.js'
 
 /** 独立文档的文件名（与 state.json / ui-preferences.json 同目录）。 */
 export const AUTO_CHECKIN_FILE = 'auto-checkin.json'
@@ -105,39 +105,64 @@ export const AUTO_CHECKIN_FILE = 'auto-checkin.json'
 const SCHEMA = 'dsh-codearts-auth/auto-checkin/v1'
 
 /**
- * 文档内容。
+ * **单个渠道**的自动签到配置与记账。
  *
- * `lastDate` / `lastResult` 既是「当天不重复触发」的判据，也是状态灯提示的来源
- * （用户要求「记录签到状态，不多次重复触发」）。`channels` 是**逐渠道**结果，
- * 供面板上那行常驻的自动签到状态文字使用（用户 2026-10-02：「自动签到状态下，
- * 下方应该也显示文字状态，这样才能够知道各个渠道的签到状态」）。
+ * ## 2026-10-24 改造：全局 → 逐渠道
+ *
+ * 原模型只有全局 `enabled` / `time`，作用范围写死在 `listProviderIds()` 里
+ *（「账号池里所有有账号的渠道」）。用户原话：「我不清楚你要对哪个渠道进行签到」
+ * —— 全局开关天然无法表达「这个要签、那个不要」，只能靠用户人工判断。
+ * 故改为每个渠道各自一份。
  */
-export interface AutoCheckinDoc {
+export interface AutoCheckinProviderDoc {
   /**
-   * 自动签到开关。**默认关闭**（2026-10-19 起；此前默认打开）。
+   * 本渠道是否自动签到。**默认关闭**。
    *
-   * ⚠️ 判据是「**只有显式 `true` 才算打开**」—— 与旧实现的 `enabled !== false`
-   * 方向相反。理由见文件头「开关默认关闭」那一节：注册送积分类渠道不需要
-   * 每日签到，而这是代用户打上游的写操作，默认该由用户显式开启。
+   * ⚠️ 判据是「**只有显式 `true` 才算打开**」—— 与更早的 `enabled !== false`
+   * 方向相反。理由：自动签到是代用户打上游的**写操作**，默认该由用户显式开启。
    */
   enabled: boolean
   /**
-   * 每天几点自动签到（`HH:mm`，**UTC+8 时区**）。
+   * 本渠道每天几点自动签到（`HH:mm`，**UTC+8 时区**）。默认 `'10:05'`。
    *
    * ⚠️ 必须按 UTC+8 解释，不是本机时区 —— 与 `lastDate` 的日界同源（各渠道的
    * 每日额度按服务端账期结算，实测都是 UTC+8）。换算见 {@link utc8MinutesOfDay}。
    *
-   * 默认 `'10:05'`：Qoder 中国版每日活动 10:00（UTC+8）才刷新，设早了那一轮
-   * 拿到的是**昨天**的轮次（见 `QODER_CAMPAIGN_REFRESH_HOUR_UTC8`），会整天漏领。
+   * 默认 `'10:05'` 的依据**只对 qodercn 成立**（其每日活动 10:00 UTC+8 才刷新，
+   * 见 `QODER_CAMPAIGN_REFRESH_HOUR_UTC8`）。其他渠道的刷新时刻未逐一核实，
+   * 这里取它作为「不早于多数渠道刷新点」的保守默认值，用户可自行改。
    */
   time: string
-  /** 上次**完成**自动签到的 UTC+8 日期（`YYYY-MM-DD`）；空串 = 从未跑过。 */
+  /** 本渠道上次**完成**自动签到的 UTC+8 日期（`YYYY-MM-DD`）；空串 = 从未跑过。 */
   lastDate: string
-  /** 上次结果摘要（中文短句，展示在状态灯提示里）。 */
+  /** 本渠道上次结果摘要（中文短句，如 `2 个 +200积分`）。 */
   lastResult: string
-  /** 上次跑完的时刻（毫秒）；0 = 从未跑过。 */
+  /** 本渠道上次跑完的时刻（毫秒）；0 = 从未跑过。 */
   lastAt: number
-  /** 逐渠道结果（顺序即遍历顺序）；空数组 = 没有可展示的逐渠道信息。 */
+}
+
+/**
+ * 文档内容（**逐渠道**）。
+ *
+ * ## 2026-10-24 改造
+ *
+ * `providers` 是唯一的配置源。顶层 `channels` / `dismissedRunAt` 是给宿主插件
+ * 那版旧 UI（`client.js`）的兼容字段，等它也改成逐渠道后可删。
+ *
+ * ⚠️ **不再有全局 `enabled` / `time`**：那个语义在新模型下没有对应物。旧文档里
+ * 的这两个字段在 {@link sanitizeAutoCheckin} 里被**忽略**（时间作为各渠道的
+ * 初始值继承，开关一律按默认关闭），不做「全局 true 展开到所有渠道」——
+ * 那会让升级后的用户以为是自己开的。
+ */
+export interface AutoCheckinDoc {
+  /** 逐渠道配置与记账。键是渠道 id。 */
+  providers: Record<string, AutoCheckinProviderDoc>
+  /**
+   * 最近一轮的逐渠道结果文本（顺序即遍历顺序）；空数组 = 没有可展示的信息。
+   *
+   * ⚠️ 兼容字段：新代码读 `providers[id].lastResult` —— 那里是**每渠道自己**的
+   * 结果，不会被别的渠道后跑覆盖。这里只保留给 `client.js` 的汇总展示。
+   */
   channels: Array<{ provider: string; text: string }>
   /**
    * 用户点过「关闭」的那一轮（存的是那一刻的 `lastAt`）。
@@ -146,6 +171,8 @@ export interface AutoCheckinDoc {
    *（否则用户关过一次以后就再也看不到新的结果）。0 = 未曾关闭过。
    */
   dismissedRunAt: number
+  /** 最近一轮跑完的时刻（毫秒）；0 = 从未跑过。兼容字段，供旧 UI 显示时间戳。 */
+  lastAt: number
 }
 
 /**
@@ -157,15 +184,23 @@ export interface AutoCheckinDoc {
  */
 export const DEFAULT_AUTO_CHECKIN_TIME = '10:05'
 
-/** 默认：**关闭** + 默认时间 + 无记录。 */
+/** 默认：**无任何渠道开启** + 无记录。 */
 export const DEFAULT_AUTO_CHECKIN: AutoCheckinDoc = {
-  enabled: false,
-  time: DEFAULT_AUTO_CHECKIN_TIME,
-  lastDate: '',
-  lastResult: '',
-  lastAt: 0,
+  providers: {},
   channels: [],
   dismissedRunAt: 0,
+  lastAt: 0,
+}
+
+/** 单渠道的默认配置（未在文档里出现过的渠道按它初始化）。 */
+export function defaultProviderDoc(): AutoCheckinProviderDoc {
+  return {
+    enabled: false,
+    time: DEFAULT_AUTO_CHECKIN_TIME,
+    lastDate: '',
+    lastResult: '',
+    lastAt: 0,
+  }
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -209,33 +244,80 @@ export function sanitizeAutoCheckinTime(raw: unknown): string {
 }
 
 /**
+ * 归一化单个渠道的配置（**不抛错**，脏数据回落默认值）。
+ *
+ * ⚠️ `enabled` 判据是「只有显式 `true` 才算打开」：旧写法 `!== false` 会把
+ *「文档里没有该字段」与脏数据（`'false'` / `0` / `null`）统统判成**打开** ——
+ * 照抄会让从没开过开关的用户被静默开启自动签到。
+ */
+export function sanitizeProviderDoc(raw: unknown): AutoCheckinProviderDoc {
+  const base = defaultProviderDoc()
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base
+  const record = raw as Record<string, unknown>
+  const ms = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0)
+  return {
+    enabled: record.enabled === true,
+    time: sanitizeAutoCheckinTime(record.time),
+    lastDate: typeof record.lastDate === 'string' && DATE_RE.test(record.lastDate) ? record.lastDate : '',
+    lastResult: typeof record.lastResult === 'string' ? record.lastResult.slice(0, 200) : '',
+    lastAt: ms(record.lastAt),
+  }
+}
+
+/**
  * 归一化文档：非法值一律回落默认值（**不抛错**）。
  *
  * ⚠️ 与 RPC 写入路径的严格校验**不冲突**：那条路径面对用户输入，要拒绝非法值；
  * 这条路径面对**磁盘上的脏数据**（手工编辑过、被旧版本写坏），回落比整机不可用
  * 更合理 —— 判据口径与 `sanitizeBadgePreference` 一致。
- * ⚠️ 缺新字段的**旧文档**必须照常读出来：`channels` / `lastAt` / `enabled` /
- * `time` 都是本功能上线后追加的。其中：
- * - `enabled` 缺失 ⇒ 按**默认关闭**处理（新契约，见 `AutoCheckinDoc.enabled`）；
- * - `time` 缺失 ⇒ 补 `DEFAULT_AUTO_CHECKIN_TIME`（旧文档写于本字段存在之前）。
+ *
+ * ## ⚠️ 旧文档（全局模型）的迁移口径
+ *
+ * 2026-10-24 之前文档长这样：`{ enabled: true, time: '10:05', lastDate: ... }`
+ * —— 全局开关 + 全局时间，**没有 `providers`**。迁移规则：
+ *
+ * - `providers` 存在 ⇒ 按新模型读，逐渠道归一化（旧字段忽略）。
+ * - `providers` 缺失 ⇒ 产出**空 providers**（即全部渠道按默认关闭）。
+ *   ⚠️ **不把旧 `enabled: true` 展开成「所有渠道都开」**：用户 2026-10-24
+ *   明确要求「默认为 false」，而旧 `true` 表达的是「全部渠道都要签」这个
+ *   已经不存在于新模型的语义。展开会让升级后的用户看到一个自己没开过的
+ *   开关处于打开状态，无从判断该关哪个。
+ * - 旧 `time` **不丢**：作为 `defaults.time` 传出去（由调用方作为各渠道的
+ *   初始时间），这样用户原先设的 10:05 不会被打回默认值。
  */
 export function sanitizeAutoCheckin(raw: unknown): AutoCheckinDoc {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ...DEFAULT_AUTO_CHECKIN }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { ...DEFAULT_AUTO_CHECKIN, providers: {} }
+  }
   const record = raw as Record<string, unknown>
   const ms = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0)
+  const providers: Record<string, AutoCheckinProviderDoc> = {}
+  if (typeof record.providers === 'object' && record.providers !== null && !Array.isArray(record.providers)) {
+    for (const [id, value] of Object.entries(record.providers as Record<string, unknown>)) {
+      // 渠道 id 只接受非空字符串键；数量上限防脏数据把文档撑大。
+      if (id.length === 0 || id.length > 64) continue
+      providers[id] = sanitizeProviderDoc(value)
+      if (Object.keys(providers).length >= MAX_CHANNEL_ENTRIES) break
+    }
+  }
   return {
-    // ⚠️ **只有显式 `true` 才算打开**（2026-10-19 判据反转，见文件头）：
-    // 旧写法 `record.enabled !== false` 会把「旧文档没有该字段」与脏数据
-    //（`'false'` / `0` / `null`）统统判成**打开** —— 那是默认值翻转前的语义，
-    // 照抄会让「从没开过这个开关的用户」被静默开启自动签到。
-    enabled: record.enabled === true,
-    time: sanitizeAutoCheckinTime(record.time),
-    lastDate: typeof record.lastDate === 'string' && DATE_RE.test(record.lastDate) ? record.lastDate : '',
-    lastResult: typeof record.lastResult === 'string' ? record.lastResult : '',
-    lastAt: ms(record.lastAt),
+    providers,
     channels: sanitizeChannels(record.channels),
     dismissedRunAt: ms(record.dismissedRunAt),
+    lastAt: ms(record.lastAt),
   }
+}
+
+/**
+ * 从**旧文档**里取出它记录的时间，作为各渠道的初始值。
+ *
+ * ⚠️ 只取 `time`，**不取 `enabled`**（理由见 {@link sanitizeAutoCheckin} 的
+ * 迁移口径）。返回 `undefined` 表示旧文档没有可用时间，调用方用默认值。
+ */
+export function legacyAutoCheckinTime(raw: unknown): string | undefined {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const value = (raw as Record<string, unknown>).time
+  return typeof value === 'string' && AUTO_CHECKIN_TIME_RE.test(value) ? value : undefined
 }
 
 /**
@@ -501,13 +583,11 @@ class FileAutoCheckinStore implements AutoCheckinStore {
     const tmp = `${this.path}.tmp`
     writeFileSync(tmp, JSON.stringify({
       schema: SCHEMA,
-      enabled: doc.enabled,
-      // ⚠️ 必须落盘：否则每次重启都回到默认 10:05，用户设的时间静默丢失。
-      time: doc.time,
-      lastDate: doc.lastDate,
-      lastResult: doc.lastResult,
-      lastAt: doc.lastAt,
+      // ⚠️ `providers` 必须落盘：否则每次重启都回到「全部关闭 + 默认 10:05」，
+      // 用户设的开关与时间静默丢失 —— 那是本功能最容易被当成「又坏了」的形态。
+      providers: doc.providers,
       channels: doc.channels,
+      lastAt: doc.lastAt,
       dismissedRunAt: doc.dismissedRunAt,
     }, null, 2), 'utf-8')
     renameSync(tmp, this.path)
@@ -601,6 +681,46 @@ export function isUnsupportedCheckin(message: string): boolean {
  */
 export function isAutoCheckinExcluded(provider: string): boolean {
   return provider === ZCODE.id
+}
+
+/**
+ * **没有**每日签到接口的渠道（显式登记，服务端唯一权威）。
+ *
+ * ## ⚠️ 为什么需要这张表（2026-10-24 逐渠道改造引入）
+ *
+ * 改造前，本模块靠「调 `claimAll`、按返回的错误文案判跳过」来识别不支持的渠道
+ *（{@link isUnsupportedCheckin}）—— 那在「一次跑全部渠道」的模型下够用，因为
+ * 多打一次空请求的代价只是慢一点。
+ *
+ * 逐渠道之后不够了：UI 要在**用户点开某个渠道时**就告诉他「这个渠道不支持
+ * 每日签到」，不可能为了渲染一个置灰状态去打一次上游。故必须有一份**可离线
+ * 查询**的名单。
+ *
+ * ## ⚠️ 这是第二份名单，维护口径如下
+ *
+ * - 与 `channel-pack-rpc.ts` 里 `credits.claimAll` 的三条显式守卫
+ *  （cline / workbuddy / raccoon）**必须同步**：那三条是「不发请求就返回」的
+ *   实现事实，这里是它的声明式镜像。新增一条守卫时这里要一起加，否则 UI 会
+ *   把一个不支持的渠道显示成可开启，用户打开后永远签不到东西（静默失效）。
+ * - zcode **不在**这张表里：它有签到接口，只是代价高（captcha + 拉浏览器），
+ *   由 {@link isAutoCheckinExcluded} 单独排除。两者语义不同，别混：
+ *   这里答「有没有」，那里答「值不值得自动跑」。
+ * - 表外的渠道**默认视为支持**：宁可让用户看到一个可以打开、但跑起来会被
+ *   `isUnsupportedCheckin` 判跳过的开关，也不要因为漏登记而把一个真支持的
+ *   渠道置灰 —— 后者用户无法自行绕过。
+ */
+export const AUTO_CHECKIN_UNSUPPORTED = new Set<string>(['cline', 'workbuddy', 'raccoon'])
+
+/**
+ * 某渠道能否被自动签到。
+ *
+ * 判据 = 「有签到接口」**且**「不值得自动跑」不成立。两者缺一不可：
+ * - 只有前者 ⇒ zcode 会被自动跑，拉起浏览器产 captcha（见
+ *   {@link isAutoCheckinExcluded} 的代价说明）。
+ * - 只有后者 ⇒ cline / raccoon 会被跑，白打一轮必然失败的请求。
+ */
+export function supportsAutoCheckin(provider: string): boolean {
+  return !AUTO_CHECKIN_UNSUPPORTED.has(provider) && !isAutoCheckinExcluded(provider)
 }
 
 /** 把一轮结果拼成一句中文摘要（给状态灯提示与日志用）。 */
@@ -737,24 +857,46 @@ export interface AutoCheckinDeps {
   debug?(message: string): void
 }
 
-/** 自动签到执行体。 */
+/** 自动签到执行体（**逐渠道**）。 */
 export interface AutoCheckin {
-  /** 实时状态（供 RPC 与状态灯；`enabled` 等取自内存，不重新读盘）。 */
+  /** 实时状态（逐渠道 + 兼容视图）。 */
   state(): RpcUsageAutoCheckinState
-  /** 写开关；**打开时若今天还没跑过，立刻跑一轮**（否则用户会以为开关没生效）。 */
-  setEnabled(enabled: boolean): Promise<RpcUsageAutoCheckinState>
   /**
-   * 写签到时间（`HH:mm`，UTC+8 语义）。
+   * 写**某个渠道**的开关；**打开时若该渠道今天还没跑过，立刻跑一轮**
+   *（否则用户会以为开关没生效）。
    *
-   * ⚠️ **本方法不做校验**（类型签名已保证是 `string`，但 `'abc'` 也过得了编译）：
-   * 校验在 RPC 层（`usage.autoCheckin` 的 `bad-request` 分支）与
-   * `sanitizeAutoCheckinTime`。这里若再回落一次，非法输入会被静默改成 `10:05`
-   * 并「保存成功」——正是本仓库 `usage.badgePreference` 记过的那类假成功。
+   * ⚠️ `provider` 必须支持签到（{@link supportsAutoCheckin}）；对不支持的渠道
+   * 写 `enabled: true` 返回 `false` 表示被拒 —— 静默接受等于允许用户开启一个
+   * 永远不会生效的开关。写 `false` 对任何渠道都允许。
+   *
+   * @returns 写入后的状态；被拒时返回 `null`。
+   */
+  setProviderEnabled(provider: string, enabled: boolean): Promise<RpcUsageAutoCheckinState | null>
+  /**
+   * 写**某个渠道**的签到时间（`HH:mm`，UTC+8 语义）。
+   *
+   * ⚠️ **本方法不做格式校验**（类型签名已保证是 `string`，但 `'abc'` 也过得了
+   * 编译）：校验在 RPC 层与 `sanitizeAutoCheckinTime`。这里若再回落一次，非法
+   * 输入会被静默改成 `10:05` 并「保存成功」——正是本仓库 `usage.badgePreference`
+   * 记过的那类假成功。
    *
    * 写入后**立刻按新时间重判一次**（不 await）：用户把时间改到「现在就过点了」
    * 时应当马上补签，而不是等到下一个周期。今天已跑过则由 `runIfDue` 拦住。
    */
-  setTime(time: string): Promise<RpcUsageAutoCheckinState>
+  setProviderTime(provider: string, time: string): Promise<RpcUsageAutoCheckinState>
+  /**
+   * ⚠️ **兼容旧 UI 的全局 fan-out**（`client.js` 那版全局开关还在用）。
+   *
+   * 把所有**支持签到**的渠道一次性设成 `enabled`。这是过渡期路径：它把「用户
+   * 想改哪个渠道」这个信息丢掉后再猜一遍，正是逐渠道改造要消灭的语义。
+   * 等 `client.js` 也改成逐渠道后应删掉这两个方法（届时 RPC 层 `provider` 必填）。
+   *
+   * ⚠️ 只影响**已存在**的渠道条目 + 支持签到的渠道：不会凭空给不支持的渠道
+   * 建一条 `enabled: true` 的记录（那会让界面显示一个永远不生效的开关）。
+   */
+  setAllEnabled(enabled: boolean): Promise<RpcUsageAutoCheckinState>
+  /** 兼容旧 UI：把所有渠道的时间都设成 `time`。理由同 {@link setAllEnabled}。 */
+  setAllTimes(time: string): Promise<RpcUsageAutoCheckinState>
   /**
    * 关闭面板上那行**常驻的**自动签到状态文字（用户点它上方的小按钮时调用）。
    *
@@ -764,7 +906,8 @@ export interface AutoCheckin {
    */
   dismiss(): Promise<RpcUsageAutoCheckinState>
   /**
-   * 启动时调用一次：延迟后开始**周期检查**（内部自己判开关、时间与当天是否已跑）。
+   * 启动时调用一次：延迟后开始**周期检查**（内部自己判各渠道的开关、时间与
+   * 当天是否已跑）。
    *
    * ⚠️ 与旧实现的差别：旧版排的是一次性 `setTimeout`，跑完就再也不醒 ——
    * 进程常驻时「第二天不签」的根因。现在延迟首次检查之后转为周期检查
@@ -781,15 +924,21 @@ export interface AutoCheckin {
 export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
   const now = deps.now ?? (() => Date.now())
   let doc = deps.store.load()
-  let running = false
   /** 周期检查的间隔（毫秒）。单测可注入 `tickMs` 把它压到极小。 */
   const tickMs = deps.tickMs ?? AUTO_CHECKIN_TICK_MS
-  /** 在飞去重：`setEnabled(true)` 与启动排定可能同时想跑。 */
+  /** 在飞去重：`setProviderEnabled(true)` 与启动排定可能同时想跑。 */
   let inflight: Promise<void> | null = null
   /** 尚未触发的**首次**延迟检查（延迟 30 秒那条）。 */
   let pending: { cancel(): void } | null = null
   /** 已开始的**周期**检查（每 5 分钟一条）。 */
   let ticker: { cancel(): void } | null = null
+  /**
+   * 正在跑的渠道（按渠道去重，而不是全局一把锁）。
+   *
+   * ⚠️ 必须按渠道记：用户可以在渠道 A 跑着的时候打开渠道 B 的开关，那次
+   * `runIfDue` 应当只跑 B，不该因为 A 在跑就把整轮挡掉。
+   */
+  const runningProviders = new Set<string>()
   /**
    * 上一次「因何跳过」的原因（用于守卫日志去重，见 `runIfDue`）。
    *
@@ -797,104 +946,147 @@ export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
    * 否则「还没到点」会在等待期间刷 288 行/天。
    */
   let lastSkipReason: string | null = null
+  /**
+   * 上一次「因时间配置非法而跳过」的渠道 + 那个非法值（用于告警去重）。
+   *
+   * 形如 `qodercn:99:99`。只在**渠道或非法值变化**时重新告警：周期检查每 5 分钟
+   * 一次，不去重会把日志刷满 288 行/天；而值变了说明用户改了还是坏，要再提醒。
+   */
+  let invalidTimeWarned: string | null = null
 
   const today = (): string => utc8DateString(now())
 
+  /** 取某渠道的配置（不存在则按默认值，**不写回** —— 读路径不该改盘）。 */
+  function providerDoc(provider: string): AutoCheckinProviderDoc {
+    return doc.providers[provider] ?? defaultProviderDoc()
+  }
+
   function state(): RpcUsageAutoCheckinState {
+    const ids = Object.keys(doc.providers).sort()
+    const providers: RpcUsageAutoCheckinProviderState[] = ids.map((provider) => {
+      const entry = doc.providers[provider]
+      return {
+        provider,
+        enabled: entry.enabled,
+        time: entry.time,
+        lastDate: entry.lastDate,
+        ranToday: entry.lastDate !== '' && entry.lastDate === today(),
+        lastResult: entry.lastResult,
+        lastAt: entry.lastAt,
+        supported: supportsAutoCheckin(provider),
+        running: runningProviders.has(provider),
+      }
+    })
+    // 兼容视图：给宿主插件那版旧 UI（client.js）读。新代码只读 providers。
+    const enabledEntries = providers.filter((entry) => entry.enabled)
+    const latest = providers.reduce<RpcUsageAutoCheckinProviderState | undefined>(
+      (best, entry) => (entry.lastAt > (best?.lastAt ?? 0) ? entry : best),
+      undefined,
+    )
     return {
-      enabled: doc.enabled,
-      time: doc.time,
-      lastDate: doc.lastDate,
-      ranToday: doc.lastDate !== '' && doc.lastDate === today(),
-      running,
-      lastResult: doc.lastResult,
+      providers,
+      enabled: enabledEntries.length > 0,
+      time: enabledEntries[0]?.time ?? DEFAULT_AUTO_CHECKIN_TIME,
+      lastDate: latest?.lastDate ?? '',
+      ranToday: providers.some((entry) => entry.ranToday),
+      running: runningProviders.size > 0,
+      lastResult: latest?.lastResult ?? '',
       lastAt: doc.lastAt,
       channels: doc.channels.map((entry) => ({ ...entry })),
-      // 面板据它决定要不要渲染那行常驻状态文字
       dismissed: doc.lastAt > 0 && doc.dismissedRunAt === doc.lastAt,
     }
   }
 
-  async function performRun(): Promise<void> {
+  /**
+   * 跑**一个**渠道。
+   *
+   * @returns 该渠道的结果文本；`null` 表示这次不该记 `lastDate`（下次重试）。
+   */
+  async function performProviderRun(provider: string): Promise<{ text: string; markToday: boolean }> {
     const totals = emptyTotals()
-    let providers: string[] = []
+    // ⚠️ 排除表先于**任何**上游请求生效（见 isAutoCheckinExcluded 的说明）：
+    // zcode 的代价发生在**调用期间**（拉起浏览器产 captcha），事后再判断已经
+    // 太晚 —— 必须在调 `claim` 之前就把它摘掉。
+    if (isAutoCheckinExcluded(provider)) {
+      return { text: '需手动签到', markToday: false }
+    }
+    let result: BadgeRpcResult<RpcCreditsClaimAllResponse>
     try {
-      providers = [...new Set(await deps.listProviderIds())].sort()
+      result = await deps.claim(provider)
     } catch (error) {
-      // 账号池读不出来：不记日期，下次启动重试。
-      deps.warn?.(`[channel-pack] 自动签到：读取账号池失败，本次跳过: ${String(error)}`)
-      return
+      deps.warn?.(`[channel-pack] 自动签到：${provider} 调用异常: ${String(error)}`)
+      return { text: '出错', markToday: false }
     }
+    if (!result.ok) {
+      const message = typeof result.error?.message === 'string' ? result.error.message : ''
+      if (isUnsupportedCheckin(message)) return { text: '无签到接口', markToday: false }
+      deps.warn?.(`[channel-pack] 自动签到：${provider} 失败: ${message || '未知错误'}`)
+      return { text: '出错', markToday: false }
+    }
+    totals.providers += 1
+    const summary = result.value?.summary
+    if (summary === undefined) return { text: '无可领', markToday: false }
+    totals.claimed += summary.claimed
+    totals.totalCredit += summary.totalCredit
+    // ★ 按单位累加（2026-10-04）：`totalByUnit` 缺省时回落到「全部按积分」，
+    //   兼容尚未上报该字段的旧宿主响应 —— 与 `coversToday` 的兜底同思路。
+    const byUnit = summary.totalByUnit ?? { credit: summary.totalCredit, token: 0 }
+    totals.totalByUnit.credit += Number(byUnit.credit) || 0
+    totals.totalByUnit.token += Number(byUnit.token) || 0
+    totals.alreadyClaimed += summary.alreadyClaimed
+    totals.inactive += summary.inactive
+    totals.failed += summary.failed
+    // ⚠️ 记账口径**只认**这一项：渠道用 `coversToday` 自己声明「这条痕迹是不是
+    // 今天这一轮的」。缺省回落到 `claimed + alreadyClaimed`，是为了兼容尚未
+    // 上报该字段的旧响应（缺字段 ≠ 0，否则整轮会被判成「什么都没证明」）。
+    totals.coversToday += summary.coversToday ?? (summary.claimed + summary.alreadyClaimed)
+    return { text: describeChannel(summary), markToday: shouldMarkToday(totals) }
+  }
+
+  /**
+   * 跑指定的渠道集合（默认 = 当前该跑的）。
+   *
+   * ## 与旧实现的差别
+   *
+   * 旧版是「一次跑全部渠道，整轮共用一个 `lastDate`」—— 一个渠道失败就会让
+   * 整轮都不记账（`shouldMarkToday` 看的是汇总）。逐渠道之后每个渠道**自己**
+   * 记账：A 成功就记 A，B 失败下次单独重试，互不牵连。
+   *
+   * @param only - 只跑这些渠道（供「刚打开某个渠道的开关」用）。
+   */
+  async function performRun(only?: string[]): Promise<void> {
+    const targets = only ?? (await resolveDueProviders())
+    if (targets.length === 0) return
     const channels: Array<{ provider: string; text: string }> = []
-    for (const provider of providers) {
-      // ⚠️ 排除表先于**任何**上游请求生效（见 isAutoCheckinExcluded 的说明）：
-      // zcode 的代价发生在**调用期间**（拉起浏览器产 captcha），事后再判断已经
-      // 太晚 —— 必须在调 `claim` 之前就把它摘掉。
-      if (isAutoCheckinExcluded(provider)) {
-        totals.skipped += 1
-        channels.push({ provider, text: '需手动签到' })
-        continue
-      }
-      let result: BadgeRpcResult<RpcCreditsClaimAllResponse>
+    let changed = false
+    for (const provider of targets) {
+      runningProviders.add(provider)
       try {
-        result = await deps.claim(provider)
-      } catch (error) {
-        totals.errors += 1
-        channels.push({ provider, text: '出错' })
-        deps.warn?.(`[channel-pack] 自动签到：${provider} 调用异常: ${String(error)}`)
-        continue
-      }
-      if (!result.ok) {
-        const message = typeof result.error?.message === 'string' ? result.error.message : ''
-        if (isUnsupportedCheckin(message)) {
-          totals.skipped += 1
-          channels.push({ provider, text: '无签到接口' })
-          continue
+        const { text, markToday } = await performProviderRun(provider)
+        channels.push({ provider, text })
+        const entry = doc.providers[provider] ?? defaultProviderDoc()
+        if (markToday) {
+          doc.providers[provider] = { ...entry, lastDate: today(), lastResult: text, lastAt: now() }
+          changed = true
+        } else if (text !== entry.lastResult) {
+          // 没记日期的也要留下结果文本，否则界面上什么都看不到（用户会以为没跑）。
+          doc.providers[provider] = { ...entry, lastResult: text, lastAt: now() }
+          changed = true
         }
-        totals.errors += 1
-        channels.push({ provider, text: '出错' })
-        deps.warn?.(`[channel-pack] 自动签到：${provider} 失败: ${message || '未知错误'}`)
-        continue
+        if (markToday) {
+          deps.warn?.(`[channel-pack] 自动签到完成（${today()}）：${provider} ${text}`)
+        } else {
+          deps.warn?.(`[channel-pack] 自动签到未记入今日（下个周期会重试）：${provider} ${text}`)
+        }
+      } finally {
+        runningProviders.delete(provider)
       }
-      totals.providers += 1
-      const summary = result.value?.summary
-      if (summary === undefined) {
-        channels.push({ provider, text: '无可领' })
-        continue
-      }
-      totals.claimed += summary.claimed
-      totals.totalCredit += summary.totalCredit
-      // ★ 按单位累加（2026-10-04）：`totalByUnit` 缺省时回落到「全部按积分」，
-      //   兼容尚未上报该字段的旧宿主响应 —— 与 `coversToday` 的兜底同思路。
-      const byUnit = summary.totalByUnit ?? { credit: summary.totalCredit, token: 0 }
-      totals.totalByUnit.credit += Number(byUnit.credit) || 0
-      totals.totalByUnit.token += Number(byUnit.token) || 0
-      totals.alreadyClaimed += summary.alreadyClaimed
-      totals.inactive += summary.inactive
-      totals.failed += summary.failed
-      // ⚠️ 记账口径**只认**这一项：渠道用 `coversToday` 自己声明「这条痕迹是不是
-      // 今天这一轮的」。缺省回落到 `claimed + alreadyClaimed`，是为了兼容尚未
-      // 上报该字段的旧响应（缺字段 ≠ 0，否则整轮会被判成「什么都没证明」）。
-      totals.coversToday += summary.coversToday ?? (summary.claimed + summary.alreadyClaimed)
-      channels.push({ provider, text: describeChannel(summary) })
     }
-
-    if (!shouldMarkToday(totals)) {
-      // ⚠️ 刻意**不写** lastDate：让「凭据还没续上 / 网络不通 / 赶在渠道刷新前
-      // 跑的那一轮」能在下一个周期重试，而不是当天就此放弃（判据见 shouldMarkToday）。
-      // ⚠️ 文案是「下个周期重试」而不是「下次启动」：周期检查上线后不再依赖重启，
-      // 旧文案会让用户以为必须重启 DSH 才会补签。
-      deps.warn?.(
-        `[channel-pack] 自动签到未记入今日（下个周期会重试）：${describeRun(totals)}`,
-      )
-      return
-    }
-
+    if (!changed) return
     doc = {
       ...doc,
-      lastDate: today(),
-      lastResult: describeRun(totals),
       lastAt: now(),
+      // 汇总用的 channels 只保留这一轮跑过的（旧 UI 的常驻状态文字读它）。
       channels,
       // ⚠️ 新一轮跑完要**清掉上一次的「已关闭」标记**：否则用户关过一次后，
       // 明天的新结果会被旧标记静默藏住（`dismissed` 的判据是 lastAt 相等）。
@@ -906,11 +1098,79 @@ export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
       // 写盘失败 ⇒ 今天可能再跑一次（幂等，代价是多发一轮请求），如实告警。
       deps.warn?.(`[channel-pack] 自动签到结果写入失败（今天可能重复触发一次）: ${String(error)}`)
     }
-    deps.warn?.(`[channel-pack] 自动签到完成（${today()}）：${doc.lastResult}`)
   }
 
   /**
-   * 按判据跑一轮（四个守卫全部通过才真的跑）。
+   * 算出**此刻该跑**的渠道：开着 + 支持签到 + 今天没跑过 + 已到点。
+   *
+   * ⚠️ 逐渠道判 due（每个渠道有自己的 `time`），不是全局一个判据 —— 这正是
+   * 本次改造的核心。日末盲区补偿（`isCheckinDue` 的 `last-chance`）逐渠道生效。
+   *
+   * @param only - 只在这些渠道里筛（供「刚打开某个渠道的开关」精确触发）。
+   *   ⚠️ 这是**范围**限定，不是**判据**豁免：给出的渠道仍要过全部 due 判定。
+   */
+  async function resolveDueProviders(only?: string[]): Promise<string[]> {
+    let inPool: string[] = []
+    try {
+      inPool = [...new Set(await deps.listProviderIds())].sort()
+    } catch (error) {
+      // 账号池读不出来：不记日期，下个周期重试。
+      deps.warn?.(`[channel-pack] 自动签到：读取账号池失败，本次跳过: ${String(error)}`)
+      return []
+    }
+    // 给了范围就只在这些渠道里筛（顺序仍按账号池的稳定顺序）。
+    const scope = only === undefined ? inPool : inPool.filter((provider) => only.includes(provider))
+    const due: string[] = []
+    for (const provider of scope) {
+      const entry = doc.providers[provider]
+      // 没配置过 = 默认关闭，直接跳过（不给它建记录，避免文档被空条目撑大）。
+      if (entry === undefined || entry.enabled !== true) continue
+      if (!supportsAutoCheckin(provider)) continue
+      if (entry.lastDate !== '' && entry.lastDate === today()) continue
+      if (runningProviders.has(provider)) continue
+      /**
+       * ⚠️ 非法时间必须**告警**，不能静默（真实缺口，2026-10-24 自查发现）。
+       *
+       * `isCheckinDue` 对非法值返回 `due: false`，于是这个渠道**当天永远不会
+       * 签**，而且一句话都没有 —— 正是本文件反复记过的那类「静默失效」。
+       *
+       * 正常路径走不到：RPC 层严格校验 + `sanitizeProviderDoc` 宽松回落。
+       * 但 `setProviderTime` 是**内存写入路径且不做校验**（那是刻意的，见它的
+       * 注释），绕过 RPC 的调用方能把 `'99:99'` 写进文档，重启后才被回落。
+       * 这条 warn 就是那个窗口期的唯一线索。
+       *
+       * ⚠️ 按「渠道 + 非法值」去重：周期检查每 5 分钟一次，不去重会刷 288 行/天
+       *（与守卫日志同理）。值一变就重新告警 —— 用户改了还是坏，要再提醒一次。
+       */
+      if (parseTimeOfDay(entry.time) === undefined) {
+        const key = `${provider}:${entry.time}`
+        if (invalidTimeWarned !== key) {
+          invalidTimeWarned = key
+          deps.warn?.(
+            `[channel-pack] 自动签到跳过（${provider}）：签到时间配置非法`
+            + `（${JSON.stringify(entry.time)}），该渠道不会自动签到，请重新设置`,
+          )
+        }
+        continue
+      }
+      const decision = isCheckinDue(entry.time, now(), tickMs)
+      if (!decision.due) continue
+      if (decision.reason === 'last-chance') {
+        // ⚠️ 这条必须打出来：此时**还没到**用户设定的时刻，却要提前签。用户看到
+        // 「23:56 签了、但我设的是 23:59」时，日志是唯一能解释原因的地方。
+        deps.warn?.(
+          `[channel-pack] 自动签到提前触发（${provider}）：设定 ${entry.time}（UTC+8），`
+          + `当前 UTC+8 ${utc8ClockString(now())}`
+          + `——下一次检查会跨过午夜，再等今天就永远等不到（日末盲区补偿）`,
+        )
+      }
+      due.push(provider)
+    }
+    return due
+  }
+
+  /**
+   * 按判据跑一轮（**逐渠道**判 due）。
    *
    * ## ⚠️ 为什么每条守卫都要打日志
    *
@@ -929,8 +1189,10 @@ export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
    * 级别选择：`debug`（预期内的静默）而非 `warn`。例外是「时间配置非法」——
    * 那条说明配置坏了、当天**不会**自动签到，属于用户需要知道的事实，用 `warn`
    * 且**不去重**（坏配置不该被静默）。
+   *
+   * @param only - 只跑这些渠道（供「刚打开某个渠道的开关」精确触发，不去碰别的）。
    */
-  function runIfDue(): Promise<void> {
+  function runIfDue(only?: string[]): Promise<void> {
     /** 打一条「因 X 跳过」的日志，同一原因连续出现时只打一次。 */
     const skip = (reason: string): Promise<void> => {
       if (lastSkipReason !== reason) {
@@ -939,45 +1201,54 @@ export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
       }
       return Promise.resolve()
     }
-    if (inflight !== null) {
-      // 不走去重：这条与「等待中」是不同性质的事件，且本身就稀少（一轮跑着时
-      // 最多每 5 分钟一次，而一轮通常几十秒就结束）。
-      deps.debug?.(`[channel-pack] 自动签到跳过：上一轮仍在进行中（inflight）`)
-      return inflight
+    // ⚠️ 去重按**渠道**：只有「这批目标渠道全都还在跑」才算 inflight 冲突。
+    if (only !== undefined && only.every((provider) => runningProviders.has(provider))) {
+      deps.debug?.(`[channel-pack] 自动签到跳过：目标渠道仍在进行中（inflight）`)
+      return inflight ?? Promise.resolve()
     }
-    if (!doc.enabled) return skip('开关未打开')
-    if (doc.lastDate !== '' && doc.lastDate === today()) {
-      return skip(`今天（${doc.lastDate}）已经签过`)
+    if (only === undefined) {
+      // 整轮检查：没有**任何**渠道开着就直接跳过，不读账号池。
+      if (!Object.values(doc.providers).some((entry) => entry.enabled === true)) {
+        return skip('没有任何渠道开启自动签到')
+      }
+      if (inflight !== null) {
+        // 不走去重：这条与「等待中」是不同性质的事件，且本身就稀少。
+        deps.debug?.(`[channel-pack] 自动签到跳过：上一轮仍在进行中（inflight）`)
+        return inflight
+      }
     }
-    if (parseTimeOfDay(doc.time) === undefined) {
-      // 正常走不到：sanitizeAutoCheckin 已把非法值回落。但 setTime 是内存写入
-      // 路径，留一道兜底 —— 时间坏了就当天不签，且必须让用户看见（故不去重）。
-      deps.warn?.(`[channel-pack] 自动签到跳过：签到时间配置非法（${JSON.stringify(doc.time)}），请重新设置`)
-      return Promise.resolve()
-    }
-    // ⚠️ 判据是 `isCheckinDue` 而不是 `isTimeReachedToday`：后者看不见「日末
-    // 盲区」（设定时间落在当天最后一个 tick 窗口内 ⇒ 整天漏签，详见该函数注释）。
-    const decision = isCheckinDue(doc.time, now(), tickMs)
-    if (!decision.due) {
-      return skip(
-        `今天还没到点（设定 ${doc.time}（UTC+8），当前 UTC+8 ${utc8ClockString(now())}）`,
-      )
-    }
-    if (decision.reason === 'last-chance') {
-      // ⚠️ 这条必须打出来：此时**还没到**用户设定的时刻，却要提前签。用户看到
-      // 「23:56 签了、但我设的是 23:59」时，日志是唯一能解释原因的地方。
-      deps.warn?.(
-        `[channel-pack] 自动签到提前触发：设定 ${doc.time}（UTC+8），当前 UTC+8 ${utc8ClockString(now())}`
-        + `——下一次检查会跨过午夜，再等今天就永远等不到（日末盲区补偿）`,
-      )
-    }
-    // 走到这里说明真的要跑了：清掉去重记忆，好让下一轮（明天）的拦截重新可见。
+    const targets = only ?? null
     lastSkipReason = null
-    running = true
-    const task = performRun().catch((error: unknown) => {
+    const task = (async () => {
+      let list: string[]
+      if (targets === null) {
+        list = await resolveDueProviders()
+        if (list.length === 0) {
+          // 逐渠道都判过了，这里给一句汇总原因（具体哪个渠道为什么没跑，
+          // 由 resolveDueProviders 里的逐渠道日志回答）。
+          skip(`今天没有到点的渠道（当前 UTC+8 ${utc8ClockString(now())}）`)
+          return
+        }
+      } else {
+        /**
+         * ⚠️ **`only` 路径同样要过 due 判定**（真实缺陷，2026-10-24 自查发现）。
+         *
+         * 最初这里直接 `performRun(targets)`，理由是「用户刚打开开关，应当立刻
+         * 尝试一轮」。但那把「立刻尝试」错解成了「立刻签」—— 后果是：用户上午
+         * 8 点打开某渠道的开关，本该等到 10:05 才签，结果**当场签了一次**，
+         * 于是 10:05 因为 `lastDate` 已记而不再签。签到时间形同虚设。
+         *
+         * 正确语义：`only` 只是「**范围**限定为这几个渠道」，判据（开关/已签/
+         * 到点）一条都不能少 —— 否则「改了时间立刻重判」也就成了「改了时间立刻
+         * 无视时间就签」。`resolveDueProviders` 本来就接受范围，直接复用它。
+         */
+        list = await resolveDueProviders(targets)
+        if (list.length === 0) return
+      }
+      await performRun(list)
+    })().catch((error: unknown) => {
       deps.warn?.(`[channel-pack] 自动签到异常: ${String(error)}`)
     }).finally(() => {
-      running = false
       inflight = null
     })
     inflight = task
@@ -986,22 +1257,82 @@ export function createAutoCheckin(deps: AutoCheckinDeps): AutoCheckin {
 
   return {
     state,
-    async setEnabled(enabled) {
-      doc = { ...doc, enabled }
+    async setProviderEnabled(provider, enabled) {
+      // ⚠️ 对不支持签到的渠道写 `true` 要**拒绝**（返回 null），不能静默接受：
+      // 那会让用户开一个永远不会生效的开关，而界面上它看起来是开着的。
+      // 写 `false` 一律允许（关掉一个本来就不支持的渠道无害）。
+      if (enabled && !supportsAutoCheckin(provider)) return null
+      const entry = doc.providers[provider] ?? defaultProviderDoc()
+      doc = { ...doc, providers: { ...doc.providers, [provider]: { ...entry, enabled } } }
       await deps.store.save(doc)
-      // 打开开关时立刻尝试一轮（今天已跑过则由 runIfDue 内部拦住）。
-      // ⚠️ 不 await：一轮要串行打十几个上游，让按钮等它会让界面像卡死；
+      // 打开开关时立刻尝试这一轮（今天已跑过则由 runIfDue 内部拦住）。
+      // ⚠️ 不 await：一轮要串行打多个上游，让按钮等它会让界面像卡死；
       // `state()` 里的 `running` 会立刻变成 true，界面据此显示「进行中」。
-      if (enabled) void runIfDue()
+      // ⚠️ 只跑这一个渠道（`[provider]`）：用户开 A 的开关不该顺带把 B 也签了。
+      if (enabled) void runIfDue([provider])
       return state()
     },
-    async setTime(time) {
-      doc = { ...doc, time }
+    async setProviderTime(provider, time) {
+      const entry = doc.providers[provider] ?? defaultProviderDoc()
+      doc = { ...doc, providers: { ...doc.providers, [provider]: { ...entry, time } } }
       await deps.store.save(doc)
-      // ⚠️ 改时间后**立刻重判**（不 await，理由同 setEnabled）：用户把时间改到
-      // 「已经过点」时应当马上补签，否则要等到下一个周期（最多 5 分钟）才动，
+      // ⚠️ 改时间后**立刻重判**（不 await，理由同 setProviderEnabled）：用户把时间
+      // 改到「已经过点」时应当马上补签，否则要等到下一个周期（最多 5 分钟）才动，
       // 界面看起来像「改了没生效」。今天已跑过 / 开关关着则由 runIfDue 拦住。
-      void runIfDue()
+      if (entry.enabled) void runIfDue([provider])
+      return state()
+    },
+    /**
+     * ⚠️ 兼容旧 UI 的全局 fan-out，见接口注释。**新代码不要调用**。
+     *
+     * ## ⚠️ 为什么必须读账号池，而不是只遍历已有条目（真实缺陷，2026-10-24 自查）
+     *
+     * 最初这里只遍历 `doc.providers` 的现有键。但**全新安装**时那个对象是空的
+     *（默认全部关闭 ⇒ 没有任何条目），于是「打开全局开关」什么都不会发生 ——
+     * 旧 UI 上表现为「点了开关，状态没变，也永远不签到」。
+     *
+     * 正确做法：以**账号池**为范围（那才是「哪些渠道存在」的权威），逐个建条目。
+     * 只跳过不支持签到的渠道（不凭空给它们建 `enabled: true`，否则界面会显示
+     * 一个永远不生效的开关）。
+     */
+    async setAllEnabled(enabled) {
+      let inPool: string[] = []
+      try {
+        inPool = [...new Set(await deps.listProviderIds())].sort()
+      } catch (error) {
+        deps.warn?.(`[channel-pack] 自动签到：读取账号池失败，无法批量改开关: ${String(error)}`)
+        return state()
+      }
+      const providers = { ...doc.providers }
+      const touched: string[] = []
+      for (const id of inPool) {
+        if (enabled && !supportsAutoCheckin(id)) continue
+        providers[id] = { ...(providers[id] ?? defaultProviderDoc()), enabled }
+        if (enabled) touched.push(id)
+      }
+      doc = { ...doc, providers }
+      await deps.store.save(doc)
+      if (touched.length > 0) void runIfDue(touched)
+      return state()
+    },
+    /** ⚠️ 兼容旧 UI：把所有渠道的时间都设成 `time`，见接口注释。**新代码不要调用**。 */
+    async setAllTimes(time) {
+      let inPool: string[] = []
+      try {
+        inPool = [...new Set(await deps.listProviderIds())].sort()
+      } catch (error) {
+        deps.warn?.(`[channel-pack] 自动签到：读取账号池失败，无法批量改时间: ${String(error)}`)
+        return state()
+      }
+      // 以账号池为范围（理由同 setAllEnabled）：只改已有条目会让全新安装时改不动。
+      const providers = { ...doc.providers }
+      for (const id of inPool) {
+        providers[id] = { ...(providers[id] ?? defaultProviderDoc()), time }
+      }
+      doc = { ...doc, providers }
+      await deps.store.save(doc)
+      const enabledIds = inPool.filter((id) => providers[id]?.enabled === true && supportsAutoCheckin(id))
+      if (enabledIds.length > 0) void runIfDue(enabledIds)
       return state()
     },
     start() {
