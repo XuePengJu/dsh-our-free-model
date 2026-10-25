@@ -454,16 +454,26 @@ function isTransientDownloadError(error) {
 /** jsDelivr's primary edge can redirect documentation files to raw, which is
  *  unavailable on some client networks. Try its gcore edge at the exact same
  *  SHA/path, never an arbitrary Location or a mutable branch. Size/hash checks
- *  remain outside the transport fallback and cannot authorize another body. */
+ *  remain outside the transport fallback and cannot authorize another body.
+ *
+ *  Both jsDelivr edges are recognized as origins here, because the manifest may
+ *  itself have been discovered on either one: a gcore-sourced manifest composes
+ *  gcore file URLs, and those need the same fallbacks. */
 function stagedFileSources(manifestUrl, manifest, relativePath) {
   const file = fileUrlOf(manifestUrl, manifest, relativePath)
   const url = new URL(file)
   const prefix = `/gh/${REPO}@`
-  if (url.protocol !== 'https:' || url.hostname !== 'cdn.jsdelivr.net' || url.port
+  const jsdelivr = url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'gcore.jsdelivr.net'
+  if (url.protocol !== 'https:' || !jsdelivr || url.port
     || url.username || url.password || !url.pathname.startsWith(prefix)
     || !/^[a-f0-9]{40}\//.test(url.pathname.slice(prefix.length))) return [file]
-  url.hostname = 'gcore.jsdelivr.net'
-  return [file, url.href]
+  const cdn = new URL(url)
+  cdn.hostname = 'cdn.jsdelivr.net'
+  const gcore = new URL(url)
+  gcore.hostname = 'gcore.jsdelivr.net'
+  // Keep the origin that was actually asked first, then the other edge.
+  const others = [cdn.href, gcore.href].filter(href => href !== file)
+  return [file, ...others]
 }
 
 export async function stageRelease({ manifest, manifestUrl, stageDir, fetchImpl = fetch, concurrency = 4, onProgress = () => {}, timeoutMs = 30000 }) {
