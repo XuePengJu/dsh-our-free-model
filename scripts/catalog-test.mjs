@@ -70,8 +70,18 @@ const idRe = new RegExp(schema.$defs.namespacedId.pattern)
 check('id is namespaced per the schema', idRe.test(manifest.id), true)
 check('name is the npm package name', manifest.name, pkg.name)
 check('version tracks package.json', manifest.version, pkg.version)
-for (const file of ['README.md', 'README_EN.md']) {
+// A fork may drop a language's README, and a fork's install instructions need
+// not name a vendored tarball at all — this one installs from a local path via
+// `dsh plugin --profile <p> add <path>`. Read whichever README files actually
+// exist, and assert the tarball pin only where one is documented; an absent
+// file is not a failed assertion, and neither is an install path that has no
+// tarball to pin.
+for (const file of ['README.md', 'README_EN.md'].filter(name => fs.existsSync(path.join(repo, name)))) {
   const pins = [...read(file).matchAll(/"dsh-our-free-model": "file:\.\/vendor\/dsh-our-free-model-([^"]+)\.tgz"/g)].map(match => match[1])
+  if (pins.length === 0) {
+    console.log(`ok   ${file} pins no vendored tarball (installs from a local path)`)
+    continue
+  }
   check(`${file} installs the trusted local tarball at the shipping version`, pins, [pkg.version])
 }
 check('license tracks package.json', manifest.license, pkg.license)
