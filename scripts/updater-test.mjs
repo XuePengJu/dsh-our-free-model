@@ -414,6 +414,42 @@ for (const error of [new TypeError('fetch failed'), new Error('HTTP 301'), new E
   })
 }
 
+// A manifest discovered on the gcore edge composes gcore file URLs, so that
+// host has to be recognized as a jsDelivr origin too — otherwise an unavailable
+// gcore file has no mirror at all and the release is unreachable from the very
+// source the manifest came from.
+for (const error of [new Error('HTTP 404'), new Error('HTTP 503'), new TypeError('fetch failed')]) {
+  await checkAsync(`a gcore-sourced manifest falls back to the cdn edge at the same SHA (${error.message})`, async () => {
+    const fixture = snapshotFetch({ source: gcoreSnapshot })
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-gcore-fallback-'))
+    const calls = []
+    const fetchImpl = async (url, opts) => {
+      const parsed = new URL(url)
+      const target = parsed.pathname.endsWith('/src/new-deep.js')
+      calls.push({ url: String(url), opts })
+      if (target && parsed.hostname === 'gcore.jsdelivr.net') {
+        if (error.message.startsWith('HTTP')) return new Response(null, { status: Number(error.message.slice(5)) })
+        throw error
+      }
+      if (target && parsed.hostname === 'cdn.jsdelivr.net') {
+        assert.match(parsed.pathname, new RegExp(`@${SNAPSHOT}/src/new-deep\\.js$`))
+        return new Response(newFiles['src/new-deep.js'])
+      }
+      return fixture.fetchImpl(url, opts)
+    }
+    try {
+      await stageRelease({ manifest: parseManifest(newManifest), manifestUrl: gcoreSnapshot, stageDir: data, fetchImpl })
+      verifyStaged(data, parseManifest(newManifest))
+      assert.equal(calls.length, 5, 'only the failed file uses a second mirror')
+      assert.equal(calls.every(call => call.opts.redirect === 'error'), true)
+      const pair = calls.filter(call => call.url.includes('/src/new-deep.js'))
+      assert.equal(pair[0].url.includes('gcore.jsdelivr.net'), true, 'the asked origin is tried first')
+      assert.equal(pair[1].url.includes('cdn.jsdelivr.net'), true, 'the other edge follows')
+      assert.equal(pair[0].opts.signal, pair[1].opts.signal, 'mirror requests share one deadline')
+    } finally { fs.rmSync(data, { recursive: true, force: true }) }
+  })
+}
+
 for (const badBody of ['wrong size', newFiles['src/new-deep.js'].replace('true', 'xxxx')]) {
   await checkAsync('fixed CDN integrity failure never falls back or retries', async () => {
     const fixture = snapshotFetch({ source: cdnSnapshot })
