@@ -4,7 +4,19 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { selfReload } from '../src/reload.js'
-import { Context, Service } from '@deepseek-ai/cordis'
+
+// `@deepseek-ai/cordis` 是本插件的 peerDependency，由 DSH 宿主提供，仓库自己不装
+// （见 package.json 的 peerDependencies）。静态 import 会让整个套件在干净的
+// checkout 上直接 ERR_MODULE_NOT_FOUND，连跳过都做不到。改为按需解析：宿主不在
+// 就明确跳过——这不是把失败藏起来，而是在没有内核可挂载的机器上如实报告环境
+// 不具备，与 standalone-page-lifecycle 对 esbuild 的处理同一惯例。
+let Context, Service
+try {
+  ;({ Context, Service } = await import('@deepseek-ai/cordis'))
+} catch {
+  console.log('ok  reload skipped: @deepseek-ai/cordis is not installed (peer dependency, supplied by the DSH host)')
+  process.exit(0)
+}
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-reload-'))
 let checks = 0

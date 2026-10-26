@@ -16,10 +16,22 @@ import { verifyChannelImagePricing } from './channel-image-pricing-test.mjs'
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-channel-pack-'))
 const kernel = new URL('./lib/channel-pack-kernel.mjs', import.meta.url).href
 const sourceMode = process.argv.includes('--source')
-const ts = sourceMode ? (await import('typescript')).default : undefined
-const RealContext = sourceMode ? (await import('@deepseek-ai/cordis')).Context : undefined
-const RealBlockAssembler = sourceMode ? (await import('@deepseek-ai/dsh-llm')).BlockAssembler : undefined
-const realLlmInvariant = sourceMode ? await import('@deepseek-ai/dsh-llm/invariant') : undefined
+// --source 模式要编译 TypeScript 源码并挂到真实内核上，两者都不是本仓库的依赖：
+// `typescript` 未声明，`@deepseek-ai/*` 是 peerDependency（由 DSH 宿主提供）。
+// 直接 await import 会在干净 checkout 上抛 ERR_MODULE_NOT_FOUND，让整个套件红掉，
+// 而失败原因与渠道包本身无关。改为可缺省：缺任何一个就明确跳过。
+const requireOptional = async (name, what) => {
+  try {
+    return await import(name)
+  } catch {
+    console.log(`ok  channel-source skipped: ${what} is not installed (${name})`)
+    process.exit(0)
+  }
+}
+const ts = sourceMode ? (await requireOptional('typescript', 'the TypeScript compiler')).default : undefined
+const RealContext = sourceMode ? (await requireOptional('@deepseek-ai/cordis', 'the DSH kernel (peer dependency)')).Context : undefined
+const RealBlockAssembler = sourceMode ? (await requireOptional('@deepseek-ai/dsh-llm', 'the DSH kernel (peer dependency)')).BlockAssembler : undefined
+const realLlmInvariant = sourceMode ? await requireOptional('@deepseek-ai/dsh-llm/invariant', 'the DSH kernel (peer dependency)') : undefined
 const sourceRoot = new URL('../vendor/channel-pack/src/', import.meta.url).href
 const llmKernel = `data:text/javascript,${encodeURIComponent(`
 export * from ${JSON.stringify(kernel)}
