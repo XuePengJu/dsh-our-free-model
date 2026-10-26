@@ -8,11 +8,13 @@
  *
  * | 区块 | 数据源 | 时钟 |
  * | --- | --- | --- |
- * | KPI 5 张、口径条、按模型统计、吞吐图 | `/stats`（app 层 `loadData`） | 5 秒（全局） |
- * | 明细表、实时请求流、候选链走查 | `/usage/ledger` + `/usage/attempts`（本文件自持） | 6 秒，首延迟 3 秒 |
+ * | KPI 5 张、口径条、按模型统计、吞吐图 | `/stats`（app 层 `loadData`） | 2 秒（全局） |
+ * | 明细表、实时请求流、候选链走查 | `/usage/ledger` + `/usage/attempts`（本文件自持） | 2 秒，首延迟 1 秒 |
  *
- * **两条钟刻意错开相位**：`/stats` 在 0s / 5s / 10s… 触发，账本在 3s / 9s / 15s… 触发，
+ * **两条钟刻意错开相位**：`/stats` 在 0s / 2s / 4s… 触发，账本在 1s / 3s / 5s… 触发，
  * 同一瞬间永远不会有两个请求在飞（本机服务是单进程 HTTP，合并峰值能明显减少卡顿感）。
+ * 周期从 5s/6s 提到 2s（要求 1–2 秒）：本机回环 + JSON 体积小，2s 的常态开销可忽略；
+ * tick 先 `await` 本次请求完成再排下一轮，慢请求只会推迟下一轮、不会堆积并发。
  *
  * 为什么账本不并进 `loadData()`：它要跨到 worker 线程走两个 RPC，是这页最慢的一次往返。
  * 并进整包会让「渠道 worker 挂死」升级成「整张统计页白屏」。账本失败只降级
@@ -84,9 +86,9 @@ const PERIOD_LABELS: Record<UsagePeriod, string> = { day: '每日', week: '每�
 const PERIOD_WORDS: Record<'day' | 'week' | 'month', string> = { day: '今日', week: '本周', month: '本月' }
 const PERIOD_STORAGE_KEY = 'dsh-usage-period'
 
-/** 账本时钟：6 秒一轮；首轮延迟 3 秒，与 `/stats` 的 5 秒（相位 0）错开。 */
-const LEDGER_INTERVAL_MS = 6000
-const LEDGER_FIRST_DELAY_MS = 3000
+/** 账本/走查时钟：2 秒一轮；首轮延迟 1 秒，与 `/stats` 的 2 秒（相位 0）错开 1 秒。 */
+const LEDGER_INTERVAL_MS = 2000
+const LEDGER_FIRST_DELAY_MS = 1000
 /** 账本请求的条数：500 = 内存账本全量窗口，保证「今日」重聚合不被截断。 */
 const LEDGER_LIMIT = 500
 /** 吞吐图的窗口与桶数：近 60 分钟 · 2 分钟一桶。 */
@@ -460,7 +462,7 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
   const [refreshing, setRefreshing] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  // 自动轮询动效：数据本体随 app 层 5 秒快照自动更新，这里只负责按钮图标转圈
+  // 自动轮询动效：数据本体随 app 层 2 秒快照自动更新，这里只负责按钮图标转圈
   // （共享 hook，最短 600ms；「正在更新」与禁用仍只留给手动点击）。
   const autoRefreshing = useAutoRefreshSpin()
   const generation = useRef(0)

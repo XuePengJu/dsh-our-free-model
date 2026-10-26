@@ -112,7 +112,9 @@ function App() {
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [page])
   useEffect(() => { const onUnauthorized = () => enterLogin('管理会话已失效，请重新登录'); window.addEventListener('ofm:unauthorized', onUnauthorized); return () => window.removeEventListener('ofm:unauthorized', onUnauthorized) }, [])
   useEffect(() => { const token = new URLSearchParams(location.hash.slice(1)).get('login'); if (token) history.replaceState(null, '', location.pathname + location.search); void (async () => { try { if (token) await request('/session', { bootstrapToken: token }); await loadData() } catch (reason) { enterLogin((reason as any)?.status === 401 && !token ? '' : messageOf(reason)) } })() }, [])
-  useEffect(() => { if (mode !== 'ready') return; const timer = window.setInterval(() => { if (!document.hidden) void loadData().catch(reason => setError(messageOf(reason))) }, 5000); return () => window.clearInterval(timer) }, [mode])
+  // 全局 /stats 快照钟：2 秒一轮（定 1–2 秒档）。本机回环 + 小 JSON，开销可忽略；
+  // 隐藏标签页不发请求，切回前台下一拍自动补。与用量页账本钟（相位 1s）错开。
+  useEffect(() => { if (mode !== 'ready') return; const timer = window.setInterval(() => { if (!document.hidden) void loadData().catch(reason => setError(messageOf(reason))) }, 2000); return () => window.clearInterval(timer) }, [mode])
   const content: ReactNode = snapshot && page === 'overview' ? <Overview {...snapshot} host={host} /> : snapshot && page === 'channels' ? <ChannelMount key={page} summary={{ ...snapshot.summary, reload: () => { void loadData() } }} /> : snapshot && page === 'logs' ? <LogsMount /> : null
   if (mode === 'loading') return <LoadingScreen />
   if (mode === 'login') return <LoginScreen request={async (...args) => { const result = await request(...args); if (args[0] === '/session') await loadData(); return result }} auto={!loggedOut.current} />
