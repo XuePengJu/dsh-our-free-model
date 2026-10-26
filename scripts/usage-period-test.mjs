@@ -199,14 +199,19 @@ check('grand still falls back to day buckets after lifetime models are emptied',
 
 // ── 9. 模型行同构：all 顶层 models 与 periods.week.models 键集合一致 ────────
 check('top-level and period model rows share the same toModelRow shape', () => {
+  // 日期必须落在「本周」窗口内，buildStats 用 Date.now() 算周期边界。
+  // 写死日期会随真实时间推移滑出窗口，让 periods.week.models 变空 —— 那是
+  // 用例过期，不是行结构不一致。
+  const today = localDayKey(new Date())
   const raw = {
     requests: 2,
     failedRequests: 0,
     logical: { turns: 2, failed: 0, recovered: 1, models: { [m]: { turns: 2, failed: 0, recovered: 1 } } },
     models: { [m]: { input: 100, output: 50, reasoning: 0, cacheRead: 0, calls: 2, failed: 0 } },
-    days: { '2026-10-14': { total: 150, models: { [m]: { input: 100, output: 50, reasoning: 0, cacheRead: 0, calls: 1, failed: 0, ttftMs: 10, ttftSamples: 1, decodeMs: 300, decodeTokens: 5 } }, turns: 2, failedTurns: 0, recoveredTurns: 1, modelsTurns: { [m]: { turns: 2, failed: 0, recovered: 1 } } } },
+    days: { [today]: { total: 150, models: { [m]: { input: 100, output: 50, reasoning: 0, cacheRead: 0, calls: 1, failed: 0, ttftMs: 10, ttftSamples: 1, decodeMs: 300, decodeTokens: 5 } }, turns: 2, failedTurns: 0, recoveredTurns: 1, modelsTurns: { [m]: { turns: 2, failed: 0, recovered: 1 } } } },
   }
   const out = buildStats(raw, catalog)
+  assert.ok(out.periods.week.models.length > 0, '本周窗口应包含今天的数据')
   const topKeys = Object.keys(out.models[0]).sort()
   const weekKeys = Object.keys(out.periods.week.models[0]).sort()
   assert.deepEqual(topKeys, weekKeys)
