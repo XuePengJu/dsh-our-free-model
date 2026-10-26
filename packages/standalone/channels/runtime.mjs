@@ -93,10 +93,13 @@ export async function createChannelRuntime({ dataDir, logger = console, stats })
     async complete(request, onChunk) {
       const outcome = { text: '', toolCalls: [], usage: undefined, truncated: false, error: undefined }
       const started = Date.now()
+      // 提到函数作用域：finally 块不在 try 块内，不能读 try 里解构出的 const
+      // （那会 ReferenceError「__ofmComboMember is not defined」）。
+      const comboMember = request.__ofmComboMember === true
       let first = 0
       let ok = false
       try {
-        const { signal, __ofmComboMember, ...wire } = request
+        const { signal, ...wire } = request
         await call('complete', { request: wire }, signal, chunk => {
           if (!first) first = Date.now()
           foldForwardOutcome(outcome, chunk)
@@ -107,7 +110,7 @@ export async function createChannelRuntime({ dataDir, logger = console, stats })
       } finally {
         // 组合链成员不记独立回合（见 service.completeCombo 的注释）：token 照记，
         // 回合由组合级统一记一笔，避免一次 combo 拆成 N 笔成员回合。
-        if (!__ofmComboMember && !closed && stats) {
+        if (!comboMember && !closed && stats) {
           const usage = outcome.usage
           recordUsage(stats, {
             model: request.model, at: Date.now(), input: usage?.prompt_tokens ?? 0, output: usage?.completion_tokens ?? 0,
