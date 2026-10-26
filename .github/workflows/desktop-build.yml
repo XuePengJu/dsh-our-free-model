@@ -67,7 +67,14 @@ jobs:
 
       - name: Build Tauri installer
         working-directory: packages/desktop
-        run: npm run build
+        shell: pwsh
+        run: |
+          # The cached cargo target dir keeps the previous run's bundle output.
+          # Clear it so the upload glob cannot pick up a stale installer.
+          if (Test-Path "src-tauri/target/release/bundle") {
+            Remove-Item -Recurse -Force "src-tauri/target/release/bundle"
+          }
+          npm run build
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -122,7 +129,11 @@ jobs:
 
       - name: Build Tauri DMG
         working-directory: packages/desktop
-        run: npm run build
+        run: |
+          # The cached cargo target dir keeps the previous run's bundle output.
+          # Clear it so the upload glob cannot pick up a stale installer.
+          rm -rf src-tauri/target/release/bundle
+          npm run build
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
