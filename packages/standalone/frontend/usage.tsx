@@ -43,7 +43,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, RefreshCw, X } from 'lucide-react'
 import { Button } from './components/ui'
-import { bucketSamples, latestChainTurn, ledgerView, providerMeta, utc8DayKey, usageModels } from './usage-data.mjs'
+import { bucketSamples, latestActiveChainId, latestChainTurn, ledgerView, providerMeta, utc8DayKey, usageModels } from './usage-data.mjs'
 import { useAutoRefreshSpin } from './use-auto-refresh-spin'
 import { usePrefersReducedMotion, useReveal } from './use-raf-tween'
 import { mockUsageView } from './components/usage/mock-data'
@@ -180,14 +180,23 @@ function buildChains(combos: Combo[]): ChainSummary[] {
  *   `runSingle` 报成可 advance 的 `stream_cut` 而记成 `skipped`；只有登录墙、
  *   恢复预算耗尽这类不可续的收尾才是 `aborted`，绝不当主信号用。
  * - 没出现在回合里的候选（含序号对不上又 id 对不上的）→ `pending`/「待命」+ 渠道均值。
+ *
+ * ⚠️ **一行 attempts 只能点亮一个候选**（`consumed` 集合）：早先按序号 + id 双路匹配
+ * 且不记消费，成员配置调整后历史 `index` 会错位，同一行被两路各命中一次，hero 上
+ * 就出现「两个候选同时已应答」—— 一次请求不可能命中两次。
+ * 匹配优先级也调成「先身份（`candidateId`）后位置（`index`）」：位置会漂，身份不会。
  */
-function buildCandidates(
+export function buildCandidates(
   chain: ChainSummary | undefined,
   avgTpsOf: (provider: string) => number | undefined,
   turn: { turnAt: number; rows: UsageAttempt[] } | null,
 ): RoutingCandidate[] {
   if (chain === undefined) return []
   const shortLabel = (reason: string): string => (reason.length > 24 ? `${reason.slice(0, 24)}…` : reason)
+  const consumed = new Set<UsageAttempt>()
+  // 位置兜底只对「本链成员里找不到这个 candidateId」的行生效：若这行的 id 明明
+  // 属于本链别的成员，它迟早会被那个成员按身份认领，位置再兜一次就是重复计数。
+  const memberIds = new Set(chain.members.map(member => member.model))
   return chain.members.map((member, position) => {
     const base = {
       candidateId: `${chain.comboId}:${member.model}`,
@@ -199,8 +208,12 @@ function buildCandidates(
       account: '按账号池分配',
       tps: avgTpsOf(member.provider),
     }
-    // 序号是主键（组合链顺序即候选顺序）；id 相等作兜底，都对不上就当没走过。
-    const row = turn?.rows.find(item => item.index === position) ?? turn?.rows.find(item => item.candidateId === member.model)
+    // 先按身份匹配（candidateId 就是成员模型 id），再用序号兜底；已被别的候选
+    // 消费过的行不再参与，避免一条记录点亮两行。
+    const free = turn === null ? [] : turn.rows.filter(item => !consumed.has(item))
+    const row = free.find(item => item.candidateId === member.model)
+      ?? free.find(item => item.index === position && !memberIds.has(item.candidateId))
+    if (row !== undefined) consumed.add(row)
     if (row === undefined) {
       return { ...base, state: 'pending' as const, labelKind: 'idle' as const, label: '待命' }
     }
@@ -602,7 +615,22 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
   )
 
   const chains = useMemo(() => buildChains(combos), [combos])
-  const activeChain = chains[0]
+  /**
+   * hero 展示哪条链：**跟着最近一次真实走查走**。
+   *
+   * 早先这里写死 `chains[0]`（配置里第一条启用的链），结果是「你实际在用第二条链，
+   * hero 却永远渲染第一条链的成员」—— 看起来像模型没换、排序坏了。走查记录里
+   * 每条 attempts 都带 `chainId`，直接用事实选链；一次走查都没有（新装/刚清档）
+   * 才退回配置第一条，这时页面确实没有「最近用的链」可言。
+   *
+   * 最近走的链若已被删除（配置改了），`find` 不中同样退回第一条，不渲染空壳。
+   */
+  const activeChain = useMemo(() => {
+    const walked = latestActiveChainId(attempts)
+    return chains.find(chain => chain.comboId === walked) ?? chains[0]
+  }, [chains, attempts])
+  /** 是否在展示「最近活跃链」而非配置第一条（用于 hero 上的来源小标）。 */
+  const activeChainIsRecent = activeChain !== undefined && activeChain !== chains[0]
   /** provider → 账本平均 tok/s（只用于未到达候选的横向比较，`is-idle` 灰小字）。 */
   const avgTpsOf = useCallback((provider: string): number | undefined => {
     for (const row of blocks.accountRows) {
@@ -796,6 +824,7 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
           sources={data.sources}
           activeChainId={data.activeChainId === '' ? '尚未配置模型组' : data.activeChainId}
           chainStrategyLabel={activeChain?.strategyLabel ?? '顺序降级'}
+          chainNote={mock === null && activeChainIsRecent ? '最近活跃链' : undefined}
           candidates={data.candidates}
           current={data.current}
           verdict={data.verdict}

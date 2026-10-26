@@ -69,6 +69,12 @@ interface RoutingLiveProps {
   activeChainId: string
   /** 链策略展示名（`顺序降级` / `直连`）。 */
   chainStrategyLabel?: string
+  /**
+   * 链来源提示（如「最近活跃链」）。
+   * 候选链不再固定取配置第一条，而是跟着最近一次真实走查走；不标出来用户会问
+   * 「为什么这块换链了」。空串/缺省时不渲染。
+   */
+  chainNote?: string
   /** 右栏候选链，顺序即尝试顺序。 */
   candidates: RoutingCandidate[]
   /** 本次请求条；无进行中请求时传 null。 */
@@ -98,6 +104,7 @@ export function RoutingLive({
   sources,
   activeChainId,
   chainStrategyLabel = '顺序降级',
+  chainNote,
   candidates,
   current,
   verdict,
@@ -196,7 +203,9 @@ export function RoutingLive({
             <span className="r-tagline">live, as the gateway decides</span>
           </div>
           <p className="r-hero-desc">
-            <b>{activeChainId}</b> · {chainStrategyLabel} · <b>{candidates.length}</b> 个候选取其一。
+            <b>{activeChainId}</b>
+            {chainNote !== undefined && chainNote !== '' && <span className="r-chain-note">{chainNote}</span>}
+            {' '}· {chainStrategyLabel} · <b>{candidates.length}</b> 个候选取其一。
             按链序逐个尝试，每个成员用自己的渠道账号与额度，前一个限流就换下一个。
           </p>
           {/* 走查回合的年龄必须标出来：回合是历史事实，不标时间会把「上次的走查」

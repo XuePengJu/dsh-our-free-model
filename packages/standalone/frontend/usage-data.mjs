@@ -924,3 +924,35 @@ export function latestChainTurn(attempts, { chainId } = {}) {
   best.rows.sort((a, b) => (Number.isFinite(a.index) ? a.index : 0) - (Number.isFinite(b.index) ? b.index : 0))
   return best
 }
+
+/**
+ * 最近**真正被走过**的那条组合链 id。
+ *
+ * hero 以前固定取「配置里的第一条启用链」（`chains[0]`），结果用户实际在用
+ * 第二条链时，页面上永远显示第一条链的成员，读起来像「模型没换」。
+ * 这里改成跟着事实走：谁最近有走查记录，就展示谁。
+ *
+ * 注意只认 `chainId`，不做任何猜测（不按成员重合度归类）；返回空串表示
+ * 一次走查都没有，调用方应退回配置里的第一条。
+ *
+ * @param {unknown} attempts - 尝试环数组（不依赖顺序）
+ * @returns {string} 最近回合的 `chainId`；无有效行时为空串
+ */
+export function latestActiveChainId(attempts) {
+  if (!Array.isArray(attempts)) return ''
+  let newest = -Infinity
+  let chainId = ''
+  for (const row of attempts) {
+    if (row === null || typeof row !== 'object') continue
+    const id = typeof row.chainId === 'string' ? row.chainId : ''
+    if (id === '') continue
+    // 与 latestChainTurn 同一口径：老文件没有 turnAt 就退回行自己的 `at`。
+    const turnAt = Number.isFinite(row.turnAt) ? row.turnAt : Number(row.at)
+    if (!Number.isFinite(turnAt)) continue
+    if (turnAt > newest) {
+      newest = turnAt
+      chainId = id
+    }
+  }
+  return chainId
+}

@@ -264,6 +264,21 @@
   font-weight: 600;
 }
 
+/* 「最近活跃链」小标：贴在链 id 后面，说明这一块为什么是这条链而不是配置第一条。 */
+.usage-browser .r-chain-note {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.2px;
+  color: var(--cp-cyan, #38bdb8);
+  background: color-mix(in srgb, var(--cp-cyan, #38bdb8) 14%, transparent);
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
 .usage-browser .r-hero-head .r-head-actions {
   margin-left: auto;
 }
