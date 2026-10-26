@@ -34,7 +34,15 @@ jobs:
       - run: npm install --ignore-scripts
       - name: Validate code or the complete main tree
         env:
-          TEST_MODE: ${{ github.event_name == 'pull_request' && 'contributor' || 'all' }}
+          # `all` 模式含三个发布门禁（manifest / release / catalog），它们校验的是
+          # feed/manifest.json 与磁盘文件是否对齐。清单必须由发布者的私钥重签，
+          # 而私钥只在发布者的机器与 CI secret 里，任何 fork 都拿不到；对 fork 的
+          # 每一次 push 与手动触发都跑 all，等于让离线作业恒红，把真正的回归淹掉。
+          #
+          # 因此只有推到 main（本仓库的更新源，由发布者自己维护）才跑 all；
+          # PR 与手动触发走 contributor —— 它仍会跑 catalog，只跳过「发布方私有」
+          # 的 revision 与摘要对齐，adapter 隔离那条 Critical 门禁照常执行。
+          TEST_MODE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && 'all' || 'contributor' }}
         run: node scripts/test-all.mjs --mode "$TEST_MODE"
 
   # Keep this check required on main. A red result on a source PR means the
