@@ -329,6 +329,10 @@ npm run typecheck:standalone
 
 ---
 
+> **实施偏差记录（2026-10-26）**：`channels.mjs` 第 138–141 行按方案本应「tools 数组删 ledger 项、只剩供应商与备份 → 直接改成一个按钮」。实际实施时**保留了 `tools` 数组结构、只保留单个元素、`.map` 照旧渲染**，DOM 结构零变化（`role=group` / `aria-label=数据与工具` 的外层容器仍在）。与方案字面描述不同，但产物等价，且不破坏既有选择器。另：`usage.css` 的 `us-grow-y` / `.usage-day-bar` 系列规则**未删**——用量页趋势图仍在用，批次 3 只对概览页 `.ov-chart` 覆盖了 height 过渡；方案里「`.usage-metrics` / `.usage-trend` / `.usage-scope` / `.usage-estimated` 可删」也保留未动（与概览页共享 `.ov-metric` 系列，删改风险大于收益）。
+
+---
+
 ## 7. 数据结构与接口定义
 
 ### 7.1 新增 TypeScript 类型（可直接抄进 `types.ts`）
