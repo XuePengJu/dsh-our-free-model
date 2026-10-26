@@ -38,7 +38,7 @@ const sourceFiles = [
     'egress', 'failure', 'forward', 'http', 'image-pricing', 'kilo', 'local-optimize', 'messages', 'model-test', 'probe', 'recovery',
     'store', 'stream', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
     .map(name => `src/${name}.js`),
-  ...['completion', 'runtime', 'stats', 'usage-periods'].map(name => `src/core/${name}.js`),
+  ...['attempts', 'completion', 'runtime', 'stats', 'usage-periods'].map(name => `src/core/${name}.js`),
   'src/providers/index.js',
   'src/providers/registry.json',
   'src/route/classify.js',
