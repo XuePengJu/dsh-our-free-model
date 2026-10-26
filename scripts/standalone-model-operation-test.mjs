@@ -15,15 +15,23 @@ function operation(host) {
   const state = { test: undefined, operation: undefined, error: '', message: '' }
   const pending = { current: undefined }
   const activeRef = { current: true }
+  // run 现在会在探测前后操作组件里的 probePoll（启动/停止进度轮询），
+  // 并调用同组件作用域内的 startProbeProgress。截取的片段不含这些声明，
+  // 因此这里按真实语义补上：startProbeProgress 返回一个 stop 函数。
+  const probePoll = { current: undefined }
+  const progressStops = []
+  const startProbeProgress = () => { const stop = () => { stop.called = true }; progressStops.push(stop); return stop }
+  const progress = []
   const context = {
-    host, pending, activeRef, AbortController, Error,
+    host, pending, activeRef, probePoll, startProbeProgress, AbortController, Error,
+    setProgress: value => { progress.push(value) },
     setTest: value => { state.test = typeof value === 'function' ? value(state.test) : value },
     setOperation: value => { state.operation = value },
     setError: value => { state.error = value },
     setMessage: value => { state.message = value },
   }
   const run = vm.runInNewContext(operationSource + '\nrun', context)
-  return { run, state, pending, activeRef }
+  return { run, state, pending, activeRef, probePoll, progressStops, progress }
 }
 
 export async function verifyModelOperation() {

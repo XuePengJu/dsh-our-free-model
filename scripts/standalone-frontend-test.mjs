@@ -18,22 +18,45 @@ assert.ok(assets.every(name => /^[\w-]+\.(js|css)$/.test(name)))
 for (const name of assets) assert.ok(fs.statSync(new URL(name, web)).size > 0)
 const html = fs.readFileSync(new URL('index.html', web), 'utf8')
 const themeSource = fs.readFileSync(new URL('../packages/standalone/frontend/theme.mjs', import.meta.url), 'utf8')
-// 默认夜间：仅当用户手动切过（localStorage 里有 light/dark 记录）才用其选择，不再跟随系统偏好。
-for (const [saved, storageUnavailable, expected] of [
-  ['dark', false, 'dark'],
-  ['light', false, 'light'],
-  [null, false, 'dark'],
-  ['invalid', false, 'dark'],
-  ['garbage', false, 'dark'],
-  [null, true, 'dark'],
+// theme.mjs 是 ESM（导出 stopThemeTicker 给 shell 用），而 vm.runInNewContext 只吃脚本
+// 语法，`export` 会直接 SyntaxError。剥掉导出关键字后仍保留同一份顶层逻辑。
+const themeScript = themeSource.replace(/^export\s+(?=(?:async\s+)?function|const|let|var|class)/gm, '')
+// 主题已改为三档：light / dark / auto（默认）。auto 按时间表走 19:00–07:00 夜间，
+// 只有 localStorage 存过 light/dark 才进入手动档。断言必须按新语义写，不能沿用
+// 「默认 dark」的旧期望——那会在白天时段误判。
+const atHour = hour => {
+  const RealDate = Date
+  const fixed = new RealDate(2026, 9, 26, hour, 0, 0)
+  class StubDate extends RealDate {
+    constructor(...args) { super(...(args.length === 0 ? [fixed.getTime()] : args)) }
+    static now() { return fixed.getTime() }
+  }
+  return StubDate
+}
+for (const [saved, storageUnavailable, hour, expected, why] of [
+  ['dark', false, 10, 'dark', '手动选了晚上，白天也保持晚上'],
+  ['dark', false, 22, 'dark', '手动选了晚上，夜间同样晚上'],
+  ['light', false, 22, 'light', '手动选了白天，夜间也保持白天'],
+  ['light', false, 10, 'light', '手动选了白天'],
+  [null, false, 10, 'light', '自动档白天用浅色'],
+  [null, false, 22, 'dark', '自动档夜间用深色'],
+  [null, false, 3, 'dark', '自动档凌晨属于夜间'],
+  [null, false, 19, 'dark', '19:00 起算夜间（边界）'],
+  [null, false, 7, 'light', '07:00 起算白天（边界）'],
+  ['invalid', false, 10, 'light', '非法存档值退回自动档'],
+  ['garbage', false, 22, 'dark', '非法存档值退回自动档'],
+  [null, true, 10, 'light', '存储不可用时仍按自动档展示'],
 ]) {
   const document = { documentElement: { dataset: {} } }
-  vm.runInNewContext(themeSource, {
+  vm.runInNewContext(themeScript, {
     document,
+    Date: atHour(hour),
+    setInterval: () => 1,
+    clearInterval: () => {},
     localStorage: { getItem() { if (storageUnavailable) throw new Error('存储不可用'); return saved } },
   })
   assert.equal(document.documentElement.dataset.theme, expected,
-    `主题初始化：保存值=${saved}，存储不可用=${!!storageUnavailable}（默认应为夜间 dark）`)
+    `主题初始化（${why}）：保存值=${saved}，存储不可用=${!!storageUnavailable}，${hour} 点`)
 }
 assert.match(html, /type="module".+src="\/assets\/app.js"/)
 // 侧边栏靠基础层的 position: sticky 吸附。主题层（[data-theme] 前缀）若给它补 position，

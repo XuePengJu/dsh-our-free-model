@@ -168,8 +168,21 @@ function* stringRuns(src) {
     i += 1
   }
 }
-for (const run of stringRuns(source)) {
-  for (const token of run.split(/[\s,]+/)) if (/^ofm_[A-Za-z0-9_]+$/.test(token)) referenced.add(token)
+// 只在样式表之外的源码里找「被引用」的类名：CSS 块自身每个选择器都写着
+// `.ofm_xxx`，若把它算作引用，任何只声明未使用的规则都会自我证明为已使用，
+// 这条检查就永远报不出问题。
+// 切点必须落在模板字符串的收尾反引号**之后**：cssBlockEnd 指向 `\n\``，
+// 从那里切会把结尾的反引号留在后半段里，后面的字符串边界就全错位了。
+const cssBlockEnd = source.indexOf('\n`', cssStart)
+const outsideStylesheet = source.slice(0, cssStart) + source.slice(cssBlockEnd + 2)
+for (const run of stringRuns(outsideStylesheet)) {
+  // 类名常出现在模板字符串的嵌套表达式里，例如
+  //   `${entry.error ? 'ofm_logfailed' : ''} ofm_logrow`.trim()
+  // 按空白/逗号切分会得到 "'ofm_logfailed'" 与 "ofm_logrow`.trim()"，
+  // 严格的首尾锚定会把两者都漏掉，于是把真实存在的类名报成「styled but
+  // never emitted」。改为按标识符边界提取，两侧的引号、反引号、成员访问
+  // 都不影响。
+  for (const match of run.matchAll(/(?<![A-Za-z0-9_$])ofm_[A-Za-z0-9_]+(?![A-Za-z0-9_$])/g)) referenced.add(match[0])
 }
 
 for (const name of referenced) if (!declared.has(name)) problems.push(`.${name} is emitted but never styled`)

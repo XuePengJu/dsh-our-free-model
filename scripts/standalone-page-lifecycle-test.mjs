@@ -33,9 +33,21 @@ const summary = { settings, catalog: [], networkMode: 'fixture' }
 const context = {
   ...react, h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }), Fragment: 'fragment',
   Sidebar: 'Sidebar', Topbar: 'Topbar', SponsorNotice: 'SponsorNotice', Overview: 'Overview', Connection: 'Connection', ChannelMount: 'ChannelMount', LazyPage: 'LazyPage', LoadingScreen: 'LoadingScreen', LoginScreen: 'LoginScreen', AlertCircle: 'AlertCircle',
-  pageNames: ['overview', 'models', 'usage', 'channels', 'eac', 'settings', 'connection'], API: '/api/management',
+  // 必须与 app.tsx 的 pageNames 保持一致：'eac' 与 'connection' 已并入 channels，
+  // 桩里若仍列着它们，navigate('eac') 会被接受、page 变成一个没有 content 分支的
+  // 值，界面直接白屏 —— 测试会误报成实现的问题。
+  pageNames: ['overview', 'models', 'combos', 'usage', 'logs', 'channels', 'settings'], API: '/api/management',
   messageOf: error => error.message, AbortSignal, URLSearchParams, location: { hash: '' }, history: {},
-  window: { scrollTo() {}, addEventListener() {}, removeEventListener() {}, setInterval() { return 1 }, clearInterval() {} },
+  // loadData 会在开头/结尾 dispatch 一对 ofm:refresh-start/end 事件给顶部进度条。
+  // 桩里没有 dispatchEvent 也没有 CustomEvent 时，loadData 第一步就抛错，
+  // mode 永远停在 loading —— 于是下面的 Sidebar 查找拿到 undefined。
+  // 事件本身不参与断言，提供空实现即可。
+  window: {
+    scrollTo() {}, addEventListener() {}, removeEventListener() {},
+    setInterval() { return 1 }, clearInterval() {},
+    dispatchEvent() { return true },
+  },
+  CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init?.detail } },
   document: { hidden: false }, navigator: { clipboard: { writeText: async () => {} } },
   fetch: async url => ({ ok: true, json: async () => url.endsWith('/summary') ? summary : { models: [], days: [] } }),
 }
@@ -57,8 +69,12 @@ assert.ok(all(tree).some(node => node.type === 'LazyPage' && node.props.name ===
 assert.ok(!all(tree).some(node => node.type === 'Connection'), '密钥页面离开后卸载，清除显示的密钥')
 host().navigate('channels'); tree = render()
 assert.equal(all(tree).find(node => node.type === 'ChannelMount').props.key, 'channels', '账号渠道使用独立嵌套根容器')
+// EAC 已并入 channels 页，pageNames 里不再有 'eac'。导航到已废弃的页面名必须被
+// 忽略（而不是把 page 置成一个不存在的值，让 content 变 null 白屏），容器 key
+// 保持在 channels —— 这正是「换页时更换容器、避免旧 React 根覆盖新页面」的反面。
 host().navigate('eac'); tree = render()
-assert.equal(all(tree).find(node => node.type === 'ChannelMount').props.key, 'eac', 'EAC 切换时更换容器，避免旧 React 根覆盖新页面')
+assert.equal(all(tree).find(node => node.type === 'ChannelMount').props.key, 'channels', '已废弃页面名被忽略，容器不换')
+assert.ok(all(tree).some(node => node.type === 'ChannelMount'), '忽略废弃页面名后仍停留在账号渠道页')
 let releaseOldKey
 context.fetch = async url => url.endsWith('/key') ? new Promise(resolve => { releaseOldKey = resolve }) : { ok: true, json: async () => ({}) }
 const oldKey = host().getApiKey().catch(error => error)
