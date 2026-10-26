@@ -417,10 +417,19 @@ test('backup retention: same-second -N suffixes do not break oldest-first evicti
 
 test('listWorkbuddyBackups: unparseable backup shows entries null; foreign files ignored', async () => {
   const home = newHome()
-  fs.mkdirSync(path.join(home, '.workbuddy', 'models.json.backups'), { recursive: true })
-  fs.writeFileSync(path.join(home, '.workbuddy', 'models.json.backups', 'models-20250101-000000.json'), '[{"id":"x"}]')
-  fs.writeFileSync(path.join(home, '.workbuddy', 'models.json.backups', 'models-20250102-000000.json'), '{ broken')
-  fs.writeFileSync(path.join(home, '.workbuddy', 'models.json.backups', 'README.txt'), 'ignore me')
+  const dir = path.join(home, '.workbuddy', 'models.json.backups')
+  fs.mkdirSync(dir, { recursive: true })
+  const first = path.join(dir, 'models-20250101-000000.json')
+  const second = path.join(dir, 'models-20250102-000000.json')
+  fs.writeFileSync(first, '[{"id":"x"}]')
+  fs.writeFileSync(second, '{ broken')
+  fs.writeFileSync(path.join(dir, 'README.txt'), 'ignore me')
+  // 列表按 mtime 倒序（listWorkbuddyBackups 的实现），而连续两次 writeFileSync 在
+  // 时间精度粗的文件系统上会落进同一毫秒 —— mtime 相同，sort 退化成不稳定顺序，
+  // 断言就随平台翻转（macOS 过、Linux CI 失败）。这里显式拉开两个文件的 mtime，
+  // 让「谁更新」由本用例决定，而不是由文件系统时钟精度决定。
+  fs.utimesSync(first, new Date('2025-01-01T00:00:00Z'), new Date('2025-01-01T00:00:00Z'))
+  fs.utimesSync(second, new Date('2025-01-02T00:00:00Z'), new Date('2025-01-02T00:00:00Z'))
   const backups = await listWorkbuddyBackups({ homeDir: home })
   assert.equal(backups.length, 2)
   assert.deepEqual(backups.map(backup => backup.entries), [null, 1]) // 时间倒序
