@@ -13,4 +13,12 @@ const apply = () => {
 }
 apply()
 // 自动档下，React 挂载前跨档（如 19:00 整）也要能换（挂载后由 ThemeSwitch 接管同款定时器）。
-if (!explicit) setInterval(apply, 30000)
+let ticker = null
+if (!explicit) ticker = setInterval(apply, 30000)
+// React 挂载后必须停掉这个模块级定时器，否则两条逻辑会打架：用户在页内把主题从
+// 「自动」切到「晚上」后，这里的 `apply` 仍用**加载时快照**的 `explicit=false` 每 30 秒
+// 重写一次 data-theme——白天会把「晚上」覆盖回 light（见 2026-10-26 的 bug）。
+// 停掉后主题只由 shell.tsx 的 useTheme 统一管，它自己有 auto 档的同款 30 秒定时器。
+export function stopThemeTicker() {
+  if (ticker !== null) { clearInterval(ticker); ticker = null }
+}

@@ -2,6 +2,7 @@ import { ChartColumn, ChevronRight, Cpu, Layers, LayoutDashboard, LogOut, Monito
 import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Button } from './ui'
+import { stopThemeTicker } from '../theme.mjs'
 import type { Host, Page, Summary } from '../types'
 
 const navigation = [
@@ -90,6 +91,10 @@ const THEME_OPTIONS = [
 // 顶栏右上角三态主题胶囊；切换动效沿用圆形扩散（圆心从所点分段起算）。
 export function ThemeSwitch() {
   const { mode, switchTo } = useTheme()
+  // React 挂载即停掉 theme.mjs 的模块级定时器：首屏主题由它兜底（防闪白），
+  // 挂载后主题只由 useTheme 独家接管，否则启动脚本会按过时快照每 30 秒
+  // 把用户手动选的「晚上」覆盖回「白天」。
+  useEffect(() => { stopThemeTicker() }, [])
   return <div className="theme-switch" role="group" aria-label="主题：白天 / 晚上 / 自动">
     {THEME_OPTIONS.map(option => <button key={option.id} type="button"
       className={`theme-switch-btn ${mode === option.id ? 'is-active' : ''}`}
