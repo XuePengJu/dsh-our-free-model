@@ -272,7 +272,6 @@ export async function startStandalone({
     const completeCombo = async (entry, request, onChunk) => {
       // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
       // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
-      const candidates = comboChain(entry, realRows())
       const started = Date.now()
       // 降级尝试环：只记「试过谁、为什么换掉、花了多久」。core 侧的 runCombo 有同名
       // 的一笔（src/adapter.js），两条推理路径共写同一个 stats store。注意不记速度——
@@ -287,11 +286,27 @@ export async function startStandalone({
           }, message => logger.warn?.(message))
         } catch { /* 记录失败不影响推理 */ }
       }
+      /**
+       * 失败回合也要进 /stats：此前 forward 路径只在命中时记回合，链全灭/被中止的
+       * 回合只进走查环、不进周期数字——「降级接管」KPI 与候选链对不上，正是从
+       * 这里漏的。attempts 与 core 侧 rejectedTurn 同口径（走到第几个候选，1 起）。
+       */
+      const rejectTurn = attempts => {
+        try {
+          recordTurn(stores.stats, { at: started, model: entry.id, ok: false, recovered: false, attempts, origin: 'forward' })
+        } catch { /* 统计失败不影响推理 */ }
+      }
+      const candidates = comboChain(entry, realRows())
+      if (candidates.length === 0) {
+        rejectTurn(0)
+        return { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
+      }
       let last
       for (const [index, candidate] of candidates.entries()) {
         if (request.signal?.aborted) {
           note(candidate, index, 'aborted', 'aborted')
-          break
+          rejectTurn(index)
+          return last ?? { text: '', toolCalls: [], error: 'aborted' }
         }
         let committed = false
         const held = []
@@ -305,9 +320,12 @@ export async function startStandalone({
           }
         }
         try {
+          // __ofmComboMember：成员是组合内部的物理尝试，不各自记「用户回合」。
+          // 回合由本函数按 outcome 统一记一笔（命中记 ok、全灭记 rejectTurn）；
+          // token/用量仍走成员自己的 complete 如实记。
           last = channels.handles(candidate.id)
-            ? await channels.complete({ ...request, model: candidate.id }, onChunk === undefined ? undefined : sink)
-            : await core.complete({ ...request, model: candidate.id }, onChunk === undefined ? undefined : sink)
+            ? await channels.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
+            : await core.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
         } catch (error) {
           last = { text: '', toolCalls: [], error: error?.message ?? String(error) }
         }
@@ -318,17 +336,29 @@ export async function startStandalone({
           } catch { /* 统计失败不影响推理 */ }
           return last
         }
-        // 没提交、也没被取消：这个候选被整条丢弃，换下一个。
+        // 非流式：整包返回，没有逐块提交可判。与 commitsAnswer 等价的整包规则
+        // 是「无 error 且带非空正文或工具调用」——调用方真的拿到了答案。
         //
-        // 例外是**非流式**请求：没有 onChunk 就没有 sink，`committed` 永远不会
-        // 变 true，循环会把每个成员都跑一遍并返回最后一个的结果。此时最后一个
-        // 候选正常返回，就意味着调用方拿到的是它的答案——不记 hit 的话，一条
-        // 完整成功的非流式组合请求会在环里显示成「全部跳过」，比没有记录更误导。
-        // 这里只改「怎么记」，不碰循环什么时候返回。
-        const answered = onChunk === undefined && last?.error === undefined && index === candidates.length - 1
-        note(candidate, index, answered ? 'hit' : 'skipped', answered ? '' : (last?.error ?? 'failed'))
+        // 首版在这里没有早停：没有 onChunk 就没有 sink，`committed` 永远不置位，
+        // 循环会把每个成员都跑一遍并返回最后一个的结果——前位候选明明答了、
+        // 后位候选却失败时，调用方拿到的居然是失败。本次修掉：答了即停，
+        // 与流式/核心 runCombo 的提交语义对齐。
+        if (onChunk === undefined) {
+          const answered = last?.error === undefined
+            && (String(last?.text ?? '').trim() !== '' || (Array.isArray(last?.toolCalls) && last.toolCalls.length > 0))
+          if (answered) {
+            note(candidate, index, 'hit', '')
+            try {
+              recordTurn(stores.stats, { at: started, model: entry.id, ok: true, recovered: index > 0, attempts: index + 1, origin: 'forward' })
+            } catch { /* 统计失败不影响推理 */ }
+            return last
+          }
+        }
+        // 流式未提交，或非流式没有给出答案：这个候选被整条丢弃，换下一个。
+        note(candidate, index, 'skipped', last?.error ?? 'failed')
       }
-      return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
+      rejectTurn(candidates.length)
+      return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" exhausted every candidate` }
     }
     // 渠道模型的手工实测。
     //

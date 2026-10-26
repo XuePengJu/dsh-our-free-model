@@ -96,7 +96,7 @@ export async function createChannelRuntime({ dataDir, logger = console, stats })
       let first = 0
       let ok = false
       try {
-        const { signal, ...wire } = request
+        const { signal, __ofmComboMember, ...wire } = request
         await call('complete', { request: wire }, signal, chunk => {
           if (!first) first = Date.now()
           foldForwardOutcome(outcome, chunk)
@@ -105,7 +105,9 @@ export async function createChannelRuntime({ dataDir, logger = console, stats })
         ok = outcome.error === undefined
         return outcome
       } finally {
-        if (!closed && stats) {
+        // 组合链成员不记独立回合（见 service.completeCombo 的注释）：token 照记，
+        // 回合由组合级统一记一笔，避免一次 combo 拆成 N 笔成员回合。
+        if (!__ofmComboMember && !closed && stats) {
           const usage = outcome.usage
           recordUsage(stats, {
             model: request.model, at: Date.now(), input: usage?.prompt_tokens ?? 0, output: usage?.completion_tokens ?? 0,

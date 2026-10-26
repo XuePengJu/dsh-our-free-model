@@ -12,6 +12,8 @@ const model = 'mimo-v2.6-flash-free'
 const kilo = 'nvidia/nemotron-3.5-lightning:free'
 let calls = 0
 let holdNextCall = false
+// 推理 POST 一律 500 的开关：钉「整链耗尽也会记失败回合」用。
+let failPosts = false
 let notifyCall
 let notifyClosed
 const upstream = http.createServer((req, res) => {
@@ -28,6 +30,11 @@ const upstream = http.createServer((req, res) => {
         holdNextCall = false
         res.once('close', () => notifyClosed())
         notifyCall()
+        return
+      }
+      if (failPosts) {
+        res.writeHead(500, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'upstream exploded on purpose' } }))
         return
       }
       res.writeHead(200, { 'content-type': 'text/event-stream' })
@@ -442,6 +449,56 @@ try {
     assert.equal((await request('/api/management/combos/delete', { body: { id: 'combo:深度求索' } })).status, 200)
     assert.ok(!service.runtime.publicModelRows().some(row => row.id === 'combo:深度求索'))
     assert.equal((await request('/api/management/combos/delete', { body: { id: 'combo:深度求索' } })).status, 404)
+  })
+  await check('非流式组合链答了即停、整链耗尽也记失败回合（不再只靠走查环）', async () => {
+    const created = await request('/api/management/combos', { body: { name: 'earlystop', models: [kilo, model] } })
+    assert.equal(created.status, 200)
+    const readStats = async () => {
+      const stats = await (await request('/api/management/stats')).json()
+      const metrics = stats?.periods?.day?.metrics ?? {}
+      return { failedTurns: metrics.failedTurns ?? 0, skipped: metrics.skippedCandidates ?? 0 }
+    }
+    const readRing = async () => {
+      const ring = await (await request('/api/management/usage/attempts?limit=200')).json()
+      return (ring?.attempts ?? []).filter(row => row.chainId === 'combo:earlystop')
+    }
+    // —— 场景一：无故障。首候选答了即停：只打一次上游（旧实现会跑完整条链）。
+    const before = calls
+    const answered = await request('/v1/chat/completions', {
+      headers: { authorization: `Bearer ${key}` },
+      body: { model: 'combo:earlystop', messages: [{ role: 'user', content: 'hi' }] },
+    })
+    assert.equal(answered.status, 200)
+    const answerBody = await answered.json()
+    assert.ok(answerBody.choices?.[0]?.message?.content)
+    assert.equal(calls - before, 1, '第一个候选给出答案后必须停止，不得继续打后面的成员')
+    let rows = await readRing()
+    assert.equal(rows.length, 1, '一次命中只该有一行走查记录')
+    assert.equal(rows[0].outcome, 'hit')
+    assert.equal(rows[0].index, 0)
+    // —— 场景二：整链耗尽。所有候选都 500：两个成员都试过后结束，
+    // 失败回合进 /stats（此前只进环、周期数字永远为 0）。
+    const statsBefore = await readStats()
+    failPosts = true
+    try {
+      const before2 = calls
+      const failed = await request('/v1/chat/completions', {
+        headers: { authorization: `Bearer ${key}` },
+        body: { model: 'combo:earlystop', messages: [{ role: 'user', content: 'hi' }] },
+      })
+      await failed.arrayBuffer().catch(() => {})
+      assert.equal(calls - before2, 2, '全灭时按序走完两个成员（每个都真实失败）')
+      rows = await readRing()
+      const newest = rows.slice(0, 2).map(row => row.outcome)
+      assert.deepEqual(newest, ['skipped', 'skipped'], '两个候选都记 skipped，绝不冒充 hit')
+      const statsAfter = await readStats()
+      assert.equal(statsAfter.failedTurns - statsBefore.failedTurns, 1, '链全灭必须记一个失败回合')
+      assert.equal(statsAfter.skipped - statsBefore.skipped, 1, 'attempts=2 → 跳过 1 次（周期口径与走查环终于对得上）')
+    } finally {
+      failPosts = false
+    }
+    const removed = await request('/api/management/combos/delete', { body: { id: 'combo:earlystop' } })
+    assert.equal(removed.status, 200)
   })
   await check('模型开关校验输入，关闭后从公开清单与推理路由剔除并落入「已关闭」，恢复后原样回归', async () => {
     // 入参校验：ID 无效、disabled 非布尔、模型组 ID、不存在的模型。

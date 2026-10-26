@@ -165,12 +165,12 @@ export class FreeModelAdapter {
    * @param {object|null} pinned - catalog row frozen by `prepareCall`, if any
    * @param {object} [snapshot] - state generation frozen by `prepareCall`
    */
-  stream(options, pinned, snapshot = this.deps.state()) {
+  stream(options, pinned, snapshot = this.deps.state(), plan) {
     const controller = new AbortController()
     const onAbort = () => controller.abort(options.signal?.reason)
     if (options.signal?.aborted === true) onAbort()
     else options.signal?.addEventListener('abort', onAbort, { once: true })
-    const iterator = this.runStream({ ...options, signal: controller.signal }, pinned, snapshot)
+    const iterator = this.runStream({ ...options, signal: controller.signal }, pinned, snapshot, plan)
     const cleanup = () => options.signal?.removeEventListener('abort', onAbort)
     const step = async (method, value) => {
       try {
@@ -199,14 +199,14 @@ export class FreeModelAdapter {
    * endpoint. Resolving that here — rather than at the picker or the gateway —
    * means both callers get the failover for free.
    */
-  async * runStream(options, pinned, snapshot) {
+  async * runStream(options, pinned, snapshot, plan) {
     const modelId = baseModelId(options.model)
     const entry = pinned ?? snapshot.catalog.find(candidate => candidate.id === modelId) ?? null
     if (entry !== null && isComboEntry(entry)) {
       yield * this.runCombo(options, entry, snapshot)
       return
     }
-    yield * this.runSingle(options, entry, snapshot, {})
+    yield * this.runSingle(options, entry, snapshot, plan ?? {})
   }
 
   /**
