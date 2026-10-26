@@ -174,7 +174,12 @@ export function ChannelTable({
                     <td><div className="r-cell"><span className="r-acct">{row.topAccount || '未归属'}</span></div></td>
                     <td>
                       <div className="r-cell">
-                        <span className="r-md" title={row.topModels.join(' / ')}>{row.topModel}</span>
+                        <span className="r-md" title={`${row.topModels.join(' / ')} — 主力模型按区间 token 最多，最后使用见小字`}>
+                          {row.topModel}
+                          {row.recentModel != null && row.recentModel !== row.topModel && (
+                            <span className="r-md-recent">最近 {row.recentModel}</span>
+                          )}
+                        </span>
                       </div>
                     </td>
                     <td><div className="r-cell is-right"><span className="r-mono is-b">{numberFormat.format(row.totals.requests)}</span></div></td>

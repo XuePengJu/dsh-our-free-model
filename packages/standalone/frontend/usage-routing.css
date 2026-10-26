@@ -1183,6 +1183,14 @@
   text-overflow: ellipsis;
 }
 
+/* 「主力模型」列旁的最后使用小字：弱一档、省略号吃掉溢出，
+   主力 ≠ 最近时才出现（口径歧义才需要消歧，一致时不加噪音）。 */
+.usage-browser .r-cell .r-md-recent {
+  color: var(--r-text-3);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
 .usage-browser .r-cell .r-acct {
   font-family: var(--r-mono);
   font-size: 10px;

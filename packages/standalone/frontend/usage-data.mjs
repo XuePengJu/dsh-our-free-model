@@ -491,6 +491,32 @@ export function ledgerRateIndex(entries, { range = 'all', now = Date.now() } = {
   }
 }
 
+/**
+ * 区间内每渠道**最后使用**的模型索引 —— 「主力模型」列旁的「最近」小字的来源。
+ *
+ * 键与 `ledgerRateIndex().rows` 完全一致（`channel:provider`），值为
+ * `{ model, ts }`。「主力模型」是区间 token 王（走落盘聚合，没有时间戳），
+ * 「最后用了谁」只能走**明细样本**（内存 500 条环，最新在前）。
+ * 明细没有的渠道**不补字段** —— 小字不显示，绝不拿聚合猜一个。
+ *
+ * @param {Array<object>} entries 账本明细（`snapshot.entries`，最新在前）
+ * @param {{ range?: 'day'|'week'|'month'|'all', now?: number }} [options]
+ * @returns {Map<string, {model: string, ts: number}>}
+ */
+export function ledgerRecentIndex(entries, { range = 'all', now = Date.now() } = {}) {
+  const out = new Map()
+  // `ledgerEntriesInRange` 保持原顺序（最新在前），所以每个键第一次出现即最近一笔。
+  for (const entry of ledgerEntriesInRange(entries, { range, now })) {
+    if (entry === null || typeof entry !== 'object') continue
+    const channel = entry.channel === 'gateway' ? 'gateway' : 'direct'
+    const provider = String(entry.provider ?? '')
+    const key = `${channel}:${provider}`
+    if (out.has(key)) continue
+    out.set(key, { model: String(entry.model ?? '') || '未知模型', ts: Number(entry.ts) || 0 })
+  }
+  return out
+}
+
 /** 渠道 id → 展示名。 */
 export const CHANNEL_NAMES = Object.freeze({ direct: '直连对话', gateway: '兼容网关' })
 
@@ -777,11 +803,15 @@ export function ledgerView(history, entries, { range = 'all', now = Date.now(), 
   // 单日档不走样本重算：树里每个节点的均值都是 vendor 在当天精确 finalize 出来的，
   // 拿 500 条明细去覆盖它反而是把精确值降级成抽样值。
   const rates = tree.singleDay ? null : ledgerRateIndex(entries, { range, now })
+  // 「最近使用」任何档位都走明细（聚合没有逐笔时间戳）；单日档 rates 为 null 也要贴。
+  const recents = ledgerRecentIndex(entries, { range, now })
 
   // 速率按行键贴回；窗口里没有该行的样本时**不补字段**（UI 显示 `—`）。
-  const accountRows = ledgerAccountRows(tree.channels).map(row => (
-    rates === null ? row : { ...row, totals: { ...row.totals, ...(rates.rows.get(row.key) ?? {}) } }
-  ))
+  const accountRows = ledgerAccountRows(tree.channels).map(row => ({
+    ...(rates === null ? row : { ...row, totals: { ...row.totals, ...(rates.rows.get(row.key) ?? {}) } }),
+    recentModel: recents.get(row.key)?.model,
+    recentTs: recents.get(row.key)?.ts,
+  }))
   const modelRows = ledgerModelRows(tree.channels, { exact: tree.singleDay }).map(row => (
     rates === null ? row : { ...row, totals: { ...row.totals, ...(rates.models.get(row.model) ?? {}) } }
   ))

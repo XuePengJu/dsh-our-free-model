@@ -193,6 +193,8 @@ const buildChannelRows = (): ChannelRow[] => {
       topAccount: row.account,
       topModel: row.model,
       topModels: [row.model],
+      // mock 是手写的单模型渠道：最近一笔就是该模型，与主力一致（组件会隐藏小字）。
+      recentModel: row.model,
       totals: rowTotals(row),
       share: total > 0 ? Math.round((row.requests / total) * 100) : 0,
     }

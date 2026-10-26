@@ -531,6 +531,10 @@ export interface ChannelRow {
   topModel: string
   /** 主力模型的完整 top3，用于 title。 */
   topModels: string[]
+  /** 区间内该渠道**最后一笔**请求用的模型（仅明细样本可见；与 topModel 的区间口径无关）。 */
+  recentModel?: string
+  /** 最后一笔请求的时间戳（毫秒），与 recentModel 成对出现。 */
+  recentTs?: number
   totals: LedgerTotals
   /** 请求占比（0–100，整数）。 */
   share: number
