@@ -7,6 +7,7 @@ import { commitsAnswer } from '../../src/adapter.js'
 import { buildComboCatalog, comboChain, COMBO_PREFIX, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { publicModelRows as snapshotModelRows } from '../../src/core/completion.js'
 import { recordTurn } from '../../src/store.js'
+import { recordAttempt } from '../../src/core/attempts.js'
 import { createModelRuntime, createRuntimeStores } from '../../src/core/runtime.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from '../../src/forward.js'
 import { isLoopbackHost } from '../../src/trust.js'
@@ -272,9 +273,24 @@ export async function startStandalone({
       // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
       // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
       const candidates = comboChain(entry, realRows())
+      const started = Date.now()
+      // 降级尝试环：只记「试过谁、为什么换掉、花了多久」。core 侧的 runCombo 有同名
+      // 的一笔（src/adapter.js），两条推理路径共写同一个 stats store。注意不记速度——
+      // tps/ttft 只存在于单模型的解码窗口内，这里拿不到，编造出来的数字比没有更糟。
+      const note = (candidate, index, outcome, reason) => {
+        try {
+          recordAttempt(stores.stats, {
+            at: Date.now(), chainId: entry.id, chainName: entry.name, index,
+            candidateId: candidate.id, outcome, reason, elapsedMs: Date.now() - started,
+          }, message => logger.warn?.(message))
+        } catch { /* 记录失败不影响推理 */ }
+      }
       let last
       for (const [index, candidate] of candidates.entries()) {
-        if (request.signal?.aborted) break
+        if (request.signal?.aborted) {
+          note(candidate, index, 'aborted', 'aborted')
+          break
+        }
         let committed = false
         const held = []
         const sink = chunk => {
@@ -294,11 +310,21 @@ export async function startStandalone({
           last = { text: '', toolCalls: [], error: error?.message ?? String(error) }
         }
         if (committed) {
+          note(candidate, index, 'hit', '')
           try {
             recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, origin: 'forward' })
           } catch { /* 统计失败不影响推理 */ }
           return last
         }
+        // 没提交、也没被取消：这个候选被整条丢弃，换下一个。
+        //
+        // 例外是**非流式**请求：没有 onChunk 就没有 sink，`committed` 永远不会
+        // 变 true，循环会把每个成员都跑一遍并返回最后一个的结果。此时最后一个
+        // 候选正常返回，就意味着调用方拿到的是它的答案——不记 hit 的话，一条
+        // 完整成功的非流式组合请求会在环里显示成「全部跳过」，比没有记录更误导。
+        // 这里只改「怎么记」，不碰循环什么时候返回。
+        const answered = onChunk === undefined && last?.error === undefined && index === candidates.length - 1
+        note(candidate, index, answered ? 'hit' : 'skipped', answered ? '' : (last?.error ?? 'failed'))
       }
       return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
     }

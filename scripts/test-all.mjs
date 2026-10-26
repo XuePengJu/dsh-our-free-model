@@ -120,6 +120,11 @@ const suites = [
   ['registry', 'registry-test.mjs', []],
   ['route', 'route-test.mjs', []],
   ['combo-advance', 'combo-advance-test.mjs', []],
+  // The degradation ring a chain fills while it walks its candidates: bounded,
+  // backwards compatible with a stats file that predates the field, and — the
+  // contract that lets it sit in the request path — unable to fail a turn even
+  // when the recorder itself throws.
+  ['combo-attempts', 'combo-attempts-test.mjs', []],
   ['prompt-saver', 'prompt-saver-test.mjs', []],
   ['anthropic', 'anthropic-test.mjs', []],
   ['aggregate', 'aggregate-test.mjs', []],

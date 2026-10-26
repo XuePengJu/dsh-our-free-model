@@ -5,6 +5,7 @@ import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntr
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
 import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from '../store.js'
+import { recordAttempt } from './attempts.js'
 import { STATE, detectEgress, probeCatalog } from '../probe.js'
 import { CODE, UpstreamError, getJson } from '../http.js'
 import { runModelTest, modelAvailability } from '../model-test.js'
@@ -132,6 +133,12 @@ export function createModelRuntime({
       stats.edit(value => pruneDays(value, 120))
     },
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
+    // 降级显示环与 recordTurn 共用同一个 stats store：harness（本文件）与
+    // forward（standalone service.mjs）两条路都写它，持久化与裁剪都是现成的。
+    // recordAttempt 内部已 try/catch，这里再套一层 warn 只是把失败说出来。
+    recordAttempt: record => {
+      if (!disposed) recordAttempt(stats, record, message => logger.warn?.(message))
+    },
     warn: message => logger.warn?.(message) ?? logger.log?.(message),
     onRegionBlocked: () => {
       if (disposed || reprobeTimer !== undefined) return

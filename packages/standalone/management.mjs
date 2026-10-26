@@ -2,6 +2,7 @@ import { modelAvailability } from '../../src/model-test.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
+import { ATTEMPT_LIMIT, readAttempts } from '../../src/core/attempts.js'
 import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
@@ -362,6 +363,29 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
           })
         }
       } finally { res.removeListener('close', abort) }
+    } else if (method === 'GET' && pathname === `${PREFIX}/usage/attempts`) {
+      // 降级尝试环住在**本地** stats store 里（harness 与 forward 两条推理路径共写），
+      // 所以这条路刻意不走 channels.rpc：渠道 worker 挂掉时它照样要能返回，而
+      // /usage/ledger 会 502。两个端点分开，正是为了不让一个坏掉的源把另一个
+      // 好源的数据一起拖没。
+      const params = new URL(req.url, 'http://localhost').searchParams
+      const limit = clampInt(params.get('limit'), ATTEMPT_LIMIT, 1, ATTEMPT_LIMIT)
+      let attempts
+      let total = 0
+      try {
+        const value = stores.stats.get()
+        total = Array.isArray(value?.attempts) ? value.attempts.length : 0
+        attempts = readAttempts(stores.stats, { limit })
+      } catch (error) {
+        // 本地 store 读不出来只可能是本地异常：500，别伪装成上游的 502/503。
+        throw fail(500, error?.message ?? '降级尝试记录读取失败')
+      }
+      json(res, 200, {
+        attempts,
+        // total 是环里现有的条数（含被 limit 切掉的部分），前端据此说「显示最近 N 条」。
+        total,
+        generatedAt: Date.now(),
+      })
     } else if (method === 'POST' && pathname === `${PREFIX}/channels/rpc` && channels) {
       // 渠道备份导入包含多账号凭据，仍限制总大小，但不能套设置表单的 16KB。
       const body = await readBody(req, 8 * 1024 * 1024)

@@ -51,6 +51,9 @@ export class FreeModelAdapter {
    * @param {(ref: object) => string | undefined} [dependencies.resolveImage]
    * @param {(record: object) => void} dependencies.recordUsage
    * @param {(record: object) => void} [dependencies.recordTurn]
+   * @param {(row: object) => void} [dependencies.recordAttempt] - one row per
+   *   candidate a chain walked past, answered with, or aborted on. Optional and
+   *   side-effect-only: a recorder that throws may not change the turn.
    * @param {(message: string) => void} [dependencies.warn]
    */
   constructor(dependencies) {
@@ -226,6 +229,24 @@ export class FreeModelAdapter {
     const rejectedTurn = attempts => {
       this.deps.recordTurn?.({ at: started, model: entry.id, ok: false, recovered: false, attempts, origin: 'harness' })
     }
+    // The degradation ring's writer on this path. Guarded here *and* inside
+    // `recordAttempt`: an injected recorder that throws must not be able to
+    // change whether the turn answers — recording sits beside the routing
+    // decision, never in front of it.
+    const note = (candidate, index, outcome, reason) => {
+      try {
+        this.deps.recordAttempt?.({
+          at: Date.now(),
+          chainId: entry.id,
+          chainName: entry.name,
+          index,
+          candidateId: candidate.id,
+          outcome,
+          reason,
+          elapsedMs: Date.now() - started,
+        })
+      } catch { /* 记录失败不影响推理 */ }
+    }
     if (settings.enabled === false) {
       rejectedTurn(0)
       yield { type: 'finish', reason: { kind: 'error', failure: { message: 'our free model is switched off in its settings page', code: 'CONFIG_DISABLED' } } }
@@ -261,6 +282,7 @@ export class FreeModelAdapter {
         }
       }
       if (committed) {
+        note(candidate, index, 'hit', '')
         this.deps.recordTurn?.({ at: started, model: entry.id, ok: result?.ok === true, recovered: result?.recovered === true, attempts: index + 1, origin: 'harness' })
         return
       }
@@ -269,10 +291,12 @@ export class FreeModelAdapter {
         // single-model recovery budget was spent. Hand the caller the real
         // ending instead of pretending another model could have saved it.
         for (const chunk of held) yield chunk
+        note(candidate, index, 'aborted', 'aborted')
         rejectedTurn(index + 1)
         return
       }
       const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
+      note(candidate, index, 'skipped', reason)
       tried.push(`${candidate.id} (${reason})`)
       this.deps.warn?.(`our-free-model: chain "${entry.name}" advanced past ${candidate.id} — ${reason}`)
     }

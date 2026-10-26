@@ -288,6 +288,9 @@ export const STATS_INITIAL = {
   requests: 0,
   failedRequests: 0,
   samples: [],
+  /** 降级尝试环（见 src/core/attempts.js）：链上每个候选一行，最多 200 条。
+   *  旧文件没有这个字段——读取侧一律按 `Array.isArray` 兜底成 `[]`。 */
+  attempts: [],
   logical: { turns: 0, failed: 0, recovered: 0, models: {} },
   /** 日级回合统计上线日（`YYYY-MM-DD`）。全新安装为 ''（自始完整）；旧数据
    *  迁移时置为迁移当日。此前的日/周/月档没有回合记录，前端据此显示 `—`。 */
