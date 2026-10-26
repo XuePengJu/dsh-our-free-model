@@ -280,6 +280,8 @@ export async function startStandalone({
       const note = (candidate, index, outcome, reason) => {
         try {
           recordAttempt(stores.stats, {
+            // turnAt = 本回合起点，同一回合每一行都相同（前端靠它分组）。
+            turnAt: started,
             at: Date.now(), chainId: entry.id, chainName: entry.name, index,
             candidateId: candidate.id, outcome, reason, elapsedMs: Date.now() - started,
           }, message => logger.warn?.(message))
@@ -312,7 +314,7 @@ export async function startStandalone({
         if (committed) {
           note(candidate, index, 'hit', '')
           try {
-            recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, origin: 'forward' })
+            recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, attempts: index + 1, origin: 'forward' })
           } catch { /* 统计失败不影响推理 */ }
           return last
         }

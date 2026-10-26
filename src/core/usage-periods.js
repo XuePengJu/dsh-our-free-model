@@ -249,10 +249,15 @@ function lifetimeMetrics(stats, acc, dayTotals) {
   }
 
   const hasLifetimeFailures = Number.isSafeInteger(stats.failedRequests)
+  // 日桶合计（调用方传入）。老文件没有这个字段时读作「历史未记录」→ 0。
+  const skippedCandidates = Number.isSafeInteger(dayTotals?.skippedCandidates) ? dayTotals.skippedCandidates : 0
   return {
     turns: logicalReady ? logical.turns : namedTurns,
     failedTurns: Number.isSafeInteger(logical.failed) ? logical.failed : namedFailedTurns,
     recoveredTurns: Number.isSafeInteger(logical.recovered) ? logical.recovered : namedRecoveredTurns,
+    // 「候选跳过」与「断流恢复」是两个口径：前者是组合链换了下一条候选，
+    // 后者是单模型中断后由恢复预算接上。逐模型没有这个数，模型行不输出它。
+    skippedCandidates: Number.isSafeInteger(logical.skippedCandidates) ? logical.skippedCandidates : skippedCandidates,
     requests: stats.requests ?? 0,
     failedRequests: hasLifetimeFailures ? stats.failedRequests : namedFailed,
     input,
@@ -274,6 +279,7 @@ export function aggregatePeriod(stats, period, catalog, now) {
   let turns = 0
   let failedTurns = 0
   let recoveredTurns = 0
+  let skippedCandidates = 0
 
   for (const key of bounds.days) {
     const bucket = byDay.get(key)
@@ -281,6 +287,7 @@ export function aggregatePeriod(stats, period, catalog, now) {
     turns += bucket.turns ?? 0
     failedTurns += bucket.failedTurns ?? 0
     recoveredTurns += bucket.recoveredTurns ?? 0
+    skippedCandidates += bucket.skippedCandidates ?? 0
     for (const [model, row] of Object.entries(bucket.models ?? {})) {
       const s = acc.get(model) ?? zeroAcc()
       s.input += row.input ?? 0
@@ -330,11 +337,14 @@ export function aggregatePeriod(stats, period, catalog, now) {
   const available = period === 'all' ? true : turnDataAvailable(stats, bounds)
 
   const metrics = period === 'all'
-    ? { ...lifetimeMetrics(stats, acc, { turns, failedTurns, recoveredTurns, calls, failed }), avgTtftMs, tps }
+    ? { ...lifetimeMetrics(stats, acc, { turns, failedTurns, recoveredTurns, skippedCandidates, calls, failed }), avgTtftMs, tps }
     : {
         turns: available ? turns : null,
         failedTurns: available ? failedTurns : null,
         recoveredTurns: available ? recoveredTurns : null,
+        // 与 recoveredTurns 同款三元：没有回合数据的档位不能给 0，那会读成
+        // 「这段时间真的没人跳过候选」，而事实是「这段时间没有回合记录」。
+        skippedCandidates: available ? skippedCandidates : null,
         requests: calls,
         failedRequests: failed,
         input,

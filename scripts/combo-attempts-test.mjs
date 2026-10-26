@@ -311,6 +311,70 @@ await check('an abandoned stream still records every candidate it walked', async
   assert.equal(run.rows.every(row => ['hit', 'skipped', 'aborted'].includes(row.outcome)), true)
 })
 
+// —— 批次 5b：回合身份 turnAt、周期跳过数 skippedCandidates、前端分组 ————————
+
+await check('rows of one turn share turnAt while their own at differs', async () => {
+  const store = memoryStore({})
+  const run = await drive([
+    { status: 429, body: '{"error":{"message":"rate limit exceeded"}}' },
+    { body: answerBody },
+  ], row => recordAttempt(store, row))
+  const ring = readAttempts(store)
+  assert.equal(ring.length, 2)
+  assert.equal(ring[0].turnAt, ring[1].turnAt, 'both rows describe the same walk')
+  assert.notEqual(ring[0].at, ring[1].at, 'each row still carries its own write time')
+  assert.equal(ring[0].elapsedMs >= ring[1].elapsedMs, true, 'elapsedMs is measured from the turn start')
+})
+
+await check('recordTurn accumulates skipped candidates in the day bucket and logical', async () => {
+  const { recordTurn } = await import('../src/store.js')
+  const store = memoryStore({})
+  recordTurn(store, { at: Date.now(), model: 'm', ok: true, recovered: false, attempts: 3 })
+  recordTurn(store, { at: Date.now(), model: 'm', ok: true, recovered: false, attempts: 1 })
+  recordTurn(store, { at: Date.now(), model: 'm', ok: true, recovered: false, attempts: 0 })
+  recordTurn(store, { at: Date.now(), model: 'm', ok: false, recovered: false })
+  const state = store.peek()
+  const bucket = Object.values(state.days)[0]
+  assert.equal(bucket.skippedCandidates, 2, 'attempts 3 → 2 skips; 1 and 0 and missing → 0')
+  assert.equal(state.logical.skippedCandidates, 2)
+})
+
+await check('aggregatePeriod reports skippedCandidates for day and all alike', async () => {
+  const { aggregatePeriod } = await import('../src/core/usage-periods.js')
+  const day = '2026-10-26'
+  const now = new Date('2026-10-26T12:00:00+08:00').getTime()
+  const stats = {
+    version: 4,
+    requests: 10,
+    failedRequests: 1,
+    models: {},
+    samples: [],
+    logical: { turns: 2, failed: 0, recovered: 0, models: {} },
+    days: { [day]: { turns: 2, failedTurns: 0, recoveredTurns: 0, skippedCandidates: 5, models: {}, modelsTurns: {} } },
+  }
+  const dayView = aggregatePeriod(stats, 'day', [], now)
+  assert.equal(dayView.metrics.skippedCandidates, 5, 'the day bucket total is passed through')
+  const allView = aggregatePeriod(stats, 'all', [], now)
+  assert.equal(allView.metrics.skippedCandidates, 5, 'all reads the same buckets')
+  const empty = aggregatePeriod({ ...stats, days: {} }, 'day', [], now)
+  assert.equal(empty.metrics.skippedCandidates, 0, 'empty buckets read 0 — the same treatment recoveredTurns gets')
+})
+
+await check('latestChainTurn groups by turnAt and never guesses from proximity', async () => {
+  const { latestChainTurn } = await import('../packages/standalone/frontend/usage-data.mjs')
+  const row = over => ({ turnAt: 1000, at: 1000 + over, chainId: 'combo:a', chainName: 'a', index: over, candidateId: `m${over}`, outcome: 'hit', reason: '', elapsedMs: over })
+  assert.equal(latestChainTurn(undefined, { chainId: 'combo:a' }), null, 'not an array → null')
+  assert.equal(latestChainTurn([row(0)], { chainId: '' }), null, 'no active chain → null')
+  assert.equal(latestChainTurn([row(0)], { chainId: 'combo:b' }), null, 'another chain → null')
+  const newer = { ...row(0), turnAt: 5000, at: 5001, chainId: 'combo:b' }
+  const turn = latestChainTurn([newer, row(1), row(0)], { chainId: 'combo:a' })
+  assert.equal(turn.turnAt, 1000, 'the newest turn of the requested chain wins')
+  assert.deepEqual(turn.rows.map(item => item.index), [0, 1], 'rows come back in walk order')
+  const legacy = { at: 9000, chainId: 'combo:a', index: 0, outcome: 'skipped', reason: 'x', elapsedMs: 0 }
+  const legacyTurn = latestChainTurn([legacy], { chainId: 'combo:a' })
+  assert.equal(legacyTurn.turnAt, 9000, 'a row without turnAt falls back to its own at (one row per group)')
+})
+
 server.close()
 console.log(failures > 0
   ? `combo-attempts-test: ${failures} failure(s)`

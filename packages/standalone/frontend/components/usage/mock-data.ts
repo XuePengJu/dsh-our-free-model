@@ -19,7 +19,6 @@ import type { UsageModel } from '../../types'
 import { PROVIDER_META } from '../../usage-data.mjs'
 
 import type {
-  AttemptOutcome,
   BusinessStrip,
   CandidateLabelKind,
   CandidateState,
@@ -397,8 +396,13 @@ export function mockUsageView(now = Date.now()): UsageView {
         { color: '#f0b45e', text: 'Qoder 曾 429，被跳过' },
       ],
     },
-    routingTotals: { requests: 42, reroutes: 3, errors: 0 },
-    attempts: [],
+    routingTotals: { requests: 42, reroutes: 27, errors: 0 },
+    // 最近一个走查回合（与 verdict 的要点自洽：TRAE 命中、Qoder 429 被跳过）。
+    // turnAt 相同 = 同一回合；elapsedMs 是距回合起点的累计值。
+    attempts: [
+      { turnAt: now - 42_000, at: now - 40_000, chainId: 'combo:auto', chainName: 'combo:auto', index: 0, candidateId: 'trae/deepseek-v3.2-exp', outcome: 'hit', reason: '', elapsedMs: 2000 },
+      { turnAt: now - 42_000, at: now - 8_000, chainId: 'combo:auto', chainName: 'combo:auto', index: 1, candidateId: 'qoder/qwen3-max', outcome: 'skipped', reason: '429 · 稍后重试', elapsedMs: 34_000 },
+    ],
     kpis: [
       {
         key: 'tokens',
@@ -442,7 +446,8 @@ export function mockUsageView(now = Date.now()): UsageView {
         label: '降级接管',
         value: reroutes,
         unit: '次',
-        hint: `占请求 ${Math.round((reroutes / Math.max(1, requests)) * 100)}% · 含断流恢复，不含候选跳过`,
+        // 与真实路径同口径：主数字 = 候选跳过（周期累计），断流恢复降为副行。
+        hint: `其中断流恢复 ${recoveredTurns} 次 · 占请求 ${Math.round((reroutes / Math.max(1, requests)) * 100)}%`,
         spark: sparkTps.map((_value, index) => Math.floor(index / 4)),
         accent: 'warn',
       },

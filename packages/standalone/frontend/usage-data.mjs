@@ -862,3 +862,35 @@ export function bucketSamples(samples, { now = Date.now(), windowMs = 60 * 60 * 
   const peak = tokens.reduce((max, value) => (value > max ? value : max), 0)
   return { tokens, tps, bucketMs, from, peak }
 }
+
+/**
+ * 取某条组合链**最近一个回合**的走查记录。
+ *
+ * 分组键是行里的 `turnAt`（回合起点，同回合每一行都相同）——绝不按 `at`
+ * 的时间接近去猜：猜出来的「同一次请求」就是编造。行数据来自
+ * `GET /api/management/usage/attempts`（后端 `src/core/attempts.js`）。
+ *
+ * @param {unknown} attempts - 尝试环数组（最新在前，但这里不依赖顺序）
+ * @param {{chainId?: string}} [options] - `chainId` 为空串时直接返回 null
+ *   （没配模型组的页面不该显示任何走查）
+ * @returns {{turnAt: number, rows: AttemptRow[]} | null}
+ *   `rows` 按 `index` 升序；输入不是数组、链没走过时返回 `null`。
+ */
+export function latestChainTurn(attempts, { chainId } = {}) {
+  if (!Array.isArray(attempts) || chainId === undefined || chainId === null || chainId === '') return null
+  /** @typedef {{turnAt: number, at: number, chainId: string, chainName: string, index: number, candidateId: string, outcome: 'hit'|'skipped'|'aborted', reason: string, elapsedMs: number}} AttemptRow */
+  /** @type {null | {turnAt: number, rows: AttemptRow[]}} */
+  let best = null
+  for (const row of attempts) {
+    if (row === null || typeof row !== 'object') continue
+    if (row.chainId !== chainId) continue
+    // 老文件没有 turnAt：退回行自己的 `at`（每行独占一组，不冒充同回合）。
+    const turnAt = Number.isFinite(row.turnAt) ? row.turnAt : Number(row.at)
+    if (!Number.isFinite(turnAt)) continue
+    if (best === null || turnAt > best.turnAt) best = { turnAt, rows: [row] }
+    else if (turnAt === best.turnAt) best.rows.push(row)
+  }
+  if (best === null) return null
+  best.rows.sort((a, b) => (Number.isFinite(a.index) ? a.index : 0) - (Number.isFinite(b.index) ? b.index : 0))
+  return best
+}

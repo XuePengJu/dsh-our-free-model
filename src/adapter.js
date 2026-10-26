@@ -236,6 +236,9 @@ export class FreeModelAdapter {
     const note = (candidate, index, outcome, reason) => {
       try {
         this.deps.recordAttempt?.({
+          // `turnAt` is the walk's start — every row of one turn carries it, so
+          // the panel can group rows without inferring anything from `at`.
+          turnAt: started,
           at: Date.now(),
           chainId: entry.id,
           chainName: entry.name,

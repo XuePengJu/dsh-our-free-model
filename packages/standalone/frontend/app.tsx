@@ -4,7 +4,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Sidebar, Topbar } from './components/shell'
 import { Overview } from './components/overview'
-import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, UsageLedgerResponse, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
+import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, UsageAttemptsResponse, UsageLedgerResponse, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
 import './app.css'
 
 const API = '/api/management'
@@ -104,6 +104,10 @@ function App() {
       `/usage/ledger${Number.isFinite(limit) ? `?limit=${Math.trunc(limit as number)}` : ''}`,
       undefined,
       20000,
+    ),
+    // 降级尝试环：只读本地 store，不碰渠道 worker，所以用默认超时即可。
+    usageAttempts: async (limit?: number) => await request<UsageAttemptsResponse>(
+      `/usage/attempts${Number.isFinite(limit) ? `?limit=${Math.trunc(limit as number)}` : ''}`,
     ), }), [page])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [page])
   useEffect(() => { const onUnauthorized = () => enterLogin('管理会话已失效，请重新登录'); window.addEventListener('ofm:unauthorized', onUnauthorized); return () => window.removeEventListener('ofm:unauthorized', onUnauthorized) }, [])

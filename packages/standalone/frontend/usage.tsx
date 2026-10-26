@@ -9,7 +9,7 @@
  * | 区块 | 数据源 | 时钟 |
  * | --- | --- | --- |
  * | KPI 5 张、口径条、按模型统计、吞吐图 | `/stats`（app 层 `loadData`） | 5 秒（全局） |
- * | 明细表、实时请求流、路由实况的候选速度 | `/usage/ledger`（本文件自持） | 6 秒，首延迟 3 秒 |
+ * | 明细表、实时请求流、候选链走查 | `/usage/ledger` + `/usage/attempts`（本文件自持） | 6 秒，首延迟 3 秒 |
  *
  * **两条钟刻意错开相位**：`/stats` 在 0s / 5s / 10s… 触发，账本在 3s / 9s / 15s… 触发，
  * 同一瞬间永远不会有两个请求在飞（本机服务是单进程 HTTP，合并峰值能明显减少卡顿感）。
@@ -41,7 +41,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, RefreshCw, X } from 'lucide-react'
 import { Button } from './components/ui'
-import { bucketSamples, ledgerView, providerMeta, utc8DayKey, usageModels } from './usage-data.mjs'
+import { bucketSamples, latestChainTurn, ledgerView, providerMeta, utc8DayKey, usageModels } from './usage-data.mjs'
 import { useAutoRefreshSpin } from './use-auto-refresh-spin'
 import { usePrefersReducedMotion, useReveal } from './use-raf-tween'
 import { mockUsageView } from './components/usage/mock-data'
@@ -59,6 +59,7 @@ import type {
   RoutingTotals,
   StreamRow,
   ThroughputSeries,
+  UsageAttempt,
   UsageLedgerResponse,
   UsageView,
   Verdict,
@@ -167,26 +168,56 @@ function buildChains(combos: Combo[]): ChainSummary[] {
 }
 
 /**
- * 候选链（hero 右侧）：来自**当前模型组的配置**，不是实时尝试流水。
+ * 候选链（hero 右侧）：来自**当前模型组的配置** + 最近一次真实走查（B 档 attempts）。
  *
- * 状态一律 `pending`（待命）：批次 2 还没有逐次尝试数据，绝不能把「配了但没跑过」
- * 画成 `done`。速度取该渠道的账本平均（`is-idle` 灰小字），只为横向比较。
+ * 状态映射（`turn` 为 null 时全员 `pending`，与未走过时一致）：
+ * - `hit` → `done`/「已应答」。速度给 `undefined`（显示 `—`）：`tps` 只存在于单模型
+ *   解码窗口内，走查记录里没有，拿渠道均值冒充单次实测是硬伤；本次真实速度看实时流。
+ * - `skipped` → `skipped` + 原因原文；限流类原因给 `rate` 标签色，其余 `skip`。
+ * - `aborted` → `failed`/「已中止」。⚠️ 它很**少见**：用户主动中断流式会被
+ *   `runSingle` 报成可 advance 的 `stream_cut` 而记成 `skipped`；只有登录墙、
+ *   恢复预算耗尽这类不可续的收尾才是 `aborted`，绝不当主信号用。
+ * - 没出现在回合里的候选（含序号对不上又 id 对不上的）→ `pending`/「待命」+ 渠道均值。
  */
-function buildCandidates(chain: ChainSummary | undefined, avgTpsOf: (provider: string) => number | undefined): RoutingCandidate[] {
+function buildCandidates(
+  chain: ChainSummary | undefined,
+  avgTpsOf: (provider: string) => number | undefined,
+  turn: { turnAt: number; rows: UsageAttempt[] } | null,
+): RoutingCandidate[] {
   if (chain === undefined) return []
-  return chain.members.map(member => ({
-    candidateId: `${chain.comboId}:${member.model}`,
-    provider: member.provider,
-    providerName: member.providerName,
-    providerShort: member.providerShort,
-    accent: member.accent,
-    model: member.model,
-    account: '按账号池分配',
-    state: 'pending',
-    tps: avgTpsOf(member.provider),
-    labelKind: 'idle',
-    label: '待命',
-  }))
+  const shortLabel = (reason: string): string => (reason.length > 24 ? `${reason.slice(0, 24)}…` : reason)
+  return chain.members.map((member, position) => {
+    const base = {
+      candidateId: `${chain.comboId}:${member.model}`,
+      provider: member.provider,
+      providerName: member.providerName,
+      providerShort: member.providerShort,
+      accent: member.accent,
+      model: member.model,
+      account: '按账号池分配',
+      tps: avgTpsOf(member.provider),
+    }
+    // 序号是主键（组合链顺序即候选顺序）；id 相等作兜底，都对不上就当没走过。
+    const row = turn?.rows.find(item => item.index === position) ?? turn?.rows.find(item => item.candidateId === member.model)
+    if (row === undefined) {
+      return { ...base, state: 'pending' as const, labelKind: 'idle' as const, label: '待命' }
+    }
+    if (row.outcome === 'hit') {
+      // `done` 行不给 tps：isIdleSpeed 只认 pending/probing/tps==null，塞均值会被画成实测值
+      return { ...base, tps: undefined, state: 'done' as const, labelKind: 'answered' as const, label: '已应答' }
+    }
+    if (row.outcome === 'aborted') {
+      return { ...base, state: 'failed' as const, labelKind: 'skip' as const, label: '已中止', reason: row.reason }
+    }
+    const rate = /429|rate|quota|限流|too many/i.test(row.reason)
+    return {
+      ...base,
+      state: 'skipped' as const,
+      labelKind: rate ? 'rate' as const : 'skip' as const,
+      label: row.reason === '' ? '已跳过' : shortLabel(row.reason),
+      reason: row.reason,
+    }
+  })
 }
 
 /**
@@ -351,9 +382,12 @@ function buildStatsView(stats: Stats, period: UsagePeriod, now: number): UsageVi
     {
       key: 'reroutes',
       label: '降级接管',
-      value: metrics.recoveredTurns ?? 0,
+      value: metrics.skippedCandidates ?? 0,
       unit: '次',
-      hint: `含断流恢复，不含候选跳过 · 占请求 ${metrics.requests > 0 ? Math.round(((metrics.recoveredTurns ?? 0) / metrics.requests) * 100) : 0}%`,
+      // 主数字 = 组合链跳过候选的次数（周期口径，`recordTurn` 按候选序号累计）；
+      // 断流恢复是另一个口径（单模型中断后由恢复预算接上），降为副行，不可相加。
+      hint: `其中断流恢复 ${number(metrics.recoveredTurns ?? 0)} 次 · 占请求 ${metrics.requests > 0 ? Math.round(((metrics.skippedCandidates ?? 0) / metrics.requests) * 100) : 0}%`,
+      title: '「降级接管」= 模型组把前一个候选换掉、改走下一个的次数（本时段）；「断流恢复」= 单个模型中断后由恢复预算接上的回合数。两者口径不同，不可相加。',
       spark: tokensSpark.map((_value, index) => Math.floor(index / 4)),
       accent: 'warn',
     },
@@ -370,13 +404,16 @@ function buildStatsView(stats: Stats, period: UsagePeriod, now: number): UsageVi
     avgTtftMs: metrics.avgTtftMs ?? undefined,
     avgTps: metrics.tps ?? undefined,
   }
+  // hero 底部大数字与 KPI 必须同源：都取「候选跳过」（周期口径）。
   const routingTotals: RoutingTotals = {
     requests: metrics.requests,
-    reroutes: metrics.recoveredTurns ?? 0,
+    reroutes: metrics.skippedCandidates ?? 0,
     errors: metrics.failedRequests,
   }
   const verdict: Verdict = {
-    text: metrics.recoveredTurns ? `本时段有 ${number(metrics.recoveredTurns)} 次断流恢复。` : '本时段没有发生降级接管。',
+    text: (metrics.skippedCandidates ?? 0) > 0
+      ? `本时段有 ${number(metrics.skippedCandidates ?? 0)} 次候选被跳过、${number(metrics.recoveredTurns ?? 0)} 次断流恢复。`
+      : '本时段没有发生降级接管。',
     bullets: [],
   }
   // 账本区块（明细表 / 实时流 / 候选速度）由 `Usage()` 用 `/usage/ledger` 的结果覆盖；
@@ -437,6 +474,10 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
   // ---- 渠道账本（自己的一条钟） ----
   const [ledger, setLedger] = useState<LedgerState>({ status: 'loading', data: null, error: '' })
   const [combos, setCombos] = useState<Combo[]>([])
+  // 降级走查环：跟账本同一个 tick 取（只读本地 store，很快）。失败静默清空 ——
+  // 它是辅助信息，绝不能进 `setError` 把整页拉红。
+  const [attempts, setAttempts] = useState<UsageAttempt[]>([])
+  const attemptsInFlight = useRef(false)
   const ledgerGeneration = useRef(0)
   const ledgerInFlight = useRef(false)
 
@@ -472,13 +513,28 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
     }
   }, [host, flags.mock])
 
+  /** 拉一次降级走查环。失败**静默清空**：候选链退回「待命」，绝不惊动页面错误条。 */
+  const loadAttempts = useCallback(async (): Promise<void> => {
+    if (flags.mock || !activeRef.current || attemptsInFlight.current) return
+    attemptsInFlight.current = true
+    try {
+      const data = await host.usageAttempts()
+      if (activeRef.current) setAttempts(Array.isArray(data?.attempts) ? data.attempts : [])
+    } catch {
+      if (activeRef.current) setAttempts([])
+    } finally {
+      attemptsInFlight.current = false
+    }
+  }, [host, flags.mock])
+
   useEffect(() => {
     if (!active) {
       generation.current++
       ledgerGeneration.current++
       refreshingRef.current = false
       ledgerInFlight.current = false
-      setRefreshing(false); setMessage(''); setError('')
+      attemptsInFlight.current = false
+      setRefreshing(false); setMessage(''); setError(''); setAttempts([])
       return
     }
     return () => { generation.current++; ledgerGeneration.current++ }
@@ -499,20 +555,22 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
     }
     const tick = async (): Promise<void> => {
       if (cancelled) return
-      if (!document.hidden) await loadLedger()
+      // 账本（worker RPC）与走查环（本地 store）并行取；allSettled 保证一个失败
+      // 不拖死另一个。await 完成后才排下一轮：慢请求只推迟节奏，不堆积并发。
+      if (!document.hidden) await Promise.allSettled([loadLedger(), loadAttempts()])
       schedule(LEDGER_INTERVAL_MS)
     }
     void loadCombos()
     schedule(LEDGER_FIRST_DELAY_MS)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [active, loadLedger, loadCombos])
+  }, [active, loadLedger, loadCombos, loadAttempts])
 
   useEffect(() => {
     if (!active) return
-    const onVisible = (): void => { if (!document.hidden) void loadLedger() }
+    const onVisible = (): void => { if (!document.hidden) void Promise.allSettled([loadLedger(), loadAttempts()]) }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [active, loadLedger])
+  }, [active, loadLedger, loadAttempts])
 
   const view = stats.periods?.[period]
   const periodWord = period === 'all' ? '所选时段' : PERIOD_WORDS[period]
@@ -553,17 +611,33 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
 
   // 数据源：`?mock=1` 用常量假数据（覆盖**全部区块**，否则空数据目录下会开天窗），
   // 否则「/stats 业务口径 + /usage/ledger 账本口径」拼出同一套 ViewModel。
+  // 最近一次走查回合（按 turnAt 精确分组，不猜）。memo 保持引用稳定，
+  // 否则 data 的 useMemo 每轮轮询都会把整棵 ViewModel 重算一遍。
+  const turn = useMemo(
+    () => latestChainTurn(attempts, { chainId: activeChain?.comboId ?? '' }),
+    [attempts, activeChain],
+  )
+
   const data: UsageView = useMemo(() => {
     if (mock !== null) return mock
     const hasLedger = ledger.data !== null
-    const candidates = buildCandidates(activeChain, avgTpsOf)
+    const candidates = buildCandidates(activeChain, avgTpsOf, turn)
     const busy = business.current !== null
       || candidates.some(candidate => candidate.state === 'active' || candidate.state === 'probing')
     // 今日主用渠道：`todayBlocks.accountRows` 已按 token 降序，第一条即最大者。
     const topChannel = todayBlocks.accountRows[0] as ChannelRow | undefined
     const todayTokens = todayBlocks.totals.inputTokens + todayBlocks.totals.outputTokens
+    // 判决要点：周期口径的文字来自 buildStatsView，这里把「最近一个回合」里
+    // 真实跳过的候选补成彩色要点（没有回合就不加，不拿周期数字冒充单次走查）。
+    const bullets = turn === null ? business.verdict.bullets : turn.rows
+      .filter(row => row.outcome === 'skipped' && row.reason !== '')
+      .map(row => ({
+        color: /429|rate|quota|限流|too many/i.test(row.reason) ? 'var(--r-warn, #f0b45e)' : 'var(--r-bad, #e5484d)',
+        text: `${row.chainName || row.chainId} · ${row.candidateId}：${row.reason}，已跳过`,
+      }))
     return {
       ...business,
+      verdict: { ...business.verdict, bullets },
       // 账本还没回来时，实时流退回 `/stats` 的样本（同一份数据源，不会说谎）。
       stream: hasLedger ? blocks.streamRows : business.stream,
       ledgerTotals: hasLedger ? blocks.totals : business.ledgerTotals,
@@ -573,8 +647,9 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
       sources: buildSources(busy, summary?.version ?? '', topChannel, todayTokens),
       activeChainId: activeChain?.comboId ?? '',
       candidates,
+      attempts: turn?.rows ?? [],
     }
-  }, [mock, business, blocks, chains, activeChain, avgTpsOf, ledger.data, todayBlocks, summary])
+  }, [mock, business, blocks, chains, activeChain, avgTpsOf, ledger.data, todayBlocks, summary, turn])
 
   // 「按模型统计」仍由 usage-data.mjs 的 usageModels() 统一筛选/排序/分页（口径不重写）。
   // mock 模式下数据源换成 mock 的模型行，避免这一块仍读真实 stats 而变成空态。
@@ -604,7 +679,7 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
     setRefreshing(true); setMessage(''); setError('')
     try {
       // 账本与模型组各自兜错：它们失败不该把「统计已更新」变成一句红字。
-      const [statsResult] = await Promise.allSettled([host.refresh(), loadLedger(), loadCombos()])
+      const [statsResult] = await Promise.allSettled([host.refresh(), loadLedger(), loadCombos(), loadAttempts()])
       if (statsResult.status === 'rejected') throw statsResult.reason
       if (isCurrent()) setMessage('统计已更新')
     } catch (reason) {
@@ -724,6 +799,7 @@ export function Usage({ summary, stats, host, active }: { summary: Summary; stat
           verdict={data.verdict}
           totals={data.routingTotals}
           attempts={data.attempts}
+          turnAt={turn?.turnAt}
           frozen={frozen}
         />
       </div>

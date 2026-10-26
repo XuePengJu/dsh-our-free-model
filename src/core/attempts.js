@@ -48,18 +48,25 @@ const OUTCOMES = new Set(['hit', 'skipped', 'aborted'])
  * out as JSON.
  *
  * @param {unknown} row - the caller's attempt row
- * @returns {{at: number, chainId: string, chainName: string, index: number,
- *   candidateId: string, outcome: 'hit'|'skipped'|'aborted', reason: string,
- *   elapsedMs: number}}
+ * @returns {{turnAt: number, at: number, chainId: string, chainName: string,
+ *   index: number, candidateId: string, outcome: 'hit'|'skipped'|'aborted',
+ *   reason: string, elapsedMs: number}}
  */
 function normalizeAttempt(row) {
   const source = row !== null && typeof row === 'object' ? row : {}
   const at = Number.isFinite(source.at) ? source.at : Date.now()
+  // `turnAt` is the turn's start, shared by every row of one walk. It is what
+  // lets the panel group rows into a turn without guessing from timestamps.
+  // Rows written before this field existed fall back to their own `at`, which
+  // groups each one alone — the honest reading of "we never recorded the turn
+  // start for this one", instead of collapsing them all onto 0.
+  const turnAt = Number.isFinite(source.turnAt) ? source.turnAt : at
   const elapsedMs = Number.isFinite(source.elapsedMs) && source.elapsedMs >= 0
     ? Math.round(source.elapsedMs)
     : 0
   const index = Number.isSafeInteger(source.index) && source.index >= 0 ? source.index : 0
   return {
+    turnAt,
     at,
     chainId: typeof source.chainId === 'string' ? source.chainId : '',
     chainName: typeof source.chainName === 'string' ? source.chainName : '',
@@ -95,7 +102,7 @@ export function pruneAttempts(value, limit = ATTEMPT_LIMIT) {
  * Never throws: this runs while a caller is waiting for an answer.
  *
  * @param {{edit: (mutate: (state: object) => object) => unknown}} store - the stats store
- * @param {object} row - `{ at, chainId, chainName, index, candidateId, outcome, reason, elapsedMs }`
+ * @param {object} row - `{ turnAt, at, chainId, chainName, index, candidateId, outcome, reason, elapsedMs }`
  * @param {(message: string) => void} [warn] - logger sink; recording failures are invisible otherwise
  * @returns {unknown} the store's new value, or `undefined` when the write failed
  */

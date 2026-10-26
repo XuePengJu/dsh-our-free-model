@@ -44,6 +44,14 @@ const curve = (x1: number, y1: number, x2: number, y2: number): string => {
 /** 标签语义 → 样式类（与 usage-routing.css 的 `.r-lbl.is-*` 对应）。 */
 const labelClass = (kind: RoutingCandidate['labelKind']): string => `r-lbl is-${kind}`
 
+/** 走查回合的相对时间：只分三档（刚刚 / N 分钟前 / N 小时前），不引入日期库。 */
+const relativeTurnTime = (at: number, now: number): string => {
+  const minutes = Math.max(0, Math.round((now - at) / 60_000))
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  return `${Math.round(minutes / 60)} 小时前`
+}
+
 /** 速度文本：缺失显示 `—`，绝不显示 0。 */
 const speedText = (tps?: number): string => (tps == null || !Number.isFinite(tps) ? '—' : tps.toFixed(1))
 
@@ -70,10 +78,12 @@ interface RoutingLiveProps {
   /** 底部三个大数字。 */
   totals: RoutingTotals
   /**
-   * B 档真实 attempts。批次 1 传空数组/不传即可；
-   * 批次 5 填入后由 `candidates` 的 `state`/`label` 呈现，本组件不需要改结构。
+   * B 档真实 attempts（最近一个回合的行）。仅用于 aria-label 的条数提示，
+   * 渲染口径仍由 `candidates` 的 `state`/`label` 决定，本组件不重算状态。
    */
   attempts?: UsageAttempt[]
+  /** 最近一个走查回合的起点（毫秒）。无记录时不传 —— 说明这条链还没走过。 */
+  turnAt?: number
   /** 冻结动效（`?static=1`）。 */
   frozen?: boolean
 }
@@ -93,6 +103,7 @@ export function RoutingLive({
   verdict,
   totals,
   attempts,
+  turnAt,
   frozen = false,
 }: RoutingLiveProps) {
   const routeRef = useRef<HTMLDivElement>(null)
@@ -187,6 +198,13 @@ export function RoutingLive({
           <p className="r-hero-desc">
             <b>{activeChainId}</b> · {chainStrategyLabel} · <b>{candidates.length}</b> 个候选取其一。
             按链序逐个尝试，每个成员用自己的渠道账号与额度，前一个限流就换下一个。
+          </p>
+          {/* 走查回合的年龄必须标出来：回合是历史事实，不标时间会把「上次的走查」
+              误读成「正在发生的请求」（进行中与否看来源卡的「处理中」徽标）。 */}
+          <p className="r-tagline">
+            {turnAt === undefined
+              ? '还没有这条链的走查记录，发一条消息就会出现在这里'
+              : `最近一次降级走查 · ${relativeTurnTime(turnAt, Date.now())}`}
           </p>
         </div>
       </div>

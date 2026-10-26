@@ -78,6 +78,8 @@ export interface PeriodMetrics {
   reasoning: number
   failedTurns: number | null
   recoveredTurns: number | null
+  /** 组合链换掉前一个候选、改走下一个的次数（本档累计）；无回合数据的档位为 null。 */
+  skippedCandidates?: number | null
   failedRequests: number
   avgTtftMs: number | null
   tps: number | null
@@ -210,6 +212,17 @@ export interface Host {
    * @param limit 明细条数（1–500，缺省 500 = 内存账本全量窗口）
    */
   usageLedger(limit?: number): Promise<UsageLedgerResponse>
+  /**
+   * 降级尝试环（`GET /api/management/usage/attempts`）。
+   *
+   * ⚠️ **与 `usageLedger` 是刻意分开的两个端点**：这条路只读**本地** stats store，
+   * 不碰渠道 worker —— 所以渠道 worker 挂了它照样能返回，而 `/usage/ledger` 会
+   * 502。两者分开放，正是为了不让一个坏掉的源把另一个好源的数据一起拖没。
+   * 超时也用默认值（不需要账本那样的长预算）。
+   *
+   * @param limit 条数（1–200，缺省 200 = 内存环全量）
+   */
+  usageAttempts(limit?: number): Promise<UsageAttemptsResponse>
 }
 
 // ===========================================================================
@@ -326,27 +339,42 @@ export interface UsageLedgerResponse {
 // 让「mock 常量」与「类型契约」彻底分离。
 // ===========================================================================
 
-/** 一次候选尝试的结果（B 档 attempts）。 */
-export type AttemptOutcome = 'ok' | 'skipped' | 'failed' | 'aborted'
+/** 一次候选尝试的结果。**真实记录里只有这三种**，没有 `ok`/`failed`。 */
+export type AttemptOutcome = 'hit' | 'skipped' | 'aborted'
 
-/** B 档：逐候选尝试流水（批次 5 由 `routing-live` 消费）。 */
+/**
+ * 逐候选尝试流水（`/api/management/usage/attempts` 的返回行）。
+ *
+ * 形状由后端 `src/core/attempts.js#normalizeAttempt` 决定，不是按原型想象的：
+ * 它是「组合链走到哪一步」的记录，**不含速度** —— `tps`/`ttftMs` 只存在于单模型
+ * 的解码窗口里，`runCombo` 拿不到，编造一个会比没有更糟。速度看实时流（账本实测）。
+ */
 export interface UsageAttempt {
-  ts: number
-  /** `combo:auto` 这类链 id；直连调用为 `''`。 */
-  comboId: string
-  /** 链内序号（0 起）；直连为 -1。 */
+  /** 回合起点。**同一回合的每一行都相同**，前端靠它分组（不要用 `at` 猜）。 */
+  turnAt: number
+  /** 本行写入时刻；同一回合内各行互不相等。 */
+  at: number
+  /** 组合链 id，形如 `combo:auto`。 */
+  chainId: string
+  /** 组合链显示名。 */
+  chainName: string
+  /** 链内序号（0 起）。 */
   index: number
-  total: number
   /** 候选的真实模型 id（`qoder/qwen3-max`）。 */
   candidateId: string
-  provider: string
-  model: string
   outcome: AttemptOutcome
-  /** skipped / failed 时的原因原文（`429 · 稍后重试` / `quota exceeded` …）。 */
-  reason?: string
+  /** `skipped` 时的原因原文；`hit` 时为空串。 */
+  reason: string
+  /** **距本回合起点**的毫秒数，不是本条耗时；本条耗时 = 与上一行的差值。 */
   elapsedMs: number
-  ttftMs?: number
-  tps?: number
+}
+
+/** `GET /api/management/usage/attempts` 的响应。 */
+export interface UsageAttemptsResponse {
+  attempts: UsageAttempt[]
+  /** 环里现有的条数（可能大于本次返回的 `attempts.length`）。 */
+  total: number
+  generatedAt: number
 }
 
 /** 渠道静态元信息（名称 / 头像字母 / 品牌色）。品牌色不随主题变化，与原型一致。 */
@@ -393,9 +421,10 @@ export interface RoutingCandidate {
   state: CandidateState
   /**
    * 速度值：
-   * - `active` / `done` → 该次请求的实测 tok/s；
    * - `pending` / `probing` → 该渠道的**平均** tok/s（让用户能横向比较，`is-idle` 灰小字显示）；
-   * - `skipped` / `failed` → 无实测值，传 undefined（显示 `—`，绝不显示 0）。
+   * - `done` / `skipped` / `failed` → `undefined`（显示 `—`，绝不显示 0）。
+   *   单次实测速度只存在于账本/`/stats` 样本里，走查记录拿不到 —— 塞均值进去
+   *   会被 `isIdleSpeed` 画成非灰的「实测值」，比留白更糟。
    */
   tps?: number
   labelKind: CandidateLabelKind
