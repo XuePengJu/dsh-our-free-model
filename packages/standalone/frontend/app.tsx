@@ -4,7 +4,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Sidebar, Topbar } from './components/shell'
 import { Overview } from './components/overview'
-import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
+import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, UsageLedgerResponse, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
 import './app.css'
 
 const API = '/api/management'
@@ -93,7 +93,18 @@ function App() {
     syncCombosToWorkbuddy: async (baseUrl?: string, target?: 'ai') => await request<WorkbuddySyncResult>('/combos/export-workbuddy', { ...(baseUrl ? { baseUrl } : {}), ...(target ? { target } : {}) }, 30000),
     writeModelToWorkbuddy: async (id: string, baseUrl?: string, target?: 'ai') => await request<WorkbuddyWriteResult>('/models/export-workbuddy', { id, ...(baseUrl ? { baseUrl } : {}), ...(target ? { target } : {}) }, 30000),
     listWorkbuddyBackups: async () => (await request<{ backups: WorkbuddyBackup[] }>('/workbuddy/backups', undefined, 15000)).backups,
-    restoreWorkbuddyBackup: async (file: string) => await request<{ restored: boolean; total: number; at: number }>('/workbuddy/backups/restore', { file }, 30000), }), [page])
+    restoreWorkbuddyBackup: async (file: string) => await request<{ restored: boolean; total: number; at: number }>('/workbuddy/backups/restore', { file }, 30000),
+    // 渠道账本：**刻意不进 `loadData()` 的 `Promise.all`**。
+    // 它要跨到 worker 线程走两个 RPC（`usage.tokenLedger` + `usage.tokenLedgerHistory`），
+    // 是这一页最慢的一次往返；并进整包会让「渠道 worker 挂死」升级成
+    // 「整张统计页白屏 + 5 秒一轮的 10 秒超时堆积」。账本自带独立时钟
+    // （`usage.tsx` 内 6 秒），失败只降级明细表与实时流两块。
+    // 超时给到 20 秒：默认的 10 秒对「账本刚满 500 条 + 冷启动 worker」偏紧。
+    usageLedger: async (limit?: number) => await request<UsageLedgerResponse>(
+      `/usage/ledger${Number.isFinite(limit) ? `?limit=${Math.trunc(limit as number)}` : ''}`,
+      undefined,
+      20000,
+    ), }), [page])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [page])
   useEffect(() => { const onUnauthorized = () => enterLogin('管理会话已失效，请重新登录'); window.addEventListener('ofm:unauthorized', onUnauthorized); return () => window.removeEventListener('ofm:unauthorized', onUnauthorized) }, [])
   useEffect(() => { const token = new URLSearchParams(location.hash.slice(1)).get('login'); if (token) history.replaceState(null, '', location.pathname + location.search); void (async () => { try { if (token) await request('/session', { bootstrapToken: token }); await loadData() } catch (reason) { enterLogin((reason as any)?.status === 401 && !token ? '' : messageOf(reason)) } })() }, [])

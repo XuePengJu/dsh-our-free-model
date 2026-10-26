@@ -3,10 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { shared } from 'ofm-shared-client'
 import { ChannelBrowser } from './components/channel-browser'
 import { ConfirmDialog } from './components/ui'
-import { BarChart3, SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import 'ofm-shared-styles.css'
 
-const { EacAuth, useEacLogin, DICT, Tank, usePool, poolReading, capacityText, CHANNEL_PROVIDERS, LedgerPage, LogsPage } = shared
+const { EacAuth, useEacLogin, DICT, Tank, usePool, poolReading, capacityText, CHANNEL_PROVIDERS, LogsPage } = shared
 const h = React.createElement
 const t = key => DICT.zh[key] ?? key
 t.locale = 'zh'
@@ -134,16 +134,15 @@ function ChannelTools({ summary }) {
 
 function ChannelConsole({ summary }) {
   const [page, setPage] = React.useState('accounts')
-  // 请求日志已提升为顶层导航页（LogsMount），这里只剩渠道用量与供应商备份两个低频子页。
+  // 请求日志与用量均已提升为顶层页，这里只剩供应商与备份一个低频子页。
   const tools = [
-    { key: 'ledger', label: '渠道用量', icon: h(BarChart3, { size: 14 }), onSelect: () => setPage('ledger') },
     { key: 'tools', label: '供应商与备份', icon: h(SlidersHorizontal, { size: 14 }), onSelect: () => setPage('tools') },
   ]
   return h(React.Fragment, null,
     h('header', { className: 'dashboard-heading channels-heading' },
       h('div', null, h('div', { className: 'heading-eyebrow' }, 'WORKSPACE / CHANNELS'),
         h('h1', null, '账号池'), h('p', null, '连接你的账号，把各家的免费额度汇集到一个 API。')),
-      // 主视图即「登录与账号池」主从布局；用量 / 备份两个低频页入口平铺页头右侧
+      // 主视图即「登录与账号池」主从布局；供应商与备份这个低频页入口平铺页头右侧
       // （老板拍板：空间够就别折叠，一次点击直达，与其他页面头部按钮组同款）。
       // 进入后页头右侧提供「← 返回账号池」。
       page === 'accounts'
@@ -153,8 +152,7 @@ function ChannelConsole({ summary }) {
             onClick: () => setPage('accounts') }, '← 返回账号池')),
     page === 'accounts' ? h(ChannelBrowser, { rpc, summary })
       : h('div', { className: 'channels-subpage' },
-          page === 'ledger' ? h(LedgerPage, { t, ctx, summary })
-            : h(ChannelTools, { summary })))
+          h(ChannelTools, { summary })))
 }
 
 function EacPage({ summary }) {

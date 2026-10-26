@@ -33,6 +33,17 @@ function fail(statusCode, message) {
   return Object.assign(new Error(message), { statusCode })
 }
 
+/**
+ * 解析整型查询参数并钳到 `[min, max]`。
+ * 缺省 / 非数字 / 空串一律用 `fallback`；小数截断，不做四舍五入
+ * （limit 这类参数宁少勿多，防止一次拉爆 worker 的序列化预算）。
+ */
+function clampInt(raw, fallback, min, max) {
+  const value = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : Number.NaN
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, Math.trunc(value)))
+}
+
 // WorkBuddy 写入地址：允许管理页把「当前访问的域名/IP」作为接入地址写进 ~/.workbuddy/models.json。
 // 仅接受无路径、无查询的 http(s) 源地址（origin），其余一律回退服务端绑定地址。
 function resolveWorkbuddyBase(requested, fallback) {
@@ -305,6 +316,52 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       json(res, 200, summary())
     } else if (method === 'GET' && pathname === `${PREFIX}/stats`) {
       json(res, 200, buildStats(stores.stats.get(), runtime.catalog))
+    } else if (method === 'GET' && pathname === `${PREFIX}/usage/ledger`) {
+      // 渠道账本跑在 worker 线程里，只能经 channels.rpc 跨线程读；它比 /stats 慢得多
+      // （跨线程 + 逐条序列化），所以**不能**并进 app.tsx 的 loadData 整包 Promise.all ——
+      // 那会把「渠道 worker 挂了」放大成「整个统计页白屏」。前端有一条独立的钟（6s）。
+      //
+      // 两个 RPC 都是只读 + 幂等，用 Promise.all 并发，省一半往返；任一路失败整体 502。
+      if (!channels) throw fail(503, '渠道服务未连接，用量明细暂不可用')
+      const params = new URL(req.url, 'http://localhost').searchParams
+      // limit 缺省 500 = 内存账本全量窗口（TOKEN_LEDGER_LIMIT）：前端「今日 / 近 7 天」
+      // 要用 `entries` 按 UTC+8 日键重新聚合，窗口比 500 小就会把今天的数据切掉一截，
+      // 算出来的合计比 RPC 的树少。500 条明细只含摘要（全文不进内存账本），载荷可接受。
+      const limit = clampInt(params.get('limit'), 500, 1, 500)
+      const sinceDays = clampInt(params.get('sinceDays'), 90, 1, 90)
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      res.once('close', abort)
+      try {
+        const unwrap = async call => {
+          let envelope
+          try {
+            envelope = await channels.rpc(call, controller.signal)
+          } catch (error) {
+            // worker 已退出 / 序列化失败：统一成 502（上游不可用），不要漏成 500「管理操作失败」
+            throw fail(502, error?.message ?? '用量明细读取失败')
+          }
+          // 信封是 {ok, value} / {ok:false, error:{code,message}}；这一层必须解掉，
+          // 让前端拿到扁平结构（高频轮询不值得每次再剥一层）。
+          if (envelope?.ok !== true) throw fail(502, envelope?.error?.message ?? '用量明细读取失败')
+          return envelope.value
+        }
+        const [ledger, history] = await Promise.all([
+          unwrap({ method: 'usage.tokenLedger', payload: { limit } }),
+          unwrap({ method: 'usage.tokenLedgerHistory', payload: { sinceDays } }),
+        ])
+        // 客户端已经断开（切页/关标签）时不要再写响应：res 的 writeHead 会抛 ERR_STREAM_DESTROYED。
+        if (!controller.signal.aborted && !res.destroyed) {
+          json(res, 200, {
+            snapshot: ledger?.snapshot ?? { channels: [], totals: {}, entries: [] },
+            history: Array.isArray(history?.history) ? history.history : [],
+            historyTotals: history?.totals ?? {},
+            // 前端拿它当「现在」：档位过滤、桶对齐都以服务端时刻为基准，
+            // 避免本机时钟偏移把「今日」算到别人的日期上。
+            generatedAt: Date.now(),
+          })
+        }
+      } finally { res.removeListener('close', abort) }
     } else if (method === 'POST' && pathname === `${PREFIX}/channels/rpc` && channels) {
       // 渠道备份导入包含多账号凭据，仍限制总大小，但不能套设置表单的 16KB。
       const body = await readBody(req, 8 * 1024 * 1024)

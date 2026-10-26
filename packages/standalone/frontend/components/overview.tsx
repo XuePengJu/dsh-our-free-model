@@ -1,14 +1,64 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ArrowRight, Boxes, Check, CircleCheck, Copy, KeyRound, Layers3, MoreHorizontal, Network, RefreshCw, RotateCcw, Terminal, Zap } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, DropdownMenu } from './ui'
 import { resolveEndpointBase } from '../endpoint-origin'
 import { loadSavedModelId, resolveDefaultModelId, saveClientModelId } from '../client-config'
 import { useAutoRefreshSpin } from '../use-auto-refresh-spin'
+import { createEntranceTracker, prefersReducedMotionNow, useEntranceDiff, useNumberTween } from '../use-raf-tween'
 import '../usage.css'
 import type { Host, Snapshot } from '../types'
 
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const compact = (value: number) => value >= 1e6 ? `${(value / 1e6).toFixed(1)}M` : value >= 1e3 ? `${(value / 1e3).toFixed(1)}K` : number(value)
+
+/**
+ * 「见过哪些失败行」的记忆必须跨挂载存活 —— 从概览切到用量页再切回来时，
+ * 列表 DOM 全新建出来，组件内的 ref 早就没了，用模块级单例才能不重放。
+ */
+const failureEntrance = createEntranceTracker(200)
+
+/**
+ * 柱子首挂载从 0 长上来。
+ *
+ * 返回 `false` 时调用方给 `height: 0`，返回 `true` 后给真实高度，
+ * 中间那一下由 CSS 的 `transition: height` 补出来（概览页 7 天柱两条都走 height 过渡，
+ * **不用** `scaleY`：柱顶有圆角，`scaleY` 会把圆角压成椭圆）。
+ *
+ * 为什么要**两次** rAF：单次 rAF 里 `setState` 会被 React 在同一帧提交完，
+ * 浏览器一次 `height: 0` 都没画出来，过渡自然无从谈起。第一次 rAF 落在「0 已经上屏」
+ * 之后，第二次才切真实值。
+ *
+ * `prefers-reduced-motion` 下直接返回已长好，不做过渡。
+ */
+function useBarsGrown(): boolean {
+  const [grown, setGrown] = useState(false)
+  useEffect(() => {
+    if (prefersReducedMotionNow()) { setGrown(true); return }
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setGrown(true))
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      if (inner) cancelAnimationFrame(inner)
+    }
+  }, [])
+  return grown
+}
+
+/**
+ * 「累计 Token」指标的主数字：走 `useNumberTween`（ref + 直写 textContent，不 setState）。
+ *
+ * 单独拆一个子组件而不是把 hook 挂在 `Overview` 上，是因为 `Overview` 每 5 秒会因
+ * 轮询重渲染；hook 挂在子组件里，补间状态就只跟这一个数字绑定。
+ * 首屏先把终值画出来（无 JS / 冻结时也是对的），挂载后再从 0 补到终值 ——
+ * 与用量页 KPI 卡（`usage-kpis.tsx` 的 `KpiValue`）同一套行为。
+ */
+function MetricNumber({ value }: { value: number }) {
+  const ref = useRef<HTMLElement>(null)
+  useNumberTween(ref, value, { from: 0, format: compact })
+  return <strong ref={ref}>{compact(value)}</strong>
+}
 
 export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   const [refreshing, setRefreshing] = useState(false)
@@ -21,10 +71,15 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   const [modelId, setModelId] = useState(() => resolveDefaultModelId(summary.catalog, loadSavedModelId()))
   const routableModels = summary.catalog.filter(model => model.routable)
 
-  const metricRows = [
+  /**
+   * 4 张指标卡。只给「累计 Token」留 `numeric`（老板只批了这一张做补间）；
+   * 其余三张仍渲染预格式化的 `value` 字符串，行为与改动前完全一致。
+   */
+  const metricRows: Array<{ name: string; value?: string; numeric?: number; icon: typeof Boxes; detail: string }> = [
     { name: '可接入模型', value: number(summary.catalog.filter(model => model.routable).length), icon: Boxes, detail: '当前公开的模型清单' },
     { name: '用户回合', value: number(stats.turns), icon: Layers3, detail: `${number(stats.requests)} 次物理请求` },
-    { name: '累计 Token', value: compact(stats.grand.input + stats.grand.output), icon: Zap, detail: `输入 ${compact(stats.grand.input)} · 输出 ${compact(stats.grand.output)}` },
+    // `value` 是给人看的 `1,713.3M`，补间需要裸数字，所以再留一份 `numeric`。
+    { name: '累计 Token', numeric: stats.grand.input + stats.grand.output, icon: Zap, detail: `输入 ${compact(stats.grand.input)} · 输出 ${compact(stats.grand.output)}` },
     { name: '已恢复回合', value: number(stats.recoveredTurns), icon: Activity, detail: `最终未完成 ${number(stats.failedTurns)} 回合` },
   ]
   const today = new Date()
@@ -35,7 +90,17 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   })
   const total = days.reduce((sum, row) => sum + row.value, 0)
   const max = Math.max(1, ...days.map(row => row.value))
-  const failures = [...stats.samples].reverse().filter(row => row.ok === false).slice(0, 4)
+  // 7 天柱的入场：首帧 0 高度，双 rAF 后交给 CSS 的 height 过渡长到真实高度。
+  const barsGrown = useBarsGrown()
+  // `useMemo` 不是为了省算力，是为了**身份稳定**：`[...x].reverse().filter()` 每次渲染
+  // 都是新数组，差分入场会被当成「一批全新的行」，行就每次渲染都重播。
+  const failures = useMemo(
+    () => [...stats.samples].reverse().filter(row => row.ok === false).slice(0, 4),
+    [stats.samples],
+  )
+  // 失败行 key：`${at}:${model}`。原来用 `${at}-${index}`，index 会随列表长度漂移，
+  // 同一条失败请求换个下标就被当成新行 → 差分失效。
+  const freshFailures = useEntranceDiff(failures, row => `${row.at}:${row.model ?? ''}`, failureEntrance)
   const sources = [
     { name: '匿名与 Kilo', sub: '无需账号的免费模型', icon: Zap, count: summary.catalog.filter(row => row.channel === 'anonymous' || row.channel === 'kilo').length, page: 'models' as const },
     { name: '账号池', sub: '13 个供应商，独立账号池', icon: Network, count: summary.catalog.filter(row => !['anonymous', 'kilo', 'eac'].includes(row.channel)).length, page: 'channels' as const },
@@ -103,7 +168,8 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
           <div className="ov-spark-head"><span>最近 7 天用量</span><strong>{compact(total)} <small>Token</small></strong></div>
           <div className="ov-spark-bars">
             {days.map(day => <div className="ov-spark-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
-              <div className={`ov-spark-bar ${day.value === 0 ? 'zero' : ''}`} style={{ height: `${Math.max(4, day.value / max * 100)}%` }} />
+              <div className={`ov-spark-bar ${day.value === 0 ? 'zero' : ''}`}
+                style={{ height: barsGrown ? `${Math.max(4, day.value / max * 100)}%` : '0%' }} />
               <span>{day.id.slice(5).replace('-', '/')}</span>
             </div>)}
           </div>
@@ -155,7 +221,8 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
     {/* ===== 指标 ===== */}
     <div className="dashboard-metrics">{metricRows.map(metric => <Card className="dashboard-metric ov-metric" key={metric.name}>
       <div><span>{metric.name}</span><div className="ov-metric-icon"><metric.icon size={17} /></div></div>
-      <strong>{metric.value}</strong><p>{metric.detail}</p>
+      {metric.numeric === undefined ? <strong>{metric.value}</strong> : <MetricNumber value={metric.numeric} />}
+      <p>{metric.detail}</p>
     </Card>)}</div>
 
     {/* ===== 主区：Token 用量 + 运行检查 ===== */}
@@ -168,7 +235,8 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
         <div className="dashboard-chart ov-chart" role="img" aria-label={`最近七天 Token 用量：${days.map(day => `${day.id} ${day.value}`).join('；')}`}>
           <div className="chart-grid-lines"><span /><span /><span /><span /></div>
           {days.map(day => <div className="dashboard-chart-column ov-chart-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
-            <div className={`dashboard-chart-bar ${day.value === 0 ? 'zero' : ''}`} style={{ height: `${Math.max(2, day.value / max * 80)}%` }} />
+            <div className={`dashboard-chart-bar ${day.value === 0 ? 'zero' : ''}`}
+              style={{ height: barsGrown ? `${Math.max(2, day.value / max * 80)}%` : '0%' }} />
             <span>{day.id.slice(5).replace('-', '/')}</span>
           </div>)}
           {total === 0 && <div className="chart-empty ov-chart-empty"><Activity size={22} /><span>还没有调用记录</span><small>接入客户端后，用量会显示在这里</small></div>}
@@ -184,8 +252,9 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
           </div></div>
         <div className="runtime-check"><CircleCheck size={17} /><span>渠道模块</span><strong>{summary.channels.state === 'ready' ? '已就绪' : summary.channels.state === 'failed' ? '加载失败' : '初始化中'}</strong></div>
         <div className="runtime-check"><RefreshCw size={17} /><span>模型自动刷新</span><strong>{summary.automaticRefresh ? `每 ${summary.settings.probeIntervalMinutes} 分钟` : '已暂停'}</strong></div>
-        {failures.length ? <div className="failure-list ov-failure-list">{failures.map((row, index) =>
-          <div key={`${row.at}-${index}`} className="ov-failure-row">
+        {failures.length ? <div className="failure-list ov-failure-list">{failures.map(row =>
+          <div key={`${row.at}:${row.model ?? ''}`}
+            className={`ov-failure-row${freshFailures.has(`${row.at}:${row.model ?? ''}`) ? ' is-new' : ''}`}>
             <span>{row.model ?? '未知模型'}</span>
             <small>{row.at ? new Date(row.at).toLocaleTimeString('zh-CN') : '时间未知'} · 请求未完成</small>
           </div>)}</div>
