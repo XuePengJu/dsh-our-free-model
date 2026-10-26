@@ -1726,3 +1726,53 @@
 @media (prefers-reduced-motion: reduce) {
   .usage-pagination .ui-button { transition: none !important; }
 }
+
+/* ============================================================================
+   概览页动效增量（批次 3）
+   ----------------------------------------------------------------------------
+   三条都是「数据每 5 秒变一次」的区块，目的是把跳变改成过渡，不是加装饰。
+   刻意用 `height` 过渡而不是 `transform: scaleY`：柱顶有圆角，
+   scaleY 会把圆角压成椭圆（2026-10-26 拍板改口）。
+   选择器全部限定到 `.ov-chart` / `.ov-spark-bars`，**不动** `.dashboard-chart-bar`
+   的全局规则 —— 用量页趋势图（`.usage-day-bar`）仍在用 `us-grow-y`。
+   ============================================================================ */
+
+/* ---- 1. 7 天柱：高度过渡（数据更新不再跳变，入场也走这条） ---- */
+.ov-chart .dashboard-chart-bar {
+  transition: height 0.45s var(--ease-out-expo);
+}
+
+/* 入场交给上面那条 height 过渡（首帧 0 → 真实高度）。
+   原有的 us-grow-y 是 scaleY，会把圆角压扁，对概览柱关掉；
+   它仍服务于用量页的 .usage-day-bar，别去动那条规则。 */
+.ov-chart .dashboard-chart-bar:not(.zero) {
+  animation: none;
+}
+
+/* ---- 2. Hero 里那条迷你 7 天柱：同上（app.css 已有同值 transition，
+        这里用更具体的选择器把归属收到概览页，避免别人改全局值时误伤） ---- */
+.ov-spark-bars .ov-spark-bar {
+  transition: height 0.45s var(--ease-out-expo);
+}
+
+/* ---- 3. 失败请求行：只对新出现的行播一次淡入 ----
+        只动 opacity，不碰 transform —— 这一行有 `:hover { transform: translateX(2px) }`，
+        动画若带 `both` 填充会把 hover 位移永久压掉。
+        不加 fill：播完立刻回到元素自身样式，hover 照常。 */
+.ov-failure-row.is-new {
+  animation: ov-failure-in 0.42s var(--us-ease-out, ease-out);
+}
+
+@keyframes ov-failure-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- 减少动画：直接给终值，不加过渡也不播动画 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .ov-spark-bars .ov-spark-bar,
+  .ov-failure-row.is-new {
+    transition: none !important;
+    animation: none !important;
+  }
+}

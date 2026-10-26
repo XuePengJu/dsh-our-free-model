@@ -7,6 +7,7 @@ import { commitsAnswer } from '../../src/adapter.js'
 import { buildComboCatalog, comboChain, COMBO_PREFIX, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { publicModelRows as snapshotModelRows } from '../../src/core/completion.js'
 import { recordTurn } from '../../src/store.js'
+import { recordAttempt } from '../../src/core/attempts.js'
 import { createModelRuntime, createRuntimeStores } from '../../src/core/runtime.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from '../../src/forward.js'
 import { isLoopbackHost } from '../../src/trust.js'
@@ -271,10 +272,42 @@ export async function startStandalone({
     const completeCombo = async (entry, request, onChunk) => {
       // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
       // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
+      const started = Date.now()
+      // 降级尝试环：只记「试过谁、为什么换掉、花了多久」。core 侧的 runCombo 有同名
+      // 的一笔（src/adapter.js），两条推理路径共写同一个 stats store。注意不记速度——
+      // tps/ttft 只存在于单模型的解码窗口内，这里拿不到，编造出来的数字比没有更糟。
+      const note = (candidate, index, outcome, reason) => {
+        try {
+          recordAttempt(stores.stats, {
+            // turnAt = 本回合起点，同一回合每一行都相同（前端靠它分组）。
+            turnAt: started,
+            at: Date.now(), chainId: entry.id, chainName: entry.name, index,
+            candidateId: candidate.id, outcome, reason, elapsedMs: Date.now() - started,
+          }, message => logger.warn?.(message))
+        } catch { /* 记录失败不影响推理 */ }
+      }
+      /**
+       * 失败回合也要进 /stats：此前 forward 路径只在命中时记回合，链全灭/被中止的
+       * 回合只进走查环、不进周期数字——「降级接管」KPI 与候选链对不上，正是从
+       * 这里漏的。attempts 与 core 侧 rejectedTurn 同口径（走到第几个候选，1 起）。
+       */
+      const rejectTurn = attempts => {
+        try {
+          recordTurn(stores.stats, { at: started, model: entry.id, ok: false, recovered: false, attempts, origin: 'forward' })
+        } catch { /* 统计失败不影响推理 */ }
+      }
       const candidates = comboChain(entry, realRows())
+      if (candidates.length === 0) {
+        rejectTurn(0)
+        return { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
+      }
       let last
       for (const [index, candidate] of candidates.entries()) {
-        if (request.signal?.aborted) break
+        if (request.signal?.aborted) {
+          note(candidate, index, 'aborted', 'aborted')
+          rejectTurn(index)
+          return last ?? { text: '', toolCalls: [], error: 'aborted' }
+        }
         let committed = false
         const held = []
         const sink = chunk => {
@@ -287,20 +320,107 @@ export async function startStandalone({
           }
         }
         try {
+          // __ofmComboMember：成员是组合内部的物理尝试，不各自记「用户回合」。
+          // 回合由本函数按 outcome 统一记一笔（命中记 ok、全灭记 rejectTurn）；
+          // token/用量仍走成员自己的 complete 如实记。
           last = channels.handles(candidate.id)
-            ? await channels.complete({ ...request, model: candidate.id }, onChunk === undefined ? undefined : sink)
-            : await core.complete({ ...request, model: candidate.id }, onChunk === undefined ? undefined : sink)
+            ? await channels.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
+            : await core.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
         } catch (error) {
           last = { text: '', toolCalls: [], error: error?.message ?? String(error) }
         }
         if (committed) {
+          note(candidate, index, 'hit', '')
           try {
-            recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, origin: 'forward' })
+            recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, attempts: index + 1, origin: 'forward' })
           } catch { /* 统计失败不影响推理 */ }
           return last
         }
+        // 非流式：整包返回，没有逐块提交可判。与 commitsAnswer 等价的整包规则
+        // 是「无 error 且带非空正文或工具调用」——调用方真的拿到了答案。
+        //
+        // 首版在这里没有早停：没有 onChunk 就没有 sink，`committed` 永远不置位，
+        // 循环会把每个成员都跑一遍并返回最后一个的结果——前位候选明明答了、
+        // 后位候选却失败时，调用方拿到的居然是失败。本次修掉：答了即停，
+        // 与流式/核心 runCombo 的提交语义对齐。
+        if (onChunk === undefined) {
+          const answered = last?.error === undefined
+            && (String(last?.text ?? '').trim() !== '' || (Array.isArray(last?.toolCalls) && last.toolCalls.length > 0))
+          if (answered) {
+            note(candidate, index, 'hit', '')
+            try {
+              recordTurn(stores.stats, { at: started, model: entry.id, ok: true, recovered: index > 0, attempts: index + 1, origin: 'forward' })
+            } catch { /* 统计失败不影响推理 */ }
+            return last
+          }
+        }
+        // 流式未提交，或非流式没有给出答案：这个候选被整条丢弃，换下一个。
+        note(candidate, index, 'skipped', last?.error ?? 'failed')
       }
-      return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
+      rejectTurn(candidates.length)
+      return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" exhausted every candidate` }
+    }
+    // 组合（combo）模型的手工实测。
+    //
+    // 组合行是 service 层用 comboRows() 现算的虚拟行，既不被 channels.handles 认领
+    // （渠道 Worker 只认 provider/model），也不在 core.testModel 的 core.catalog 里
+    // （核心目录只认识免费/Kilo/EAC/聚合车道）。此前 combo 点「测试」两头落空，
+    // 一律掉进 core.testModel 抛 `Unknown model`——页面能列出来、能推理（complete
+    // 有 comboRows 分流），偏偏测不了。这里补上同一道分流：走 completeCombo 真实
+    // 发一次探测请求（链首可用候选起步、按顺序降级），把整条链当成一个可测单元。
+    //
+    // 判定与持久化仍走上游那一套：成功/失败都写 manualResults（与自动探测分开
+    // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
+    const latestComboTests = new Map()
+    const testComboRow = async (entry, id, effort, options = {}) => {
+      const { signal } = options
+      const token = {}
+      latestComboTests.set(id, token)
+      const persist = row => {
+        if (stopped || signal?.aborted || latestComboTests.get(id) !== token) return false
+        stores.availability.edit(value => ({ ...value, manualResults: { ...value.manualResults, [id]: row } }))
+        stores.availability.flush()
+        return !stores.availability.writeFailed
+      }
+      const started = Date.now()
+      try {
+        // 与 testChannelModel 同一套探测口径：system 前置 + 最小 user 消息，满足
+        // 腾讯系网关「首条必须是 system」的约束；completeCombo 沿链降级直到有人
+        // 真正回话，整条链的可用性由最终是否有正文判定。
+        const outcome = await completeCombo(entry, {
+          model: id, signal,
+          openAi: {
+            messages: [
+              { role: 'system', content: 'You are a connectivity test endpoint. Reply briefly with the requested word.' },
+              { role: 'user', content: 'Reply with exactly: OK' },
+            ],
+            max_tokens: 32,
+          },
+        })
+        const failure = outcome?.error
+        if (failure !== undefined && failure !== null && String(failure).trim() !== '') {
+          throw Object.assign(new Error(String(failure)), { channelVerdict: true })
+        }
+        const text = typeof outcome?.text === 'string' ? outcome.text : ''
+        if (text.trim() === '') throw Object.assign(new Error('实测没有返回任何正文'), { channelVerdict: true })
+        const elapsed = Date.now() - started
+        const persisted = persist({
+          state: 'available', source: 'manual', at: Date.now(),
+          latencyMs: elapsed, ttftMs: elapsed,
+        })
+        return { model: id, effort, ok: true, latencyMs: elapsed, ttftMs: elapsed, text: text.slice(0, 2000), sample: text.slice(0, 60), persisted }
+      } catch (error) {
+        if (!signal?.aborted) {
+          const verdict = classifyChannelFailure(error, started)
+          persist({
+            state: verdict.state, source: 'manual', at: Date.now(),
+            detail: verdict.detail, latencyMs: verdict.latencyMs,
+          })
+        }
+        throw error
+      } finally {
+        if (latestComboTests.get(id) === token) latestComboTests.delete(id)
+      }
     }
     // 渠道模型的手工实测。
     //
@@ -313,6 +433,12 @@ export async function startStandalone({
     // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
     const latestChannelTests = new Map()
     const testChannelRow = async (id, effort, options = {}) => {
+      if (id.startsWith(COMBO_PREFIX)) {
+        const entry = comboRows().find(row => row.id === id)
+        // 找不到组合行：这条链刚被删光或成员全部失效，交给 core 如实报 404。
+        if (entry === undefined) return core.testModel(id, effort, options)
+        return testComboRow(entry, id, effort, options)
+      }
       if (!channels.handles(id)) return core.testModel(id, effort, options)
       const { signal } = options
       const token = {}

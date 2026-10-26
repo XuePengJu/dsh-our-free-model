@@ -4,7 +4,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Sidebar, Topbar } from './components/shell'
 import { Overview } from './components/overview'
-import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
+import type { Combo, ComboDraft, Host, Page, ProbeProgress, ServiceSettings, Snapshot, UsageAttemptsResponse, UsageLedgerResponse, WorkbuddyBackup, WorkbuddySyncResult, WorkbuddyWriteResult } from './types'
 import './app.css'
 
 const API = '/api/management'
@@ -93,11 +93,28 @@ function App() {
     syncCombosToWorkbuddy: async (baseUrl?: string, target?: 'ai') => await request<WorkbuddySyncResult>('/combos/export-workbuddy', { ...(baseUrl ? { baseUrl } : {}), ...(target ? { target } : {}) }, 30000),
     writeModelToWorkbuddy: async (id: string, baseUrl?: string, target?: 'ai') => await request<WorkbuddyWriteResult>('/models/export-workbuddy', { id, ...(baseUrl ? { baseUrl } : {}), ...(target ? { target } : {}) }, 30000),
     listWorkbuddyBackups: async () => (await request<{ backups: WorkbuddyBackup[] }>('/workbuddy/backups', undefined, 15000)).backups,
-    restoreWorkbuddyBackup: async (file: string) => await request<{ restored: boolean; total: number; at: number }>('/workbuddy/backups/restore', { file }, 30000), }), [page])
+    restoreWorkbuddyBackup: async (file: string) => await request<{ restored: boolean; total: number; at: number }>('/workbuddy/backups/restore', { file }, 30000),
+    // 渠道账本：**刻意不进 `loadData()` 的 `Promise.all`**。
+    // 它要跨到 worker 线程走两个 RPC（`usage.tokenLedger` + `usage.tokenLedgerHistory`），
+    // 是这一页最慢的一次往返；并进整包会让「渠道 worker 挂死」升级成
+    // 「整张统计页白屏 + 5 秒一轮的 10 秒超时堆积」。账本自带独立时钟
+    // （`usage.tsx` 内 6 秒），失败只降级明细表与实时流两块。
+    // 超时给到 20 秒：默认的 10 秒对「账本刚满 500 条 + 冷启动 worker」偏紧。
+    usageLedger: async (limit?: number) => await request<UsageLedgerResponse>(
+      `/usage/ledger${Number.isFinite(limit) ? `?limit=${Math.trunc(limit as number)}` : ''}`,
+      undefined,
+      20000,
+    ),
+    // 降级尝试环：只读本地 store，不碰渠道 worker，所以用默认超时即可。
+    usageAttempts: async (limit?: number) => await request<UsageAttemptsResponse>(
+      `/usage/attempts${Number.isFinite(limit) ? `?limit=${Math.trunc(limit as number)}` : ''}`,
+    ), }), [page])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [page])
   useEffect(() => { const onUnauthorized = () => enterLogin('管理会话已失效，请重新登录'); window.addEventListener('ofm:unauthorized', onUnauthorized); return () => window.removeEventListener('ofm:unauthorized', onUnauthorized) }, [])
   useEffect(() => { const token = new URLSearchParams(location.hash.slice(1)).get('login'); if (token) history.replaceState(null, '', location.pathname + location.search); void (async () => { try { if (token) await request('/session', { bootstrapToken: token }); await loadData() } catch (reason) { enterLogin((reason as any)?.status === 401 && !token ? '' : messageOf(reason)) } })() }, [])
-  useEffect(() => { if (mode !== 'ready') return; const timer = window.setInterval(() => { if (!document.hidden) void loadData().catch(reason => setError(messageOf(reason))) }, 5000); return () => window.clearInterval(timer) }, [mode])
+  // 全局 /stats 快照钟：2 秒一轮（定 1–2 秒档）。本机回环 + 小 JSON，开销可忽略；
+  // 隐藏标签页不发请求，切回前台下一拍自动补。与用量页账本钟（相位 1s）错开。
+  useEffect(() => { if (mode !== 'ready') return; const timer = window.setInterval(() => { if (!document.hidden) void loadData().catch(reason => setError(messageOf(reason))) }, 2000); return () => window.clearInterval(timer) }, [mode])
   const content: ReactNode = snapshot && page === 'overview' ? <Overview {...snapshot} host={host} /> : snapshot && page === 'channels' ? <ChannelMount key={page} summary={{ ...snapshot.summary, reload: () => { void loadData() } }} /> : snapshot && page === 'logs' ? <LogsMount /> : null
   if (mode === 'loading') return <LoadingScreen />
   if (mode === 'login') return <LoginScreen request={async (...args) => { const result = await request(...args); if (args[0] === '/session') await loadData(); return result }} auto={!loggedOut.current} />

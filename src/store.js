@@ -288,6 +288,9 @@ export const STATS_INITIAL = {
   requests: 0,
   failedRequests: 0,
   samples: [],
+  /** 降级尝试环（见 src/core/attempts.js）：链上每个候选一行，最多 200 条。
+   *  旧文件没有这个字段——读取侧一律按 `Array.isArray` 兜底成 `[]`。 */
+  attempts: [],
   logical: { turns: 0, failed: 0, recovered: 0, models: {} },
   /** 日级回合统计上线日（`YYYY-MM-DD`）。全新安装为 ''（自始完整）；旧数据
    *  迁移时置为迁移当日。此前的日/周/月档没有回合记录，前端据此显示 `—`。 */
@@ -448,6 +451,13 @@ export function recordTurn(stats, record) {
     const day = dayKey(at)
     const failed = record.ok === true ? 0 : 1
     const recovered = record.recovered === true ? 1 : 0
+    // 候选跳过数：`attempts` 是「走到第几个候选」（1 起），所以走了 3 个候选
+    // 就有 2 个被跳过。它和「断流恢复」是两个不同口径，分开计、不可相加：
+    // 前者是链路换了下一条，后者是单个模型中断后由恢复预算接上。
+    //
+    // 老日桶没有这个字段 —— `?? 0` 读作「历史未记录」，这是事实，不是缺口；
+    // 不回填、也不动 STATS_VERSION：凭空给历史数据补一个 0 之外的数字才是编造。
+    const skipped = Number.isSafeInteger(record.attempts) && record.attempts > 1 ? record.attempts - 1 : 0
 
     // —— logical（lifetime，逻辑不变）——
     const previous = state.logical ?? {}
@@ -474,6 +484,7 @@ export function recordTurn(stats, record) {
       turns: (bucket.turns ?? 0) + 1,
       failedTurns: (bucket.failedTurns ?? 0) + failed,
       recoveredTurns: (bucket.recoveredTurns ?? 0) + recovered,
+      skippedCandidates: (bucket.skippedCandidates ?? 0) + skipped,
       modelsTurns: turnModels,
     }
 
@@ -485,6 +496,7 @@ export function recordTurn(stats, record) {
         turns: (previous.turns ?? 0) + 1,
         failed: (previous.failed ?? 0) + failed,
         recovered: (previous.recovered ?? 0) + recovered,
+        skippedCandidates: (previous.skippedCandidates ?? 0) + skipped,
         models: logicalModels,
       },
     }

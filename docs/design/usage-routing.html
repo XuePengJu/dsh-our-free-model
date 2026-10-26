@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>用量与路由 · 融合看板</title>
+<style>
+/* ============ 设计令牌：双主题 ============ */
+:root{
+  --r-lg:18px; --r-md:12px; --r-sm:9px;
+  --ease-out:cubic-bezier(.22,.61,.36,1);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",ui-sans-serif,sans-serif;
+}
+[data-theme="dark"]{
+  --bg:#080b11; --bg-2:#0b0f16; --panel:#11161f; --panel-2:#151b26; --panel-3:#1a2130;
+  --line:rgba(255,255,255,.065); --line-2:rgba(255,255,255,.11); --line-3:rgba(255,255,255,.16);
+  --text:#e9eef8; --text-2:#9aa7bd; --text-3:#66738a; --text-4:#48536a;
+  --accent:#7c8dff; --accent-soft:rgba(124,141,255,.14);
+  --ok:#3ec9a0; --ok-soft:rgba(62,201,160,.13);
+  --warn:#f0b45e; --warn-soft:rgba(240,180,94,.13);
+  --bad:#e0656f; --bad-soft:rgba(224,101,111,.13);
+  --card-shine:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0) 42%);
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 18px 46px -22px rgba(0,0,0,.9);
+  --hub-bg:linear-gradient(180deg,#1b2231,#131924);
+  --grid-line:rgba(255,255,255,.055);
+}
+[data-theme="light"]{
+  --bg:#f3f4f6; --bg-2:#ffffff; --panel:#ffffff; --panel-2:#fafbfc; --panel-3:#f2f3f6;
+  --line:rgba(15,20,32,.085); --line-2:rgba(15,20,32,.14); --line-3:rgba(15,20,32,.22);
+  --text:#12161f; --text-2:#5a6474; --text-3:#8a93a3; --text-4:#a8b0bd;
+  --accent:#5468f5; --accent-soft:rgba(84,104,245,.09);
+  --ok:#12a37a; --ok-soft:rgba(18,163,122,.1);
+  --warn:#b5771b; --warn-soft:rgba(196,132,32,.11);
+  --bad:#cf444f; --bad-soft:rgba(207,68,79,.09);
+  --card-shine:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,0) 40%);
+  --shadow:0 1px 2px rgba(15,20,32,.04),0 12px 30px -18px rgba(15,20,32,.22);
+  --hub-bg:linear-gradient(180deg,#ffffff,#f7f8fa);
+  --grid-line:rgba(15,20,32,.07);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--sans);
+  font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  transition:background .3s var(--ease-out),color .3s var(--ease-out);
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* ============ 骨架 ============ */
+.app{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:100vh}
+
+/* 侧边栏 */
+.sb{border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:4px;
+  background:var(--bg-2);position:sticky;top:0;height:100vh}
+.sb .brand{display:flex;align-items:center;gap:9px;padding:6px 8px 18px}
+.sb .brand .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(140deg,var(--accent),#5f6fd8);
+  display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;box-shadow:0 4px 12px -4px var(--accent)}
+.sb .brand b{font-size:13px;letter-spacing:.2px}
+.sb .brand span{display:block;font-size:10px;color:var(--text-3);font-weight:500;letter-spacing:.3px}
+.sb .grp{font-size:10px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--text-4);
+  padding:14px 9px 6px}
+.sb a{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;text-decoration:none;
+  color:var(--text-2);font-size:12.5px;position:relative;transition:background .15s,color .15s}
+.sb a:hover{background:var(--panel-2);color:var(--text)}
+.sb a.on{background:var(--accent-soft);color:var(--text);font-weight:600}
+.sb a.on::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);
+  width:2px;height:15px;border-radius:0 2px 2px 0;background:var(--accent)}
+.sb a .ic{width:15px;height:15px;flex:none;opacity:.85}
+.sb a .tag{margin-left:auto;font-size:9.5px;font-weight:600;padding:1px 5px;border-radius:5px;
+  background:var(--panel-3);color:var(--text-3);letter-spacing:.2px}
+.sb a.on .tag{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--text-2)}
+.sb .foot{margin-top:auto;border-top:1px solid var(--line);padding:12px 9px 4px;display:flex;align-items:center;gap:8px}
+.sb .foot .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;
+  box-shadow:0 0 0 0 var(--ok-soft);animation:breathe 2.4s var(--ease-out) infinite}
+.sb .foot .st b{display:block;font-size:11px;font-weight:600;color:var(--text-2)}
+.sb .foot .st span{font-size:10px;color:var(--text-4)}
+
+/* 主区 */
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{height:52px;display:flex;align-items:center;gap:12px;padding:0 26px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px)}
+.crumb{font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:7px}
+.crumb b{color:var(--text);font-weight:600}
+.topbar .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--panel);font-size:11.5px;font-weight:600;color:var(--text-2);
+  transition:border-color .2s,background .2s}
+.pill .live{width:6px;height:6px;border-radius:50%;background:var(--ok);position:relative;flex:none}
+.pill .live::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1px solid var(--ok);
+  opacity:0;animation:ripple 1.9s var(--ease-out) infinite}
+.pill .sep{width:1px;height:11px;background:var(--line-2);margin:0 1px}
+.pill .t{color:var(--text-3);font-weight:500;font-variant-numeric:tabular-nums}
+.pill.paused .live{background:var(--warn)}
+.pill.paused .live::after{animation:none}
+.iconbtn{width:28px;height:28px;border-radius:8px;border:1px solid var(--line-2);background:var(--panel);
+  display:grid;place-items:center;color:var(--text-2);transition:.16s}
+.iconbtn:hover{color:var(--text);border-color:var(--line-3);background:var(--panel-2)}
+.page{padding:22px 26px 56px;max-width:1420px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* ============ 1. 路由实况 hero ============ */
+.hero{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  box-shadow:var(--shadow);position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;background:var(--card-shine);pointer-events:none}
+
+.hero-head{display:flex;align-items:flex-start;gap:16px;padding:18px 20px 0;position:relative}
+.hero-title{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;letter-spacing:.2px}
+.hero-title .tagline{font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--text-4)}
+.hero-desc{margin:7px 0 0;font-size:12px;color:var(--text-2);line-height:1.62;max-width:760px}
+.hero-desc b{color:var(--text);font-weight:600}
+.hero-head .acts{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
+.seg{display:inline-flex;padding:2px;border-radius:8px;background:var(--panel-3);border:1px solid var(--line)}
+.seg button{padding:4px 9px;border-radius:6px;font-size:11px;font-weight:600;color:var(--text-3);transition:.15s}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.ghost{height:26px;padding:0 9px;border-radius:7px;border:1px solid var(--line-2);font-size:11px;
+  font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:5px;transition:.15s}
+.ghost:hover{color:var(--text);border-color:var(--line-3);background:var(--panel-2)}
+
+/* 路由三栏 */
+.route{position:relative;display:grid;grid-template-columns:180px 126px minmax(0,1fr);
+  column-gap:52px;row-gap:0;padding:16px 20px 14px;align-items:center}
+.wires{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:visible}
+.wire{fill:none;stroke-width:1.5;opacity:.42;stroke-dasharray:5 6;transition:opacity .3s,stroke-width .3s}
+.wire.on{opacity:1;stroke-width:2.1;animation:wireflow 1.1s linear infinite;
+  filter:drop-shadow(0 0 3px currentColor)}
+.wire.dim{opacity:.16}
+@keyframes wireflow{to{stroke-dashoffset:-18}}
+
+.src-col{display:flex;flex-direction:column;gap:9px;position:relative;z-index:2}
+.src-card{border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel-2);
+  padding:9px 11px;position:relative;transition:border-color .25s,background .25s,transform .25s}
+.src-card .nm{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;letter-spacing:.1px}
+.src-card .nm .pt{width:6px;height:6px;border-radius:50%;flex:none}
+.src-card .sub{font-size:10.5px;color:var(--text-3);margin-top:3px;font-family:var(--mono);letter-spacing:-.1px}
+.src-card .badge{position:absolute;top:-7px;right:8px;font-size:9px;font-weight:700;letter-spacing:.3px;
+  padding:1px 6px;border-radius:5px;background:var(--panel-3);border:1px solid var(--line-2);color:var(--text-3);
+  opacity:0;transform:translateY(2px);transition:.25s}
+.src-card.active{border-color:color-mix(in srgb,var(--accent) 55%,transparent);
+  background:color-mix(in srgb,var(--accent) 7%,var(--panel-2));transform:translateX(2px)}
+.src-card.active .badge{opacity:1;transform:none;background:var(--accent-soft);
+  border-color:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--text)}
+
+.hub-col{display:grid;place-items:center;position:relative;z-index:2}
+.hub{width:126px;border:1.5px solid var(--line-3);border-radius:14px;background:var(--hub-bg);
+  padding:11px 10px;text-align:center;box-shadow:0 10px 26px -14px rgba(0,0,0,.6);position:relative}
+.hub .glyph{width:26px;height:26px;margin:0 auto 6px;border-radius:8px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.hub b{display:block;font-size:11.5px;font-weight:700;letter-spacing:.2px}
+.hub .addr{display:block;font-size:9.5px;color:var(--text-3);font-family:var(--mono);margin-top:2px}
+.hub .mode{display:inline-block;margin-top:7px;font-size:9.5px;font-weight:700;letter-spacing:.4px;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text-2)}
+.hub.busy .glyph{animation:hub-pulse 1.4s var(--ease-out) infinite}
+@keyframes hub-pulse{0%,100%{box-shadow:0 0 0 0 var(--accent-soft)}50%{box-shadow:0 0 0 6px transparent}}
+
+.dst-col{display:flex;flex-direction:column;gap:5px;position:relative;z-index:2}
+.cand{display:grid;grid-template-columns:14px 22px minmax(0,1fr) auto;align-items:center;gap:9px;
+  border:1px solid transparent;border-radius:10px;padding:7px 10px;position:relative;
+  background:transparent;transition:background .22s,border-color .22s,opacity .22s}
+.cand .idx{font-size:9.5px;color:var(--text-4);font-family:var(--mono);text-align:center}
+.cand .av{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:10px;
+  font-weight:800;color:#fff;flex:none;letter-spacing:-.2px;box-shadow:0 2px 6px -2px rgba(0,0,0,.5)}
+.cand .who{min-width:0;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.cand .ch{font-size:12px;font-weight:650;letter-spacing:.1px}
+.cand .md{font-size:11px;color:var(--text-2);font-family:var(--mono);letter-spacing:-.2px}
+.cand .acct{font-size:9.5px;color:var(--text-4);padding:0 5px;border-radius:4px;background:var(--panel-3);
+  border:1px solid var(--line);white-space:nowrap}
+.cand .st{display:flex;align-items:center;gap:8px;flex:none;justify-self:end;font-size:10.5px;color:var(--text-3)}
+
+.cand.pending{opacity:.55}
+.cand.dim{opacity:.34}
+.cand.active{border-color:color-mix(in srgb,var(--ok) 45%,transparent);
+  background:color-mix(in srgb,var(--ok) 8%,transparent)}
+.cand.done{background:color-mix(in srgb,var(--ok) 4%,transparent)}
+.cand.limited{opacity:.6}
+.cand.failed{opacity:.6}
+
+.spd{display:flex;align-items:baseline;gap:3px;font-family:var(--mono)}
+.spd b{font-size:15px;font-weight:700;letter-spacing:-.4px;color:var(--text);font-variant-numeric:tabular-nums}
+.cand.active .spd b{color:var(--ok)}
+.cand.done .spd b{color:var(--text-2)}
+.spd i{font-style:normal;font-size:9.5px;color:var(--text-4);font-weight:600}
+.spd.idle b{font-size:12px;color:var(--text-4);font-weight:600}
+
+.lbl{font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.lbl.answering{background:var(--ok-soft);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 34%,transparent)}
+.lbl.answering .d{display:inline-block;width:4px;height:4px;border-radius:50%;background:currentColor;
+  margin-right:5px;vertical-align:1px;animation:blink .9s steps(2,end) infinite}
+.lbl.answered{background:transparent;color:var(--text-2);border:1px solid var(--line-2)}
+.lbl.rate{background:transparent;color:var(--bad);border:1px dashed color-mix(in srgb,var(--bad) 40%,transparent)}
+.lbl.onekey{background:transparent;color:var(--text-4);border:1px solid var(--line)}
+.lbl.skip{background:var(--bad-soft);color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 28%,transparent)}
+@keyframes blink{50%{opacity:.2}}
+
+/* hero 底部：判决 + 三数字 */
+.hero-foot{display:flex;align-items:center;gap:20px;border-top:1px solid var(--line);
+  padding:14px 20px;background:color-mix(in srgb,var(--panel-2) 55%,transparent)}
+.verdict{min-width:0}
+.verdict p{margin:0;font-size:12.5px;font-weight:650;letter-spacing:.1px}
+.verdict .why{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.why .bullet{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);
+  padding:3px 9px 3px 7px;border-radius:999px;background:var(--panel-3);border:1px solid var(--line)}
+.why .bullet .k{width:5px;height:5px;border-radius:50%;flex:none}
+.bignums{margin-left:auto;display:flex;gap:26px;flex:none}
+.bn{text-align:right}
+.bn b{display:block;font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:-.8px;
+  font-variant-numeric:tabular-nums;line-height:1.15}
+.bn span{font-size:10px;color:var(--text-3);letter-spacing:.2px}
+.bn.hot b{color:var(--ok)}
+.bn.bad b{color:var(--bad)}
+
+/* 本次请求条 */
+.thisreq{display:flex;align-items:center;gap:0;margin:0 20px 14px;border:1px solid var(--line);
+  border-radius:10px;overflow:hidden;background:var(--panel-2);position:relative;z-index:2}
+.thisreq .cell{padding:8px 13px;border-right:1px solid var(--line);display:flex;align-items:center;gap:7px;min-width:0}
+.thisreq .cell:last-child{border-right:0}
+.thisreq .k{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-4)}
+.thisreq .v{font-family:var(--mono);font-size:12px;font-weight:650;font-variant-numeric:tabular-nums}
+.thisreq .v.win{color:var(--ok)}
+.thisreq .grow{flex:1;border-right:0}
+.thisreq .bar{height:3px;border-radius:2px;overflow:hidden;width:110px;
+  background:color-mix(in srgb,var(--text-4) 26%,transparent)}
+.thisreq .bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .12s linear}
+
+/* ============ 2. KPI ============ */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+.kpi{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);padding:13px 14px 12px;
+  position:relative;overflow:hidden;box-shadow:var(--shadow);transition:border-color .25s}
+.kpi::before{content:"";position:absolute;inset:0;background:var(--card-shine);pointer-events:none}
+.kpi.flash{border-color:color-mix(in srgb,var(--accent) 55%,transparent);
+  animation:kpi-flash .9s var(--ease-out)}
+@keyframes kpi-flash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 30%,transparent)}
+  100%{box-shadow:0 0 0 9px transparent}}
+.kpi .lb{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.2px;
+  color:var(--text-3);position:relative}
+.kpi .lb .q{width:11px;height:11px;opacity:.5}
+.kpi .val{display:flex;align-items:baseline;gap:6px;margin-top:6px;position:relative}
+.kpi .val b{font-family:var(--mono);font-size:23px;font-weight:700;letter-spacing:-1.1px;
+  font-variant-numeric:tabular-nums;line-height:1.05}
+.kpi .val .u{font-size:10.5px;color:var(--text-3);font-weight:600}
+.kpi .delta{font-family:var(--mono);font-size:10px;font-weight:700;padding:1px 5px;border-radius:5px;
+  background:var(--ok-soft);color:var(--ok);letter-spacing:-.2px}
+.kpi .delta.flat{background:var(--panel-3);color:var(--text-4)}
+.kpi .hint{margin-top:7px;font-size:10.5px;color:var(--text-3);position:relative;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 迷你走势放右上角，避免压住下面那行说明文字 */
+.kpi .spark{position:absolute;right:13px;top:12px;width:58px;height:20px;pointer-events:none;opacity:.7}
+.kpi .lb{padding-right:66px}
+
+/* ============ 3. 图 + 请求流 ============ */
+.split{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:11px;align-items:stretch}
+.panel{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);
+  box-shadow:var(--shadow);display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.panel-head h3{margin:0;font-size:12.5px;font-weight:700;letter-spacing:.1px}
+.panel-head .sub{font-size:10.5px;color:var(--text-4)}
+.panel-head .tool{margin-left:auto;display:flex;align-items:center;gap:6px}
+.legend{display:flex;align-items:center;gap:11px;font-size:10.5px;color:var(--text-3)}
+.legend i{display:inline-block;width:9px;height:2px;border-radius:2px;margin-right:5px;vertical-align:2px}
+.chart-wrap{position:relative;flex:1;min-height:206px;padding:10px 6px 4px}
+#hero-chart{display:block;width:100%;height:100%}
+.tip{position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-100%);
+  background:var(--panel-3);border:1px solid var(--line-2);border-radius:8px;padding:7px 9px;
+  font-size:10.5px;line-height:1.6;box-shadow:0 10px 26px -12px rgba(0,0,0,.7);z-index:9;
+  transition:opacity .12s;white-space:nowrap}
+.tip b{font-family:var(--mono);font-size:11.5px}
+
+.stream-list{flex:1;display:flex;flex-direction:column;gap:0;overflow:hidden}
+.tick{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px;align-items:center;
+  padding:8px 14px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);
+  animation:tickIn .4s var(--ease-out) both}
+@keyframes tickIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+.tick .t{font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:-.2px}
+.tick .body{min-width:0}
+.tick .l1{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;min-width:0}
+.tick .l1 .pt{width:5px;height:5px;border-radius:50%;flex:none}
+.tick .l1 .mo{font-family:var(--mono);font-size:10.5px;color:var(--text-2);font-weight:500;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tick .l2{font-size:9.5px;color:var(--text-3);font-family:var(--mono);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tick .r{text-align:right;flex:none}
+.tick .r b{display:block;font-family:var(--mono);font-size:11.5px;font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.tick .r span{font-size:9px;color:var(--text-4);font-family:var(--mono)}
+.tick.fail .r b{color:var(--bad)}
+.stream-foot{padding:9px 14px;border-top:1px solid var(--line);text-align:center}
+.stream-foot a{font-size:10.5px;font-weight:600;color:var(--text-3);text-decoration:none}
+.stream-foot a:hover{color:var(--accent)}
+
+/* ============ 4. 明细表 ============ */
+.tbl-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+thead th{text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text-4);padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+  position:sticky;top:0;background:var(--panel)}
+thead th:first-child{text-align:left;padding-left:14px}
+thead th:nth-child(2){text-align:left}
+thead th:nth-child(3){text-align:left}
+thead th:last-child{padding-right:14px}
+tbody td{padding:0 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{transition:background .15s}
+tbody tr:hover{background:var(--panel-2)}
+tbody td:first-child{padding-left:14px}
+tbody td:last-child{padding-right:14px}
+.cell{display:flex;align-items:center;gap:8px;height:38px;min-width:0}
+.cell.r{justify-content:flex-end;text-align:right}
+.cell .av{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:8.5px;
+  font-weight:800;color:#fff;flex:none}
+.cell .nm{font-weight:650;font-size:11.5px;white-space:nowrap}
+.cell .md{font-family:var(--mono);font-size:10.5px;color:var(--text-2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.cell .acct{font-family:var(--mono);font-size:10px;color:var(--text-3);white-space:nowrap}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.2px;white-space:nowrap}
+.mono.b{font-weight:650}
+.ok{color:var(--ok)}
+.bad{color:var(--bad)}
+.warn{color:var(--warn)}
+.share{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.share .track{width:62px;height:5px;border-radius:3px;flex:none;overflow:hidden;
+  background:color-mix(in srgb,var(--text-4) 28%,transparent)}
+.share .track i{display:block;height:100%;border-radius:3px}
+.share b{font-family:var(--mono);font-size:10.5px;font-weight:650;min-width:30px;text-align:right}
+.minispeed{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.minispeed .track{width:34px;height:3px;border-radius:2px;overflow:hidden;
+  background:color-mix(in srgb,var(--text-4) 28%,transparent)}
+.minispeed .track i{display:block;height:100%;border-radius:2px;background:var(--ok);opacity:.75}
+
+/* ============ 5. 路由组清单 ============ */
+.combo-list{display:flex;flex-direction:column}
+.combo-row{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(0,2.4fr) auto;
+  align-items:center;gap:14px;padding:11px 14px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.combo-row:last-child{border-bottom:0}
+.combo-row:hover{background:var(--panel-2)}
+.combo-name{display:flex;align-items:center;gap:8px;min-width:0}
+.combo-name b{font-size:12px;font-weight:650;white-space:nowrap}
+.combo-name code{font-family:var(--mono);font-size:10px;color:var(--text-4);white-space:nowrap}
+.members{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.mchip{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 6px 2px 4px;
+  border-radius:6px;background:var(--panel-2);border:1px solid var(--line);color:var(--text-2);
+  font-family:var(--mono);letter-spacing:-.2px;white-space:nowrap}
+.mchip .pt{width:4px;height:4px;border-radius:50%;flex:none}
+.mchip .arrow{color:var(--text-4);font-size:9px;margin:0 1px}
+.combo-right{display:flex;align-items:center;gap:9px;flex:none}
+.strategy{font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:999px;
+  border:1px solid var(--line-2);color:var(--text-2);background:var(--panel-2);white-space:nowrap}
+.strategy.rr{border-color:color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent);
+  background:var(--accent-soft)}
+.combo-right .cnt{font-family:var(--mono);font-size:10.5px;color:var(--text-3);white-space:nowrap}
+
+.footnote{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--text-4);padding:2px 2px 0}
+.footnote .k{width:5px;height:5px;border-radius:50%;background:var(--text-4);flex:none}
+
+/* ============ 动画 & 响应式 ============ */
+@keyframes ripple{0%{transform:scale(.7);opacity:.7}70%,100%{transform:scale(2.1);opacity:0}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 var(--ok-soft)}50%{box-shadow:0 0 0 4px transparent}}
+
+@media (max-width:1240px){
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .split{grid-template-columns:1fr}
+  .stream-list{max-height:240px}
+}
+@media (max-width:1060px){
+  .route{grid-template-columns:minmax(0,1fr);gap:14px}
+  .wires{display:none}
+  .src-col{flex-direction:row;flex-wrap:wrap}
+  .src-card{flex:1 1 150px}
+  .hub-col{justify-content:flex-start}
+  .hub{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 12px}
+  .hub .glyph{margin:0}
+  .hub .mode{margin:0 0 0 auto}
+}
+@media (max-width:880px){
+  .app{grid-template-columns:1fr}
+  .sb{display:none}
+  .page{padding:16px 14px 44px}
+  .topbar{padding:0 14px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero-foot{flex-wrap:wrap;gap:12px}
+  .bignums{margin-left:0;width:100%;justify-content:space-between;gap:10px}
+  .bn{text-align:left}
+  .thisreq{flex-wrap:wrap}
+  .thisreq .cell{flex:1 1 45%}
+  .thisreq .grow{display:none}
+  .cand .acct{display:none}
+  .combo-row{grid-template-columns:minmax(0,1fr);gap:8px}
+  .combo-right{justify-content:flex-start}
+  .hero-head{flex-wrap:wrap}
+  .hero-head .acts{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 侧边栏 -->
+  <aside class="sb">
+    <div class="brand">
+      <div class="logo">D</div>
+      <div><b>dsh gateway</b><span>127.0.0.1:18900</span></div>
+    </div>
+    <div class="grp">工作区</div>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>概览</a>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h9"/></svg>模型目录<span class="tag">105</span></a>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 8h10M7 12h6"/><circle cx="12" cy="12" r="9"/></svg>降级链<span class="tag">3</span></a>
+    <div class="grp">观测</div>
+    <a href="#" class="on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-6"/></svg>用量与路由</a>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>请求日志</a>
+    <div class="grp">接入</div>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>渠道与账号<span class="tag">14</span></a>
+    <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>设置</a>
+    <div class="foot">
+      <div class="dot"></div>
+      <div class="st"><b>网关在线</b><span>v2.2.0 · 推送已连接</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">观测 <span>/</span> <b>用量与路由</b></div>
+      <div class="sp"></div>
+      <div class="pill" id="livePill">
+        <span class="live"></span>
+        <span id="pillState">实时</span>
+        <span class="sep"></span>
+        <span class="t" id="pillAgo">刚推送</span>
+      </div>
+      <button class="iconbtn" id="themeBtn" title="切换明暗">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </header>
+
+    <div class="page">
+
+      <!-- ===== 1. 路由实况 ===== -->
+      <section class="hero">
+        <div class="hero-head">
+          <div>
+            <div class="hero-title">
+              路由实况
+              <span class="tagline">live, as the gateway decides</span>
+            </div>
+            <p class="hero-desc">
+              <b id="heroCombo">combo:auto</b> · 顺序降级 · <b id="heroCount">6</b> 个候选取其一。
+              按链序逐个尝试，每个成员用自己的渠道账号与额度，前一个限流就换下一个。
+            </p>
+          </div>
+          <div class="acts">
+            <div class="seg" role="group" aria-label="展示范围">
+              <button aria-pressed="true">实况</button>
+              <button aria-pressed="false">近 1 小时</button>
+            </div>
+            <button class="ghost">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+              固定到日志
+            </button>
+          </div>
+        </div>
+
+        <div class="route" id="route">
+          <svg class="wires" id="wires" preserveAspectRatio="none"></svg>
+
+          <div class="src-col" id="srcCol">
+            <div class="src-card active" data-accent="#7c8dff">
+              <div class="badge">处理中</div>
+              <div class="nm"><span class="pt" style="background:#7c8dff"></span>Claude Code</div>
+              <div class="sub">combo:auto · 并行 2 路</div>
+            </div>
+            <div class="src-card" data-accent="#3ec9a0">
+              <div class="badge">处理中</div>
+              <div class="nm"><span class="pt" style="background:#3ec9a0"></span>Codex CLI</div>
+              <div class="sub">combo:deepseek</div>
+            </div>
+            <div class="src-card" data-accent="#f0b45e">
+              <div class="badge">处理中</div>
+              <div class="nm"><span class="pt" style="background:#f0b45e"></span>直连调用</div>
+              <div class="sub">trae/deepseek-v3.2-exp</div>
+            </div>
+          </div>
+
+          <div class="hub-col">
+            <div class="hub busy" id="hub">
+              <div class="glyph">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 19V9M12 19V5M19 19v-6"/></svg>
+              </div>
+              <b>dsh gateway</b>
+              <span class="addr">:18900</span>
+              <span class="mode" id="hubMode">顺序降级</span>
+            </div>
+          </div>
+
+          <div class="dst-col" id="dstCol"><!-- JS 渲染 --></div>
+        </div>
+
+        <div class="thisreq" id="thisreq">
+          <div class="cell"><span class="k">本次请求</span><span class="v" id="rqId">#8842</span></div>
+          <div class="cell"><span class="k">命中</span><span class="v win" id="rqHit">TRAE · #2</span></div>
+          <div class="cell"><span class="k">首字</span><span class="v" id="rqTtft">— ms</span></div>
+          <div class="cell"><span class="k">速度</span><span class="v win" id="rqTps">— tok/s</span></div>
+          <div class="cell"><span class="k">输出</span><span class="v" id="rqOut">— tok</span></div>
+          <div class="cell grow">
+            <div class="bar"><i id="rqBar"></i></div>
+          </div>
+        </div>
+
+        <div class="hero-foot">
+          <div class="verdict">
+            <p id="verdict">TRAE 先答上了。</p>
+            <div class="why" id="why"></div>
+          </div>
+          <div class="bignums">
+            <div class="bn"><b id="bnReq">0</b><span>本小时请求</span></div>
+            <div class="bn hot"><b id="bnRt">0</b><span>降级接管</span></div>
+            <div class="bn bad"><b id="bnErr">0</b><span>客户端看到的错误</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 2. KPI ===== -->
+      <div class="kpis" id="kpis">
+        <div class="kpi">
+          <div class="lb">今日 Token</div>
+          <div class="val"><b id="k1">0</b><span class="delta" id="k1d">+0</span></div>
+          <div class="hint" id="k1h">输入 0 · 输出 0</div>
+          <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none"><path id="s1" fill="none" stroke="#7c8dff" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="lb">平均生成速度</div>
+          <div class="val"><b id="k2">0</b><span class="u">tok/s</span></div>
+          <div class="hint" id="k2h">首字 0 ms</div>
+          <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none"><path id="s2" fill="none" stroke="#3ec9a0" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="lb">缓存命中</div>
+          <div class="val"><b id="k3">0</b><span class="u">%</span></div>
+          <div class="hint" id="k3h">命中 0 tok</div>
+          <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none"><path id="s3" fill="none" stroke="#8b8ff0" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="lb">请求</div>
+          <div class="val"><b id="k4">0</b><span class="delta" id="k4d">100%</span></div>
+          <div class="hint" id="k4h">失败 0 · 重试 0</div>
+          <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none"><path id="s4" fill="none" stroke="#5f6fd8" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="kpi">
+          <div class="lb">降级接管</div>
+          <div class="val"><b id="k5">0</b><span class="u">次</span></div>
+          <div class="hint" id="k5h">占请求 0%</div>
+          <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none"><path id="s5" fill="none" stroke="#f0b45e" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <!-- ===== 3. 图 + 实时请求 ===== -->
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Token 吞吐与速度</h3>
+            <span class="sub">近 60 分钟</span>
+            <div class="tool">
+              <div class="legend">
+                <span><i style="background:#7c8dff"></i>Token</span>
+                <span><i style="background:#3ec9a0"></i>tok/s</span>
+              </div>
+            </div>
+          </div>
+          <div class="chart-wrap" id="chartWrap">
+            <canvas id="hero-chart"></canvas>
+            <div class="tip" id="tip"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h3>实时请求</h3>
+            <span class="sub">逐条带渠道与速度</span>
+            <div class="tool"><span class="legend"><span id="streamCount">0 条</span></span></div>
+          </div>
+          <div class="stream-list" id="stream"></div>
+          <div class="stream-foot"><a href="#">在请求日志里看全部 →</a></div>
+        </section>
+      </div>
+
+      <!-- ===== 4. 渠道明细 ===== -->
+      <section class="panel">
+        <div class="panel-head">
+          <h3>渠道 · 账号明细</h3>
+          <span class="sub">今日，按渠道聚合</span>
+          <div class="tool">
+            <div class="seg" role="group">
+              <button aria-pressed="true">按渠道</button>
+              <button aria-pressed="false">按模型</button>
+            </div>
+            <button class="ghost">导出 CSV</button>
+          </div>
+        </div>
+        <div class="tbl-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>渠道</th><th>账号</th><th>主力模型</th>
+                <th>请求</th><th>失败</th><th>速度</th><th>首字</th>
+                <th>输入</th><th>输出</th><th>缓存命中</th><th>占比</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== 5. 降级链 ===== -->
+      <section class="panel">
+        <div class="panel-head">
+          <h3>降级链</h3>
+          <span class="sub">模型请求先在这里被决定去向</span>
+          <div class="tool">
+            <button class="ghost">管理降级链</button>
+          </div>
+        </div>
+        <div class="combo-list" id="comboList"></div>
+      </section>
+
+      <div class="footnote">
+        <span class="k"></span>
+        渠道页的「渠道用量」面板已并入本页：账号维度、速度与缓存指标原样迁入下方明细表，渠道页只保留账号池与备份。
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ?static=1 冻结动效与时钟，用于导出稳定的静态效果图；?theme=light 切浅色
+  var STATIC = /[?&]static=1/.test(location.search);
+  var RM = STATIC || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if(/[?&]theme=light/.test(location.search)) document.documentElement.setAttribute('data-theme','light');
+
+  /* ---------- 渠道与模型 ---------- */
+  var CH = {
+    trae:     { name:'TRAE',      accent:'#00BFA6', short:'T' },
+    qoder:    { name:'Qoder',     accent:'#615CED', short:'Q' },
+    minimax:  { name:'MiniMax',   accent:'#E4007F', short:'M' },
+    zcode:    { name:'ZCode',     accent:'#3B6EF6', short:'Z' },
+    buddy:    { name:'WorkBuddy', accent:'#0A7AFF', short:'W' },
+    codearts: { name:'CodeArts',  accent:'#C7000B', short:'C' }
+  };
+
+  var CHAINS = {
+    'combo:auto': {
+      strategy:'fallback', label:'顺序降级',
+      members:[
+        { ch:'trae',     model:'deepseek-v3.2-exp', acct:'#2 Peng' },
+        { ch:'qoder',    model:'qwen3-max',         acct:'#1 主号' },
+        { ch:'minimax',  model:'MiniMax-M3',        acct:'#1 签到号' },
+        { ch:'zcode',    model:'glm-4.6',           acct:'#1 默认' },
+        { ch:'buddy',    model:'kimi-k2-0905',      acct:'#3 备用' },
+        { ch:'codearts', model:'deepseek-v3.2',     acct:'#1 免费额度' }
+      ],
+      baseTps:[78, 62, 44, 71, 55, 66],
+      baseTtft:[640, 780, 940, 520, 880, 710]
+    },
+    'combo:deepseek': {
+      strategy:'fallback', label:'顺序降级',
+      members:[
+        { ch:'trae',     model:'deepseek-v3.2-exp', acct:'#2 Peng' },
+        { ch:'codearts', model:'deepseek-v3.2',     acct:'#1 免费额度' },
+        { ch:'buddy',    model:'deepseek-v3.1',     acct:'#4 小号' }
+      ],
+      baseTps:[80, 64, 52],
+      baseTtft:[620, 720, 860]
+    },
+    'direct': {
+      strategy:'direct', label:'直连',
+      members:[
+        { ch:'qoder', model:'qwen3-max', acct:'#1 主号' }
+      ],
+      baseTps:[58], baseTtft:[820]
+    }
+  };
+  var COMBO_KEYS = ['combo:auto','combo:deepseek','direct'];
+  var COMBO_STATS = {
+    'combo:auto': { req:0, reroute:0 },
+    'combo:deepseek': { req:0, reroute:0 },
+    'direct': { req:0, reroute:0 }
+  };
+
+  /* ---------- 工具 ---------- */
+  var nf = new Intl.NumberFormat('zh-CN');
+  function fmt(n){ return nf.format(Math.round(n||0)); }
+  function kfmt(n){
+    n = Math.round(n||0);
+    if(n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+    if(n>=1e4) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K';
+    return fmt(n);
+  }
+  function pct(a,b){ return b>0 ? Math.round(100*a/b) : 0; }
+  function $(sel,root){ return (root||document).querySelector(sel); }
+  function el(tag,cls,txt){
+    var n = document.createElement(tag);
+    if(cls) n.className = cls;
+    if(txt!==undefined) n.textContent = txt;
+    return n;
+  }
+  function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+
+  /* ---------- 数字滚动 ---------- */
+  var tweens = [], CLOCK = 0;
+  function tween(node, to, opts){
+    opts = opts||{};
+    var from = Number(node.getAttribute('data-v')||0);
+    // 同一节点只保留一条补间：否则新旧两条会同时写同一个 textContent，数字卡在中途
+    for(var i=tweens.length-1;i>=0;i--) if(tweens[i].node===node) tweens.splice(i,1);
+    if(Math.abs(from-to) < 0.0001) return;
+    // 减弱动效 / 静态导出：直接写终值，且不登记补间（登记了会被下一帧插值回起点）
+    if(RM){
+      node.setAttribute('data-v', to);
+      node.textContent = paint(to, opts.dec||0, opts.sep!==false);
+      return;
+    }
+    tweens.push({ node:node, from:from, to:to, t0:CLOCK,
+      dur:opts.dur||520, dec:opts.dec||0, sep:opts.sep!==false });
+  }
+  function paint(v,dec,sep){
+    var s = dec>0 ? v.toFixed(dec) : fmt(v);
+    if(dec>0 && sep) s = Number(v.toFixed(dec)).toLocaleString('zh-CN',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+    return s;
+  }
+  function runTweens(){
+    for(var i=tweens.length-1;i>=0;i--){
+      var t = tweens[i];
+      var p = t.dur===0?1:clamp((CLOCK-t.t0)/t.dur,0,1);
+      var e = 1-Math.pow(1-p,3);
+      var v = t.from + (t.to-t.from)*e;
+      t.node.setAttribute('data-v', v);
+      t.node.textContent = paint(v, t.dec, t.sep);
+      if(p>=1) tweens.splice(i,1);
+    }
+  }
+
+  /* ---------- 全局状态 ---------- */
+  var G = {
+    paused:false, lastPush:Date.now(),
+    cur:null, seq:8842,
+    totals:{ inTok:0, outTok:0, cacheTok:0, req:0, fail:0, reroute:0, tpsSum:0, ttftSum:0, tpsN:0 },
+    chart:{ tokens:[], tps:[] },
+    stream:[]
+  };
+
+  /* ---------- 候选链渲染 ---------- */
+  var dstCol = $('#dstCol');
+  var candEls = [];
+  function renderChain(key){
+    var chain = CHAINS[key];
+    $('#heroCombo').textContent = key;
+    $('#heroCount').textContent = chain.members.length;
+    $('#hubMode').textContent = chain.label;
+    dstCol.innerHTML = '';
+    candEls = [];
+    chain.members.forEach(function(m,i){
+      var ch = CH[m.ch];
+      var row = el('div','cand pending');
+      row.dataset.i = i;
+      var idx = el('div','idx', String(i+1));
+      var av = el('div','av', ch.short);
+      av.style.background = ch.accent;
+      var who = el('div','who');
+      var nm = el('span','ch', ch.name);
+      var md = el('span','md', m.model);
+      var acct = el('span','acct', m.acct);
+      who.appendChild(nm); who.appendChild(md); who.appendChild(acct);
+      var st = el('div','st');
+      var spd = el('div','spd idle');
+      var avg = AVG[m.ch];
+      spd.innerHTML = avg ? '<b>'+avg.toFixed(1)+'</b><i>tok/s</i>' : '<b>—</b><i>tok/s</i>';
+      var lbl = el('span','lbl onekey','待命');
+      st.appendChild(spd); st.appendChild(lbl);
+      row.appendChild(idx); row.appendChild(av); row.appendChild(who); row.appendChild(st);
+      dstCol.appendChild(row);
+      candEls.push({ el:row, spd:spd, lbl:lbl });
+    });
+    drawWires();
+  }
+
+  /* ---------- 连线 ---------- */
+  function curve(x1,y1,x2,y2){
+    var dx = Math.max(24,(x2-x1)*0.42);
+    return 'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2;
+  }
+  function drawWires(){
+    var route = $('#route'), svg = $('#wires');
+    if(!route || !svg) return;
+    var rb = route.getBoundingClientRect();
+    if(rb.width < 10) return;
+    svg.setAttribute('width', rb.width);
+    svg.setAttribute('height', rb.height);
+    svg.setAttribute('viewBox', '0 0 '+rb.width+' '+rb.height);
+    var hub = $('#hub'), hb = hub.getBoundingClientRect();
+    var hx1 = hb.left - rb.left - 8, hy = hb.top - rb.top + hb.height/2;
+    var hx2 = hb.right - rb.left + 8;
+    var out = '';
+    var activeSrc = 0;
+    document.querySelectorAll('.src-card').forEach(function(card,i){
+      if(card.classList.contains('active')) activeSrc = i;
+      var b = card.getBoundingClientRect();
+      var x1 = b.right - rb.left + 2, y1 = b.top - rb.top + b.height/2;
+      var on = card.classList.contains('active') ? ' on' : '';
+      out += '<path class="wire'+on+'" d="'+curve(x1,y1,hx1,hy)+'" stroke="'+card.dataset.accent+'"/>';
+    });
+    candEls.forEach(function(c,i){
+      var b = c.el.getBoundingClientRect();
+      var x2 = b.left - rb.left - 2, y2 = b.top - rb.top + b.height/2;
+      var cls = 'wire';
+      if(c.el.classList.contains('active')) cls += ' on';
+      else if(c.el.classList.contains('limited') || c.el.classList.contains('failed') || c.el.classList.contains('dim')) cls += ' dim';
+      out += '<path class="'+cls+'" d="'+curve(hx2,hy,x2,y2)+'" stroke="'+CH[CHAINS[$('#heroCombo').textContent].members[i].ch].accent+'"/>';
+    });
+    // 重放动画：命中线在最后画，避免被其它线压住
+    svg.innerHTML = out;
+  }
+  window.addEventListener('resize', function(){ drawWires(); });
+
+  /* ---------- 一次请求的生命周期 ---------- */
+  function startRequest(){
+    var key = STATIC ? 'combo:auto'
+      : (Math.random() < 0.85 ? 'combo:auto' : (Math.random() < 0.7 ? 'combo:deepseek' : 'direct'));
+    renderChain(key);
+    var chain = CHAINS[key];
+    G.seq++;
+    G.cur = {
+      id:G.seq, key:key, chain:chain, idx:0, phase:'probe',
+      t0:performance.now(), ttft:0, out:0, inp:0, tps:0, tpsTarget:0,
+      limitUntil:0, tries:[]
+    };
+    $('#rqId').textContent = '#'+G.cur.id;
+    $('#rqHit').textContent = '—';
+    $('#rqTtft').textContent = '— ms';
+    $('#rqTps').textContent = '— tok/s';
+    $('#rqOut').textContent = '— tok';
+    $('#rqBar').style.width = '0%';
+    setCand(0,'active','0.0');
+    G.cur.phase = 'stream';
+    G.cur.t0 = performance.now();
+    var base = chain.baseTps[0] + (Math.random()*8-4);
+    G.cur.tpsTarget = base; G.cur.tps = base*0.5;
+    G.cur.ttft = chain.baseTtft[0] + (Math.random()*120-60);
+    G.cur.inp = Math.round(900 + Math.random()*22000);
+    setCandLabel(0, 'answering');
+    $('#rqHit').textContent = CH[chain.members[0].ch].name + ' · ' + chain.members[0].acct;
+    $('#rqTtft').textContent = Math.round(G.cur.ttft) + ' ms';
+    G.lastPush = Date.now();
+    if(STATIC){
+      // 静态导出：固定成一次「正在回答」的快照，不推进状态机
+      G.cur.tps = 53.5; G.cur.out = 742; G.cur.ttft = 631;
+      $('#rqTtft').textContent = '631 ms';
+      $('#rqTps').textContent = '53.5 tok/s';
+      $('#rqOut').textContent = fmt(742)+' tok';
+      $('#rqBar').style.width = '62%';
+      setCand(0,'active','53.5');
+      setCandLabel(0,'answering');
+      return;
+    }
+    // 首次尝试有小概率直接 429
+    if(Math.random() < 0.22) setTimeout(function(){ bump429(); }, 260 + Math.random()*300);
+  }
+
+  function setCand(i, state, tpsText){
+    var c = candEls[i]; if(!c) return;
+    c.el.className = 'cand '+state;
+    if(tpsText!==undefined){
+      c.spd.className = 'spd' + (tpsText==='—' ? ' idle' : '');
+      c.spd.innerHTML = '<b>'+tpsText+'</b><i>tok/s</i>';
+    }
+    drawWires();
+  }
+  function klassOf(label){
+    if(label==='answering…') return 'answering';
+    if(label==='answered') return 'answered';
+    if(label.indexOf('429')===0 || label.indexOf('限流')===0) return 'rate';
+    if(label==='已跳过') return 'skip';
+    if(label==='待命') return 'onekey';
+    return 'answered';
+  }
+  function setCandLabel(i, kind){
+    var c = candEls[i]; if(!c) return;
+    if(kind==='answering'){
+      c.lbl.className = 'lbl answering';
+      c.lbl.innerHTML = '<span class="d"></span>answering…';
+    } else if(kind==='answered'){
+      c.lbl.className = 'lbl answered';
+      c.lbl.textContent = 'answered';
+    } else if(kind==='rate'){
+      c.lbl.className = 'lbl rate';
+      c.lbl.textContent = '429 · 稍后重试';
+    } else if(kind==='skip'){
+      c.lbl.className = 'lbl skip';
+      c.lbl.textContent = '已跳过';
+    } else {
+      c.lbl.className = 'lbl onekey';
+      c.lbl.textContent = '待命';
+    }
+  }
+
+  function bump429(){
+    var cur = G.cur; if(!cur || cur.phase!=='stream') return;
+    var i = cur.idx;
+    setCand(i,'failed','—');
+    setCandLabel(i,'skip');
+    G.totals.reroute++;
+    COMBO_STATS[cur.key].reroute++;
+    if(cur.idx+1 >= cur.chain.members.length){
+      // 整条链都挂了
+      G.totals.fail++;
+      finishRequest(true);
+      return;
+    }
+    cur.idx++;
+    setCand(cur.idx,'active','0.0');
+    setCandLabel(cur.idx,'answering');
+    var m = cur.chain.members[cur.idx];
+    var base = (cur.chain.baseTps[cur.idx]||60) + (Math.random()*8-4);
+    cur.tpsTarget = base; cur.tps = base*0.5;
+    cur.ttft = (cur.chain.baseTtft[cur.idx]||700) + (Math.random()*140-70);
+    cur.t0 = performance.now();
+    $('#rqHit').textContent = CH[m.ch].name + ' · ' + m.acct;
+    $('#rqTtft').textContent = Math.round(cur.ttft) + ' ms';
+    // 更新判决文案
+    $('#verdict').textContent = CH[m.ch].name + ' 接管了这次请求。';
+    G.lastPush = Date.now();
+  }
+
+  function updateStream(dt){
+    var cur = G.cur; if(!cur) return;
+    // 速度：朝 target 平滑游走，每帧小幅抖动
+    cur.tpsTarget += (Math.random()-0.5)*1.6;
+    cur.tpsTarget = clamp(cur.tpsTarget, 18, 118);
+    cur.tps += (cur.tpsTarget - cur.tps) * Math.min(1, dt/320);
+    var add = cur.tps * dt/1000;
+    cur.out += add; // 只累加到当前请求，完成时统一归档，避免重复计数
+    var c = candEls[cur.idx];
+    if(c && cur.phase==='stream'){
+      c.spd.className = 'spd';
+      c.spd.innerHTML = '<b>'+cur.tps.toFixed(1)+'</b><i>tok/s</i>';
+    }
+    $('#rqTps').textContent = cur.tps.toFixed(1)+' tok/s';
+    $('#rqOut').textContent = fmt(cur.out)+' tok';
+    var prog = clamp(cur.out / (1200 + (cur.id*37)%900), 0, 1);
+    $('#rqBar').style.width = (prog*100).toFixed(1)+'%';
+    if(prog >= 1) finishRequest(false);
+  }
+
+  function finishRequest(failed){
+    var cur = G.cur; if(!cur) return;
+    cur.phase = 'done';
+    if(!failed){
+      setCand(cur.idx,'done', cur.tps.toFixed(1));
+      setCandLabel(cur.idx,'answered');
+    }
+    // 归档到统计
+    G.totals.req++;
+    G.totals.tpsSum += failed?0:cur.tps; G.totals.tpsN += failed?0:1;
+    G.totals.ttftSum += failed?0:cur.ttft;
+    if(!failed){
+      G.totals.inTok += cur.inp;
+      G.totals.outTok += Math.round(cur.out);
+      var cache = Math.round(cur.inp * (0.16 + Math.random()*0.3));
+      G.totals.cacheTok += cache;
+    }
+    COMBO_STATS[cur.key].req++;
+    pushStream(cur, failed);
+    bumpChart(failed?0:(cur.inp+cur.out), failed?0:cur.tps);
+    refreshKpis();
+    G.lastPush = Date.now();
+    var next = 900 + Math.random()*900;
+    setTimeout(function(){ if(!G.paused && !STATIC) startRequest(); }, RM?200:next);
+  }
+
+  function pushStream(cur, failed){
+    var m = cur.chain.members[cur.idx];
+    var ch = CH[m.ch];
+    var list = $('#stream');
+    var row = el('div','tick'+(failed?' fail':''));
+    var t = new Date();
+    row.appendChild(el('div','t',''+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0')));
+    var body = el('div','body');
+    var l1 = el('div','l1');
+    var pt = el('span','pt'); pt.style.background = ch.accent;
+    l1.appendChild(pt); l1.appendChild(el('span',null,ch.name)); l1.appendChild(el('span','mo',m.model));
+    var l2 = el('div','l2', m.acct+' · 首字 '+Math.round(cur.ttft)+'ms · '+fmt(cur.inp+cur.out)+' tok');
+    body.appendChild(l1); body.appendChild(l2);
+    var r = el('div','r');
+    r.appendChild(el('b',null, failed?'失败':cur.tps.toFixed(1)));
+    r.appendChild(el('span',null,'tok/s'));
+    row.appendChild(body); row.appendChild(r);
+    list.insertBefore(row, list.firstChild);
+    while(list.children.length>6) list.removeChild(list.lastChild);
+    $('#streamCount').textContent = list.children.length + ' 条';
+  }
+
+  function bumpChart(tokens, tps){
+    G.chart.tokens.push(tokens);
+    G.chart.tps.push(tps);
+    if(G.chart.tokens.length>60){ G.chart.tokens.shift(); G.chart.tps.shift(); }
+  }
+
+  /* 初始种子数据 */
+  (function seed(){
+    var base = 2200;
+    for(var i=0;i<46;i++){
+      // 均值回归式随机游走：围绕中位流量震荡，比独立随机更像真实峰谷
+      base += (2600 - base)*0.22 + (Math.random()-0.5)*880;
+      base = clamp(base, 900, 6200);
+      var tk = Math.round(base);
+      var tp = 54 + Math.sin(i*0.55)*10 + (Math.random()-0.5)*8 + base/1100;
+      G.chart.tokens.push(tk);
+      G.chart.tps.push(clamp(tp, 32, 94));
+    }
+    G.totals.inTok = 420000 + Math.round(Math.random()*30000);
+    G.totals.outTok = 96000 + Math.round(Math.random()*8000);
+    G.totals.cacheTok = 214000;
+    G.totals.req = 1240; G.totals.fail = 3; G.totals.reroute = 27;
+    G.totals.tpsSum = 68.4*1200; G.totals.tpsN = 1200; G.totals.ttftSum = 690*1200;
+    $('#bnReq').textContent = '42';
+    $('#bnRt').textContent = '3';
+    $('#bnErr').textContent = '0';
+    refreshKpis(true);
+  })();
+
+  /* ---------- KPI ---------- */
+  function refreshKpis(initial){
+    var T = G.totals;
+    var totalTok = Math.round(T.inTok + T.outTok);
+    tween($('#k1'), totalTok, {dur:(initial||RM)?0:620});
+    $('#k1d').textContent = '+'+kfmt(Math.round(T.outTok*0.01)+7);
+    $('#k1h').textContent = '输入 '+kfmt(T.inTok)+' · 输出 '+kfmt(T.outTok);
+    var avgTps = T.tpsN>0 ? T.tpsSum/T.tpsN : 0;
+    tween($('#k2'), Math.round(avgTps*10)/10, {dur:initial?0:620, dec:1});
+    $('#k2h').textContent = '首字 '+Math.round(T.ttftSum/Math.max(1,T.tpsN))+' ms';
+    var hit = T.inTok>0 ? pct(T.cacheTok, T.inTok+T.cacheTok) : 0;
+    tween($('#k3'), hit, {dur:(initial||RM)?0:620});
+    $('#k3h').textContent = '命中 '+kfmt(T.cacheTok)+' tok';
+    tween($('#k4'), T.req, {dur:(initial||RM)?0:620});
+    var rate = T.req>0 ? Math.round(100*(T.req-T.fail)/T.req) : 100;
+    $('#k4d').textContent = rate+'%';
+    $('#k4h').textContent = '失败 '+T.fail+' · 重试 '+T.reroute;
+    tween($('#k5'), T.reroute, {dur:(initial||RM)?0:620});
+    $('#k5h').textContent = '占请求 '+pct(T.reroute,Math.max(1,T.req))+'%';
+    if(!initial){
+      var k = $('#kpi');
+      var k1 = document.querySelectorAll('.kpi')[0];
+      k1.classList.remove('flash'); void k1.offsetWidth; k1.classList.add('flash');
+    }
+    drawSparks();
+  }
+
+  function smoothSeries(arr, k){
+    k = k || 5;
+    return arr.map(function(_,i){
+      var s = 0, n = 0;
+      for(var j = Math.max(0, i-k+1); j <= i; j++){ s += arr[j]; n++; }
+      return s/n;
+    });
+  }
+  function drawSparks(){
+    var tk = smoothSeries(G.chart.tokens, 6);
+    var tp = smoothSeries(G.chart.tps, 5);
+    var cum = [], acc = 0;
+    tk.forEach(function(v){ acc += v; cum.push(acc); });
+    var reroute = [], rr = 0;
+    G.chart.tps.forEach(function(_,i){ if(i%9===0) rr += 1; reroute.push(rr); });
+    var series = [
+      { id:'s1', data:tk },
+      { id:'s2', data:tp },
+      { id:'s3', data:tk.map(function(v,i){ return v*0.44 + Math.sin(i*0.7)*380; }) },
+      { id:'s4', data:cum },
+      { id:'s5', data:reroute }
+    ];
+    series.forEach(function(s){
+      var d = s.data.slice(-26);
+      if(!d.length) return;
+      var max = Math.max.apply(null,d) || 1, min = Math.min.apply(null,d);
+      var w = 88, h = 26;
+      var pts = d.map(function(v,i){
+        var x = d.length===1 ? w : i/(d.length-1)*w;
+        var y = h - 3 - ((v-min)/((max-min)||1))*(h-6);
+        return [x,y];
+      });
+      var path = pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+      var node = document.getElementById(s.id);
+      if(node) node.setAttribute('d', path);
+      // 全 0 隐藏，避免误导成错误红条
+      var g = node && node.parentNode;
+      if(g) g.style.opacity = (max===0 && min===0) ? '0' : '.85';
+    });
+  }
+
+  /* ---------- 双轴图 ---------- */
+  var chart = { disp:[], dTps:[], reveal:0, hover:-1 };
+  function sizeCanvas(){
+    var cv = $('#hero-chart'), wrap = $('#chartWrap');
+    if(!cv || !wrap) return;
+    var dpr = Math.min(2, window.devicePixelRatio||1);
+    var w = wrap.clientWidth-12, h = wrap.clientHeight-14;
+    if(w<10||h<10) return;
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+    cv.style.width = w+'px'; cv.style.height = h+'px';
+    chart.w = w; chart.h = h; chart.dpr = dpr;
+  }
+
+  function niceMax(v){
+    if(v<=0) return 10;
+    var p = Math.pow(10, Math.floor(Math.log10(v)));
+    var n = v/p;
+    var m = n<=1?1:n<=1.5?1.5:n<=2?2:n<=2.5?2.5:n<=3?3:n<=4?4:n<=5?5:10;
+    return m*p;
+  }
+
+  function drawChart(dt){
+    var cv = $('#hero-chart'), wrapEl = $('#chartWrap');
+    if(!cv || !wrapEl) return;
+    // 布局变化（响应式、滚动条、字体回流）时重设画布，否则坐标系会错位
+    if((wrapEl.clientWidth-12) !== chart.w) sizeCanvas();
+    if(!chart.w) return;
+    var ctx = cv.getContext('2d');
+    var dpr = chart.dpr||1;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,chart.w,chart.h);
+    var W = chart.w, H = chart.h;
+    var padL = 54, padR = 40, padT = 14, padB = 18;
+    var cw = W-padL-padR, chh = H-padT-padB;
+
+    if(chart.reveal < 1) chart.reveal = Math.min(1, chart.reveal + (RM?1:dt/760));
+    if(!chart.disp.length || chart.disp.length !== G.chart.tokens.length){
+      chart.disp = G.chart.tokens.slice();
+      chart.dTps = G.chart.tps.slice();
+    }
+    var N = G.chart.tokens.length;
+    for(var i=0;i<N;i++){
+      chart.disp[i] += (G.chart.tokens[i]-chart.disp[i])*0.16;
+      chart.dTps[i] += (G.chart.tps[i]-chart.dTps[i])*0.16;
+    }
+    var maxTok = niceMax(Math.max.apply(null, chart.disp)*1.12);
+    var maxTps = niceMax(Math.max.apply(null, chart.dTps)*1.25);
+
+    var css = getComputedStyle(document.documentElement);
+    var gridC = css.getPropertyValue('--grid-line').trim() || 'rgba(255,255,255,.06)';
+    var textC = css.getPropertyValue('--text-3').trim() || '#66738a';
+    var accent = css.getPropertyValue('--accent').trim() || '#7c8dff';
+    var okc = css.getPropertyValue('--ok').trim() || '#3ec9a0';
+
+    // 网格 + 左轴
+    ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+    ctx.font = '9.5px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = textC; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for(var g=0; g<=3; g++){
+      var y = padT + chh*(g/3);
+      ctx.beginPath(); ctx.moveTo(padL, y+0.5); ctx.lineTo(W-padR, y+0.5); ctx.stroke();
+      var tv = maxTok*(1-g/3);
+      ctx.fillText(kfmt(tv), padL-7, y);
+    }
+    // 右轴（tok/s）
+    ctx.textAlign = 'left';
+    for(var g2=0; g2<=3; g2++){
+      var y2 = padT + chh*(g2/3);
+      ctx.fillText(Math.round(maxTps*(1-g2/3)), W-padR+8, y2);
+    }
+    // 轴标题省略：图例里的 Token / tok/s 已经指明两条线，重复标注会和顶部刻度叠字
+
+    var reveal = chart.reveal;
+    function px(i){ return padL + (N<=1?0:i/(N-1)*cw); }
+    function pyTok(v){ return padT + chh*(1 - v/maxTok); }
+    function pyTps(v){ return padT + chh*(1 - v/maxTps); }
+
+    // 面积
+    var pts = [];
+    for(var i2=0;i2<N;i2++){
+      if(i2/(N-1) > reveal) break;
+      pts.push([px(i2), pyTok(chart.disp[i2])]);
+    }
+    if(pts.length>1){
+      var grad = ctx.createLinearGradient(0,padT,0,padT+chh);
+      grad.addColorStop(0, hexA(accent,0.34));
+      grad.addColorStop(1, hexA(accent,0.01));
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], padT+chh);
+      pts.forEach(function(p){ ctx.lineTo(p[0],p[1]); });
+      ctx.lineTo(pts[pts.length-1][0], padT+chh);
+      ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+      // 线
+      ctx.beginPath();
+      pts.forEach(function(p,i){ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); });
+      ctx.strokeStyle = accent; ctx.lineWidth = 1.7; ctx.lineJoin='round'; ctx.stroke();
+    }
+
+    // tok/s 折线
+    var tp = [];
+    for(var i3=0;i3<N;i3++){
+      if(i3/(N-1) > reveal) break;
+      tp.push([px(i3), pyTps(chart.dTps[i3])]);
+    }
+    if(tp.length>1){
+      ctx.beginPath();
+      tp.forEach(function(p,i){ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); });
+      ctx.strokeStyle = okc; ctx.lineWidth = 1.3; ctx.globalAlpha = .9;
+      ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+
+    // 末端脉冲点
+    if(tp.length){
+      var last = tp[tp.length-1];
+      var t = performance.now()%1800/1800;
+      ctx.beginPath();
+      ctx.arc(last[0], last[1], 2.2, 0, Math.PI*2);
+      ctx.fillStyle = okc; ctx.fill();
+      ctx.beginPath();
+      ctx.arc(last[0], last[1], 2.2 + t*7, 0, Math.PI*2);
+      ctx.strokeStyle = hexA(okc, 0.5*(1-t)); ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+  function hexA(hex,a){
+    hex = hex.replace('#','');
+    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');
+    var r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
+
+  /* ---------- 明细表 ---------- */
+  var ROWS = [
+    { ch:'trae',     acct:'#2 Peng',      model:'deepseek-v3.2-exp', req:486, fail:1, tps:78.4, ttft:642,  inTok:284000, outTok:61000, cache:0.41 },
+    { ch:'qoder',    acct:'#1 主号',      model:'qwen3-max',         req:312, fail:2, tps:61.8, ttft:781,  inTok:196000, outTok:42000, cache:0.33 },
+    { ch:'minimax',  acct:'#1 签到号',    model:'MiniMax-M3',        req:184, fail:0, tps:44.2, ttft:938,  inTok:121000, outTok:28000, cache:0.28 },
+    { ch:'zcode',    acct:'#1 默认',      model:'glm-4.6',           req:143, fail:0, tps:70.6, ttft:521,  inTok:92000,  outTok:19000, cache:0.52 },
+    { ch:'buddy',    acct:'#3 备用',      model:'kimi-k2-0905',      req:88,  fail:0, tps:55.1, ttft:874,  inTok:61000,  outTok:12000, cache:0.19 },
+    { ch:'codearts', acct:'#1 免费额度',  model:'deepseek-v3.2',     req:27,  fail:0, tps:66.3, ttft:708,  inTok:18000,  outTok:3400,  cache:0.24 }
+  ];
+  var AVG = {};
+  ROWS.forEach(function(r){ AVG[r.ch] = r.tps; });
+  function renderRows(){
+    var tb = $('#tbody');
+    tb.innerHTML = '';
+    var total = ROWS.reduce(function(s,r){ return s+r.req; },0);
+    ROWS.forEach(function(r){
+      var ch = CH[r.ch];
+      var tr = document.createElement('tr');
+      // 渠道
+      var td1 = document.createElement('td');
+      var c1 = el('div','cell');
+      var av = el('div','av', ch.short); av.style.background = ch.accent;
+      c1.appendChild(av); c1.appendChild(el('span','nm', ch.name));
+      td1.appendChild(c1);
+      // 账号
+      var td2 = document.createElement('td');
+      var c2 = el('div','cell'); c2.appendChild(el('span','acct', r.acct)); td2.appendChild(c2);
+      // 模型
+      var td3 = document.createElement('td');
+      var c3 = el('div','cell'); c3.appendChild(el('span','md', r.model)); td3.appendChild(c3);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      // 数值列
+      function numCell(text, cls){
+        var td = document.createElement('td');
+        var c = el('div','cell r');
+        var s = el('span','mono'+(cls?' '+cls:''), text);
+        c.appendChild(s); td.appendChild(c); return td;
+      }
+      tr.appendChild(numCell(fmt(r.req), 'b'));
+      tr.appendChild(numCell(r.fail>0?fmt(r.fail):'—', r.fail>0?'bad':''));
+      // 速度（带迷你条）
+      var tdS = document.createElement('td');
+      var cs = el('div','cell r');
+      var ms = el('div','minispeed');
+      var track = el('div','track'); var bar = el('i');
+      bar.style.width = Math.round(clamp(r.tps/95,0,1)*100)+'%';
+      track.appendChild(bar);
+      ms.appendChild(track);
+      var b = el('span','mono b ok', r.tps.toFixed(1));
+      ms.appendChild(b);
+      cs.appendChild(ms); tdS.appendChild(cs);
+      tr.appendChild(tdS);
+      tr.appendChild(numCell(Math.round(r.ttft)+' ms'));
+      tr.appendChild(numCell(kfmt(r.inTok)));
+      tr.appendChild(numCell(kfmt(r.outTok)));
+      tr.appendChild(numCell(Math.round(r.cache*100)+'%'));
+      // 占比
+      var tdP = document.createElement('td');
+      var cp = el('div','cell r');
+      var sh = el('div','share');
+      var t2 = el('div','track'); var i2 = el('i');
+      var share = pct(r.req,total);
+      i2.style.width = share+'%';
+      i2.style.background = ch.accent;
+      t2.appendChild(i2);
+      sh.appendChild(t2); sh.appendChild(el('b',null,share+'%'));
+      cp.appendChild(sh); tdP.appendChild(cp);
+      tr.appendChild(tdP);
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ---------- 降级链清单 ---------- */
+  function renderCombos(){
+    var box = $('#comboList');
+    box.innerHTML = '';
+    [
+      { key:'combo:auto', members:'TRAE · Qoder · MiniMax · ZCode · WorkBuddy · CodeArts' },
+      { key:'combo:deepseek', members:'TRAE · CodeArts · WorkBuddy' },
+      { key:'direct', members:'Qoder' }
+    ].forEach(function(row){
+      var chain = CHAINS[row.key];
+      var r = el('div','combo-row');
+      var nm = el('div','combo-name');
+      nm.appendChild(el('b', null, row.key.replace('combo:','')));
+      nm.appendChild(el('code', null, row.key));
+      var mem = el('div','members');
+      chain.members.forEach(function(m,i){
+        if(i) mem.appendChild(el('span','arrow','→'));
+        var chip = el('span','mchip');
+        var pt = el('span','pt'); pt.style.background = CH[m.ch].accent;
+        chip.appendChild(pt); chip.appendChild(document.createTextNode(CH[m.ch].name));
+        mem.appendChild(chip);
+      });
+      var right = el('div','combo-right');
+      var st = el('span','strategy'+(chain.strategy==='round-robin'?' rr':''), chain.label);
+      var cnt = el('span','cnt', fmt(COMBO_STATS[row.key].req)+' 次请求');
+      right.appendChild(st); right.appendChild(cnt);
+      r.appendChild(nm); r.appendChild(mem); r.appendChild(right);
+      box.appendChild(r);
+    });
+  }
+
+  /* ---------- 实时胶囊 ---------- */
+  function tickPill(){
+    var pill = $('#livePill');
+    if(G.paused){
+      pill.classList.add('paused');
+      $('#pillState').textContent = '已暂停';
+      $('#pillAgo').textContent = '点此恢复';
+      return;
+    }
+    pill.classList.remove('paused');
+    $('#pillState').textContent = '实时';
+    var d = Math.max(0, Date.now()-G.lastPush);
+    var s = d<1000 ? '刚推送' : d<60000 ? Math.round(d/1000)+' 秒前' : Math.round(d/60000)+' 分钟前';
+    $('#pillAgo').textContent = s;
+  }
+  $('#livePill').addEventListener('click', function(){
+    G.paused = !G.paused;
+    if(!G.paused && !G.cur) startRequest();
+    tickPill();
+  });
+
+  /* ---------- 主题 ---------- */
+  $('#themeBtn').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', cur==='dark'?'light':'dark');
+    requestAnimationFrame(function(){ drawWires(); });
+  });
+
+  /* ---------- 主循环 ---------- */
+  var last = performance.now(), lastChart = 0;
+  function loop(now){
+    var dt = Math.min(64, now-last); last = now;
+    CLOCK += dt;
+    runTweens();
+    if(!G.paused && !STATIC){
+      if(G.cur && G.cur.phase==='stream') updateStream(dt);
+    }
+    if(now-lastChart > 32){
+      drawChart(now-lastChart);
+      lastChart = now;
+    }
+    if(now % 700 < 20) tickPill();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 启动 ---------- */
+  function boot(){
+    renderRows();
+    renderCombos();
+    renderChain('combo:auto');
+    sizeCanvas();
+    chart.reveal = 0;
+    // 预填请求流
+    var seedRows = [
+      { ch:'qoder', model:'qwen3-max', acct:'#1 主号', tps:63.2, ttft:790, tok:8421, fail:false },
+      { ch:'trae', model:'deepseek-v3.2-exp', acct:'#2 Peng', tps:81.5, ttft:628, tok:12480, fail:false },
+      { ch:'minimax', model:'MiniMax-M3', acct:'#1 签到号', tps:41.8, ttft:960, tok:4120, fail:false },
+      { ch:'zcode', model:'glm-4.6', acct:'#1 默认', tps:69.4, ttft:540, tok:6930, fail:false }
+    ];
+    seedRows.forEach(function(s, idx){
+      var c = CH[s.ch];
+      var list = $('#stream');
+      var row = el('div','tick');
+      var t = new Date(Date.now() - (idx*19000 + Math.random()*7000));
+      row.appendChild(el('div','t', String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0')));
+      var body = el('div','body');
+      var l1 = el('div','l1');
+      var pt = el('span','pt'); pt.style.background = c.accent;
+      l1.appendChild(pt); l1.appendChild(el('span',null,c.name)); l1.appendChild(el('span','mo',s.model));
+      body.appendChild(l1); body.appendChild(el('div','l2', s.acct+' · 首字 '+s.ttft+'ms · '+fmt(s.tok)+' tok'));
+      var r = el('div','r');
+      r.appendChild(el('b',null,s.tps.toFixed(1))); r.appendChild(el('span',null,'tok/s'));
+      row.appendChild(body); row.appendChild(r);
+      list.appendChild(row);
+    });
+    $('#streamCount').textContent = '4 条';
+
+    // 判决 bullets
+    var why = $('#why');
+    [
+      { c:'#7c8dff', t:'Claude Code 请求 combo:auto' },
+      { c:'#3ec9a0', t:'TRAE 排第 1，直接命中' },
+      { c:'#f0b45e', t:'Qoder 曾 429，被跳过' }
+    ].forEach(function(b){
+      var s = el('span','bullet');
+      var k = el('span','k'); k.style.background = b.c;
+      s.appendChild(k); s.appendChild(document.createTextNode(b.t));
+      why.appendChild(s);
+    });
+
+    setTimeout(function(){ startRequest(); }, 600);
+    requestAnimationFrame(loop);
+    setTimeout(sizeCanvas, 60);
+    setTimeout(function(){ chart.reveal = 0; drawWires(); }, 120);
+    window.addEventListener('resize', function(){ sizeCanvas(); });
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

@@ -51,6 +51,9 @@ export class FreeModelAdapter {
    * @param {(ref: object) => string | undefined} [dependencies.resolveImage]
    * @param {(record: object) => void} dependencies.recordUsage
    * @param {(record: object) => void} [dependencies.recordTurn]
+   * @param {(row: object) => void} [dependencies.recordAttempt] - one row per
+   *   candidate a chain walked past, answered with, or aborted on. Optional and
+   *   side-effect-only: a recorder that throws may not change the turn.
    * @param {(message: string) => void} [dependencies.warn]
    */
   constructor(dependencies) {
@@ -162,12 +165,12 @@ export class FreeModelAdapter {
    * @param {object|null} pinned - catalog row frozen by `prepareCall`, if any
    * @param {object} [snapshot] - state generation frozen by `prepareCall`
    */
-  stream(options, pinned, snapshot = this.deps.state()) {
+  stream(options, pinned, snapshot = this.deps.state(), plan) {
     const controller = new AbortController()
     const onAbort = () => controller.abort(options.signal?.reason)
     if (options.signal?.aborted === true) onAbort()
     else options.signal?.addEventListener('abort', onAbort, { once: true })
-    const iterator = this.runStream({ ...options, signal: controller.signal }, pinned, snapshot)
+    const iterator = this.runStream({ ...options, signal: controller.signal }, pinned, snapshot, plan)
     const cleanup = () => options.signal?.removeEventListener('abort', onAbort)
     const step = async (method, value) => {
       try {
@@ -196,14 +199,14 @@ export class FreeModelAdapter {
    * endpoint. Resolving that here — rather than at the picker or the gateway —
    * means both callers get the failover for free.
    */
-  async * runStream(options, pinned, snapshot) {
+  async * runStream(options, pinned, snapshot, plan) {
     const modelId = baseModelId(options.model)
     const entry = pinned ?? snapshot.catalog.find(candidate => candidate.id === modelId) ?? null
     if (entry !== null && isComboEntry(entry)) {
       yield * this.runCombo(options, entry, snapshot)
       return
     }
-    yield * this.runSingle(options, entry, snapshot, {})
+    yield * this.runSingle(options, entry, snapshot, plan ?? {})
   }
 
   /**
@@ -225,6 +228,27 @@ export class FreeModelAdapter {
     const started = Date.now()
     const rejectedTurn = attempts => {
       this.deps.recordTurn?.({ at: started, model: entry.id, ok: false, recovered: false, attempts, origin: 'harness' })
+    }
+    // The degradation ring's writer on this path. Guarded here *and* inside
+    // `recordAttempt`: an injected recorder that throws must not be able to
+    // change whether the turn answers — recording sits beside the routing
+    // decision, never in front of it.
+    const note = (candidate, index, outcome, reason) => {
+      try {
+        this.deps.recordAttempt?.({
+          // `turnAt` is the walk's start — every row of one turn carries it, so
+          // the panel can group rows without inferring anything from `at`.
+          turnAt: started,
+          at: Date.now(),
+          chainId: entry.id,
+          chainName: entry.name,
+          index,
+          candidateId: candidate.id,
+          outcome,
+          reason,
+          elapsedMs: Date.now() - started,
+        })
+      } catch { /* 记录失败不影响推理 */ }
     }
     if (settings.enabled === false) {
       rejectedTurn(0)
@@ -261,6 +285,7 @@ export class FreeModelAdapter {
         }
       }
       if (committed) {
+        note(candidate, index, 'hit', '')
         this.deps.recordTurn?.({ at: started, model: entry.id, ok: result?.ok === true, recovered: result?.recovered === true, attempts: index + 1, origin: 'harness' })
         return
       }
@@ -269,10 +294,12 @@ export class FreeModelAdapter {
         // single-model recovery budget was spent. Hand the caller the real
         // ending instead of pretending another model could have saved it.
         for (const chunk of held) yield chunk
+        note(candidate, index, 'aborted', 'aborted')
         rejectedTurn(index + 1)
         return
       }
       const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
+      note(candidate, index, 'skipped', reason)
       tried.push(`${candidate.id} (${reason})`)
       this.deps.warn?.(`our-free-model: chain "${entry.name}" advanced past ${candidate.id} — ${reason}`)
     }

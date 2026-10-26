@@ -33,6 +33,11 @@ export function publicModelRows(snapshot) {
 export function createForwardCompletion({ adapter, state, signal }) {
   return async (request, onChunk) => {
     if (signal?.aborted) throw Object.assign(new Error('model runtime is stopped'), { statusCode: 503 })
+    // 组合链成员调用会带 `__ofmComboMember`：成员是组合内部的物理尝试，不该各自
+    // 记一个「用户回合」（那会把一次 combo 请求拆成 N 笔成员回合，污染 /stats 的
+    // turns/failedTurns）。回合由 service 的 completeCombo 统一记一笔。抑制只关回合，
+    // 不关用量（token 仍按物理请求如实记）。
+    const suppressTurn = request.__ofmComboMember === true
     const snapshot = state()
     const entry = snapshot.catalog.find(candidate => candidate.id === request.model)
     if (entry === undefined || !routableModelIds(snapshot).has(entry.id)) {
@@ -69,7 +74,7 @@ export function createForwardCompletion({ adapter, state, signal }) {
       sessionId: `forward:${String(openAi.user ?? openAi.conversation ?? request.sessionId ?? 'shared')}`,
       signal: request.signal && signal ? AbortSignal.any([request.signal, signal]) : request.signal ?? signal,
     }
-    for await (const chunk of adapter.stream(options, entry, snapshot)) {
+    for await (const chunk of adapter.stream(options, entry, snapshot, suppressTurn ? { recordTurn: false } : undefined)) {
       handler(chunk)
       foldForwardOutcome(outcome, chunk)
     }
