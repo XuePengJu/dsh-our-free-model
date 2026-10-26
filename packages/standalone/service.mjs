@@ -360,6 +360,68 @@ export async function startStandalone({
       rejectTurn(candidates.length)
       return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" exhausted every candidate` }
     }
+    // 组合（combo）模型的手工实测。
+    //
+    // 组合行是 service 层用 comboRows() 现算的虚拟行，既不被 channels.handles 认领
+    // （渠道 Worker 只认 provider/model），也不在 core.testModel 的 core.catalog 里
+    // （核心目录只认识免费/Kilo/EAC/聚合车道）。此前 combo 点「测试」两头落空，
+    // 一律掉进 core.testModel 抛 `Unknown model`——页面能列出来、能推理（complete
+    // 有 comboRows 分流），偏偏测不了。这里补上同一道分流：走 completeCombo 真实
+    // 发一次探测请求（链首可用候选起步、按顺序降级），把整条链当成一个可测单元。
+    //
+    // 判定与持久化仍走上游那一套：成功/失败都写 manualResults（与自动探测分开
+    // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
+    const latestComboTests = new Map()
+    const testComboRow = async (entry, id, effort, options = {}) => {
+      const { signal } = options
+      const token = {}
+      latestComboTests.set(id, token)
+      const persist = row => {
+        if (stopped || signal?.aborted || latestComboTests.get(id) !== token) return false
+        stores.availability.edit(value => ({ ...value, manualResults: { ...value.manualResults, [id]: row } }))
+        stores.availability.flush()
+        return !stores.availability.writeFailed
+      }
+      const started = Date.now()
+      try {
+        // 与 testChannelModel 同一套探测口径：system 前置 + 最小 user 消息，满足
+        // 腾讯系网关「首条必须是 system」的约束；completeCombo 沿链降级直到有人
+        // 真正回话，整条链的可用性由最终是否有正文判定。
+        const outcome = await completeCombo(entry, {
+          model: id, signal,
+          openAi: {
+            messages: [
+              { role: 'system', content: 'You are a connectivity test endpoint. Reply briefly with the requested word.' },
+              { role: 'user', content: 'Reply with exactly: OK' },
+            ],
+            max_tokens: 32,
+          },
+        })
+        const failure = outcome?.error
+        if (failure !== undefined && failure !== null && String(failure).trim() !== '') {
+          throw Object.assign(new Error(String(failure)), { channelVerdict: true })
+        }
+        const text = typeof outcome?.text === 'string' ? outcome.text : ''
+        if (text.trim() === '') throw Object.assign(new Error('实测没有返回任何正文'), { channelVerdict: true })
+        const elapsed = Date.now() - started
+        const persisted = persist({
+          state: 'available', source: 'manual', at: Date.now(),
+          latencyMs: elapsed, ttftMs: elapsed,
+        })
+        return { model: id, effort, ok: true, latencyMs: elapsed, ttftMs: elapsed, text: text.slice(0, 2000), sample: text.slice(0, 60), persisted }
+      } catch (error) {
+        if (!signal?.aborted) {
+          const verdict = classifyChannelFailure(error, started)
+          persist({
+            state: verdict.state, source: 'manual', at: Date.now(),
+            detail: verdict.detail, latencyMs: verdict.latencyMs,
+          })
+        }
+        throw error
+      } finally {
+        if (latestComboTests.get(id) === token) latestComboTests.delete(id)
+      }
+    }
     // 渠道模型的手工实测。
     //
     // 核心 testModel 只在 `core.catalog` 里 find，而账号渠道行是 service 层拼进
@@ -371,6 +433,12 @@ export async function startStandalone({
     // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
     const latestChannelTests = new Map()
     const testChannelRow = async (id, effort, options = {}) => {
+      if (id.startsWith(COMBO_PREFIX)) {
+        const entry = comboRows().find(row => row.id === id)
+        // 找不到组合行：这条链刚被删光或成员全部失效，交给 core 如实报 404。
+        if (entry === undefined) return core.testModel(id, effort, options)
+        return testComboRow(entry, id, effort, options)
+      }
       if (!channels.handles(id)) return core.testModel(id, effort, options)
       const { signal } = options
       const token = {}
