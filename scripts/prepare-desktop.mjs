@@ -29,7 +29,10 @@ export function stageDesktopService(destination) {
   tree('packages/standalone/web', file => /\.(html|js|css|json)$/.test(file))
   copy('packages/standalone/package.json')
   copy('packages/desktop/service-host.mjs')
-  for (const name of ['qoder-auth-wasm.wasm', 'LICENSE', 'NOTICE.md']) copy(`vendor/channel-pack/${name}`)
+  // 每个渠道自带的 WASM 都在打包清单里显式列出：渠道在运行时用相对路径
+  // （service/packages/standalone/channels/ 向上三级）找 service/vendor/channel-pack，
+  // 漏一个就在首次鉴权时 ENOENT（千问办公曾因漏 qwenwork 整条渠道不可用）。
+  for (const name of ['qoder-auth-wasm.wasm', 'qwenwork-auth-wasm.wasm', 'LICENSE', 'NOTICE.md']) copy(`vendor/channel-pack/${name}`)
   copy('LICENSE')
   copy('scripts/standalone-third-party.txt', 'THIRD_PARTY_NOTICES.txt')
   fs.writeFileSync(path.join(destination, 'package.json'), JSON.stringify({ private: true, type: 'module' }) + '\n')

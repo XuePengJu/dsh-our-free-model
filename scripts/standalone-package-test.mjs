@@ -17,6 +17,10 @@ if (args.length === 1 && args[0] === '--sources-only') {
     const files = standaloneSourceFiles()
     assert.equal(new Set(files).size, files.length)
     assert.ok(!files.includes('src/updater.js'))
+    // 渠道 WASM 必须逐个点名：桌面打包曾漏掉 qwenwork 那个，千问办公整条渠道
+    // ENOENT 不可用，而当时没有任何测试能发现。这里守住独立服务这一侧。
+    assert.ok(files.includes('vendor/channel-pack/qoder-auth-wasm.wasm'))
+    assert.ok(files.includes('vendor/channel-pack/qwenwork-auth-wasm.wasm'))
     assert.ok(files.every(file => !/(^|\/)(?:node_modules|\.git|settings\.json|channel-credentials\.json|service\.lock|\.env)(\/|$)/.test(file)))
     for (const file of files) {
       const source = path.join(repositoryRoot, file)
@@ -217,6 +221,9 @@ try {
     assert.ok(paths.every(file => !/(^|\/)(?:node_modules|\.git|\.aoci|settings\.json|channel-credentials\.json|service\.lock|\.env)(\/|$)/.test(file)))
     for (const unwanted of ['index.js', 'client.js', 'src/updater.js', 'src/reload.js', 'feed/manifest.json']) assert.ok(!paths.includes(unwanted))
     assert.ok(paths.includes('vendor/channel-pack/qoder-auth-wasm.wasm'))
+    // 每个渠道的 WASM 都要单独断言：桌面打包曾因清单漏了 qwenwork 那个，
+    // 千问办公整条渠道 ENOENT 不可用，而那处漏洞没有任何测试能发现。
+    assert.ok(paths.includes('vendor/channel-pack/qwenwork-auth-wasm.wasm'))
     assert.ok(paths.includes('runtime/LICENSE'))
     assert.ok(paths.includes('THIRD_PARTY_NOTICES.txt'))
   })
