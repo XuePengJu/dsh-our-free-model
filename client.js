@@ -384,15 +384,16 @@ window.__ModuleLoader__.load({
         'picks.design.tag3': '原生预览画布',
         'picks.design.tag4': '真实文件导出',
         'free.title': '免费模型',
-        'free.sub': '免登录、免 Key、免配置：模型清单跟随上游刷新，可用性由这台机器实测。',
+        'free.sub': '匿名免费与 Kilo 模型统一展示：水位表示可选比例，实测状态单独显示。',
         'sponsor.bannerTag': '中转站',
         'sponsor.bannerTitle': '北辰 API 中转站',
         'sponsor.bannerDescription': 'OFM 官方合作中转站，为用户提供稳定、开放、高性价比的大模型 API 接入服务。支持 Claude、ChatGPT、Grok、Gemini、智谱 GLM、Kimi、DeepSeek 等主流模型，适合在 Codex、Gemini CLI、Claude Code 及其他开发工具中统一配置使用。邀请可获百分之十的返现。',
         'sponsor.bannerCta': '立即查看',
-        'free.tankLabel': '免费车道可用度',
-        'free.tankNote': '水位 = 当前可用模型占比（{ok}/{total}）',
-        'free.tankEmpty': '尚未探测，水位按已声明模型占位。',
-        'free.statHint': '五格状态计数相加 = 免费车道清单模型数（{total}）。「限流」与「未探测」也计入。',
+        'free.tankLabel': '免费池可选占比',
+        'free.tankNote': '水位 = 未受限可选模型 / 总数（{selectable}/{total}）；未探测计为候选，不代表实测成功率。',
+        'free.tankEmpty': '免费池暂未发现模型。',
+        'free.statHint': '五格状态计数相加 = 匿名免费与 Kilo 模型总数（{total}）；仅列出但未测试的模型计入「未探测」。',
+        'free.sources': '匿名免费 {anonymous} · Kilo {kilo}',
         'eac.title': 'EAC 模型',
         'eac.sub': '桌面端协付渠道：GitHub 登录并 star 本仓库后解锁，与免费车道互不影响。',
         'eac.tankLabel': '协付池压力',
@@ -1103,15 +1104,16 @@ window.__ModuleLoader__.load({
         'picks.design.tag3': 'Native preview canvas',
         'picks.design.tag4': 'Real file export',
         'free.title': 'Free models',
-        'free.sub': 'No login, no key, no setup: the roster follows upstream, availability is measured from this machine.',
+        'free.sub': 'Anonymous free and Kilo models share this pool. Water shows the selectable share; measured availability is shown separately.',
         'sponsor.bannerTag': 'Relay',
         'sponsor.bannerTitle': 'Beichen API relay',
         'sponsor.bannerDescription': 'OFM’s official relay partner provides stable, open and cost-effective model API access. Claude, ChatGPT, Grok, Gemini, GLM, Kimi and DeepSeek are supported for one consistent setup in Codex, Gemini CLI, Claude Code and other developer tools. Invite others to receive 10% cashback.',
         'sponsor.bannerCta': 'View now',
-        'free.tankLabel': 'Free-lane availability',
-        'free.tankNote': 'Water level = share of reachable models ({ok}/{total})',
-        'free.tankEmpty': 'Not probed yet; the level stands at the declared roster.',
-        'free.statHint': 'The five status counts add up to the free-lane roster ({total}). Throttled and not-probed models are counted too.',
+        'free.tankLabel': 'Selectable free-pool models',
+        'free.tankNote': 'Water = unblocked candidates / total ({selectable}/{total}); untested models remain candidates, not verified successes.',
+        'free.tankEmpty': 'No models have been discovered in this free pool.',
+        'free.statHint': 'The five status counts add up to all anonymous free and Kilo models ({total}); listed but untested models are counted as not probed.',
+        'free.sources': 'Anonymous free {anonymous} · Kilo {kilo}',
         'eac.title': 'EAC models',
         'eac.sub': 'The desktop co-paid lane: unlocked by a GitHub login plus a star, independent of the free lane.',
         'eac.tankLabel': 'Co-paid pool pressure',
@@ -3001,12 +3003,43 @@ window.__ModuleLoader__.load({
           bench?.result === undefined ? null : h('span', { className: 'ofm_note' }, bench.result)))
     }
 
+    function isFreePoolModel(model) {
+      return !model.channel || model.channel === 'anonymous' || model.channel === 'kilo'
+    }
+
+    function freePoolView(data) {
+      const rows = (data.catalog ?? []).filter(isFreePoolModel)
+      const counts = { available: 0, 'region-blocked': 0, unavailable: 0, throttled: 0, unknown: 0 }
+      for (const model of rows) {
+        const state = model.availabilitySource === 'listing' ? 'unknown' : model.availability
+        counts[Object.hasOwn(counts, state) ? state : 'unknown']++
+      }
+      // 选择器可能保留暂时限流的模型；这些已知受阻模型不应抬高水位。
+      const blocked = new Set(['throttled', 'unavailable', 'region-blocked'])
+      const selectable = data.settings?.enabled === false ? 0 : rows.filter(model => {
+        const state = model.availabilitySource === 'listing' ? 'unknown' : model.availability
+        return !blocked.has(state) && !model.hiddenByUser && !model.hiddenByGroup &&
+          (model.route === 'our-free-model' ||
+            (model.route === 'our-free-model-region' && data.settings?.exposeRegionModels !== false))
+      }).length
+      return { rows, counts, total: rows.length, selectable,
+        anonymous: rows.filter(model => model.channel !== 'kilo').length,
+        kilo: rows.filter(model => model.channel === 'kilo').length }
+    }
+
     function Roster(props) {
       const { summary, t, onBench, benches = {}, auth, eacLogin, only, onApply, busy } = props
       // `only` splits the same roster across the two model pages: the EAC page
       // shows the co-paid entries, the free page everything else. Filtering
       // here (rather than in each page) keeps one definition of what a route
       // group means.
+      //
+      // 与上游的差异（有意保留）：上游把免费页收窄成「匿名 + Kilo」，因为它的
+      // 聚合与组合模型很少。本 fork 有 14 个账号渠道加聚合与组合，而聚合、组合
+      // 都没有自己的模型清单页（`nav.tab.aggregate` 是渠道配置，
+      // `nav.tab.routing` 是链路编排），收窄会让这些模型从界面上消失。
+      // 因此清单页仍显示除 EAC 外的全部模型；水位与五格统计另按 freePoolView
+      // 的「匿名 + Kilo」口径计算，两个口径在文案里各自写明。
       const roster = only === undefined ? summary.catalog
         : only === 'eac' ? summary.catalog.filter(m => m.channel === 'eac')
           : summary.catalog.filter(m => m.channel !== 'eac')
@@ -6418,11 +6451,8 @@ window.__ModuleLoader__.load({
           h('div', null, h(Button, { onClick: () => summary.reload() }, t('retry'))))
       }
       const data = summary.data
-      // The tank and the stat chips describe the free lane's health, so the
-      // absorbed channels stay out of the tally — their cards carry their own
-      // availability badge, and a lane that is never probed would otherwise
-      // read as a permanently green slice of this gauge.
-      const counts = data.catalog.filter(m => !m.channel).reduce((acc, m) => ({ ...acc, [m.availabilitySource === 'listing' ? 'unknown' : m.availability]: (acc[m.availabilitySource === 'listing' ? 'unknown' : m.availability] ?? 0) + 1 }), {})
+      // 匿名免费与 Kilo 共用状态统计；清单条目不会被当成实测成功。
+      const counts = freePoolView(data).counts
       return h(Shell, {
         t: tagged, data, counts, summary, stats, eacAuth, setEacAuth, eacLogin,
         busy, setBusy, apply, bench, benches, ctx: props.ctx,
@@ -6481,7 +6511,7 @@ window.__ModuleLoader__.load({
       const reprobe = () => runCatalog('/reprobe')
 
       const tabs = [
-        ['free', t('nav.tab.free'), counts.available ?? 0],
+        ['free', t('nav.tab.free'), freePoolView(data).total],
         ['eac', t('nav.tab.eac'), data.catalog.filter(m => m.channel === 'eac').length],
         ['channels', t('nav.tab.channels'), CHANNEL_PROVIDERS.length],
         ['aggregate', t('nav.tab.aggregate'), data.catalog.filter(m => m.channel === 'aggregate').length],
@@ -6551,21 +6581,11 @@ window.__ModuleLoader__.load({
 
     function FreePage(props) {
       const { t, data, counts, summary, stats, eacAuth, eacLogin, busy, catalogBusy, apply, bench, benches, refresh, reprobe } = props
-      // The denominator is the free lane's own roster — the only slice the
-      // verdicts describe. Dividing by the whole catalog (which also carries
-      // the never-probed EAC and Kilo entries) read a 6-of-10 lane as ~17%.
-      const total = data.catalog.filter(m => !m.channel).length
+      const { total, selectable, anonymous, kilo: kiloCount } = freePoolView(data)
       const ok = counts.available ?? 0
-      // The tank reads the free lane's own health: the share of the declared
-      // roster this machine can actually reach. Same thresholds as the pool
-      // gauge, so the two pages' tanks never disagree about what "busy" looks
-      // like — only about what the water is measuring.
-      const pct = total > 0 ? Math.max(0, Math.min(100, Math.round(100 * ok / total))) : null
-      const ratio = total > 0 ? ok / total : 0
-      // Thresholds for *availability* (not load): most of a frontier roster being
-      // reachable is the healthy case, so "busy" starts below 60% rather than
-      // below two thirds — the pool gauge's own cut-offs measure queue pressure
-      // and would paint a perfectly usable lane amber.
+      const pct = total > 0 ? Math.max(0, Math.min(100, Math.round(100 * selectable / total))) : null
+      const ratio = total > 0 ? selectable / total : 0
+      // 颜色跟随可选比例；实际探测结果仍由下方五格状态独立显示。
       const level = ratio >= 0.6 ? 'ok' : ratio >= 0.3 ? 'busy' : 'over'
       return h('div', { className: 'ofm_page' },
         h(SponsorBanner, { t }),
@@ -6596,8 +6616,9 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'ofm_stat' }, h('b', null, String(counts.unknown ?? 0)), h('span', null, t('state.unknown')))),
               h('div', { className: 'ofm_poolmeta' },
                 h('span', { className: 'ofm_note' }, total > 0
-                  ? t('free.tankNote').replace('{ok}', String(ok)).replace('{total}', String(total))
+                  ? t('free.tankNote').replace('{selectable}', String(selectable)).replace('{total}', String(total))
                   : t('free.tankEmpty')),
+                h('span', { className: 'ofm_note' }, t('free.sources').replace('{anonymous}', String(anonymous)).replace('{kilo}', String(kiloCount))),
                 h('span', { className: 'ofm_note' }, t('meta.description'))),
               h('div', { className: 'ofm_row' },
                 h(Button, { disabled: busy || catalogBusy, onClick: refresh }, catalogBusy || summary.status === 'loading' ? t('probing') : t('refresh')),

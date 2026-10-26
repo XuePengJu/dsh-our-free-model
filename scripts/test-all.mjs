@@ -45,6 +45,7 @@ const suites = [
   ['picks', 'picks-test.mjs', []],
   ['picks-ui', 'picks-ui-test.mjs', []],
   ['stat-bucket-ui', 'stat-bucket-ui-test.mjs', []],
+  ['free-pool', 'free-pool-test.mjs', []],
   ['updater', 'updater-test.mjs', []],
   ['upgrade-ui', 'upgrade-ui-test.mjs', []],
   ['forward', 'forward-test.mjs', []],
