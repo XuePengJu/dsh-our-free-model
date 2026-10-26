@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
 import { ATTEMPT_LIMIT, readAttempts } from '../../src/core/attempts.js'
 import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, isComboEntry, normalizeCombos } from '../../src/combos.js'
+import { ALIAS_MAX_LEN, ALIAS_MODES, aliasFromName, buildAliasRows, normalizeAliasSettings, publicAliasSettings, suggestedAlias } from '../../src/aliases.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
 import { classifyChannelFailure } from './channel-probe.mjs'
@@ -131,6 +132,8 @@ export function managementSettings(value) {
     standaloneLanPort: value.standaloneLanPort ?? 0,
     probeIntervalMinutes: value.probeIntervalMinutes ?? 15,
     defaultMaxTokens: value.defaultMaxTokens ?? 32768,
+    /** `/v1/models` 对外用哪套名字：alias（默认）/ both / id。见 src/aliases.js。 */
+    aliasMode: normalizeAliasSettings(value.aliases).mode,
   }
 }
 
@@ -206,7 +209,10 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
   const summary = () => {
     const state = runtime.state()
     const available = stores.availability.get()
-    const routable = new Set(runtime.publicModelRows().map(entry => entry.id))
+    // 别名行对外只有一个名字，但问卷「这行能不能接入」要按它的真实 id 回答：
+    // 否则 `alias` 模式下原 id 全被标成「未公开」，清单页会自相矛盾。
+    const routable = new Set(runtime.publicModelRows().map(entry => entry.x_ofm_alias_of ?? entry.id))
+    const aliasByTarget = new Map((runtime.aliasRows?.() ?? []).map(row => [row.target, row.alias]))
     const disabledRaw = stores.settings.get().disabledModels
     const disabled = new Set(Array.isArray(disabledRaw) ? disabledRaw : [])
     return {
@@ -229,6 +235,9 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
           : modelAvailability(entry.id, available, false)
         return ({
         id: entry.id, name: entry.name, channel: entry.channel ?? 'anonymous',
+        // 可读别名（`qwen3.8-max`）：清单页直接显示它，用户不必抄 `qodercn/qmodel_38max`。
+        // 禁用/无可用别名时为空串，页面回退显示原 id。
+        alias: aliasByTarget.get(entry.id) ?? '',
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
         contextWindow: entry.contextWindow ?? entry.context_window, maxOutput: entry.maxOutput ?? entry.max_tokens,
         routable: routable.has(entry.id),
@@ -245,6 +254,30 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         ttftMs: measured.ttftMs ?? null,
       }) }),
     }
+  }
+
+  // 与 service 侧同口径：别名按**含禁用行**的全量目录分配，禁用某个模型只是让
+  // 那个名字消失（请求 404），绝不会把纯名让给另一个渠道的同名模型。
+  const aliasCatalog = () => (runtime.catalog ?? []).filter(row => !isComboEntry(row))
+  const aliasPayload = () => {
+    const settings = normalizeAliasSettings(stores.settings.get().aliases)
+    const active = new Map((runtime.aliasRows?.() ?? []).map(row => [row.target, row]))
+    const disabled = new Set(Array.isArray(stores.settings.get().disabledModels) ? stores.settings.get().disabledModels : [])
+    const rows = aliasCatalog().map(entry => {
+      const override = settings.overrides[entry.id] ?? {}
+      const live = active.get(entry.id)
+      return {
+        target: entry.id,
+        name: entry.name ?? entry.id,
+        channel: entry.channel ?? 'anonymous',
+        alias: live?.alias ?? '',
+        suggested: suggestedAlias(entry),
+        enabled: override.enabled !== false,
+        renamed: override.alias !== undefined,
+        routable: live !== undefined && !disabled.has(entry.id),
+      }
+    })
+    return { mode: settings.mode, rows }
   }
 
   async function route(req, res, pathname) {
@@ -476,6 +509,56 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (combos.length === before.length) throw fail(404, '模型组不存在')
       persist({ combos })
       json(res, 200, { combos })
+    } else if (method === 'GET' && pathname === `${PREFIX}/aliases`) {
+      json(res, 200, aliasPayload())
+    } else if (method === 'POST' && pathname === `${PREFIX}/aliases`) {
+      // 自动别名不写盘：settings 只记「改名」与「关闭」两类覆盖，其余模型继续
+      // 跟随目录自动生成，所以渠道新增模型时不需要任何同步动作。
+      const body = await readBody(req)
+      const current = normalizeAliasSettings(stores.settings.get().aliases)
+      if (body.mode !== undefined) {
+        if (!ALIAS_MODES.includes(body.mode)) throw fail(400, '对外暴露方式必须是 both、alias 或 id')
+        persist({ aliases: { ...current, mode: body.mode } })
+        json(res, 200, aliasPayload())
+        return
+      }
+      if (typeof body.target !== 'string' || body.target === '' || body.target.length > 300) throw fail(400, '请提供要设置别名的模型 ID')
+      if (!aliasCatalog().some(entry => entry.id === body.target)) throw fail(404, '模型清单中没有这个模型')
+      const next = { ...(current.overrides[body.target] ?? { enabled: true }) }
+      if (body.enabled !== undefined) {
+        if (typeof body.enabled !== 'boolean') throw fail(400, 'enabled 必须是布尔值')
+        next.enabled = body.enabled
+      }
+      if (body.alias !== undefined) {
+        const alias = aliasFromName(body.alias)
+        if (alias === '' || alias.length > ALIAS_MAX_LEN) throw fail(400, `别名需为 ${ALIAS_MAX_LEN} 字符以内的字母、数字、点、下划线或短横线`)
+        if (alias === body.target) throw fail(400, '别名不能与模型 ID 相同')
+        // 别名的第一条不变量是不含 `/`：渠道按 `provider/` 前缀认路，
+        // 带斜杠的名字会被当成渠道 id。aliasFromName 已经把它折成短横线。
+        if ((runtime.catalog ?? []).some(row => row.id === alias)) throw fail(409, `「${alias}」已经是另一个模型的 ID`)
+        next.alias = alias
+      }
+      const overrides = { ...current.overrides, [body.target]: next }
+      // 试算一次：claim 只因冲突改名，改过的名字不能算用户设置成功。
+      if (body.alias !== undefined) {
+        const claimed = buildAliasRows(aliasCatalog(), { ...current, overrides }).find(row => row.target === body.target)
+        if (claimed !== undefined && claimed.alias !== next.alias) throw fail(409, `「${next.alias}」已被占用，建议改用 ${claimed.alias}`)
+      }
+      persist({ aliases: { ...current, overrides } })
+      json(res, 200, aliasPayload())
+    } else if (method === 'POST' && pathname === `${PREFIX}/aliases/reset`) {
+      // 清掉覆盖即恢复「跟着目录自动生成」：不带 target 是全部恢复。
+      const body = await readBody(req)
+      const current = normalizeAliasSettings(stores.settings.get().aliases)
+      const overrides = { ...current.overrides }
+      if (typeof body.target === 'string' && body.target !== '') {
+        if (overrides[body.target] === undefined) throw fail(404, '这个模型没有别名覆盖')
+        delete overrides[body.target]
+      } else {
+        for (const key of Object.keys(overrides)) delete overrides[key]
+      }
+      persist({ aliases: { ...current, overrides } })
+      json(res, 200, aliasPayload())
     } else if (method === 'POST' && pathname === `${PREFIX}/combos/export-workbuddy`) {
       // 幂等全量同步：启用且可解析的模型组 upsert 进 ~/.workbuddy/models.json，
       // 顺带刷新归属单模型条目并清理 combo: 残留；详见 workbuddy-sync.mjs。

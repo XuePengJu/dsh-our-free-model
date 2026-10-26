@@ -3,6 +3,8 @@ export interface Model {
   id: string
   name: string
   channel: string
+  /** 对外可读名（`qwen3.8-max`）：网关 `/v1/models` 广播、也可直接当 model 传。 */
+  alias?: string
   routable: boolean
   hiddenByUser?: boolean
   hiddenByGroup?: boolean
@@ -47,6 +49,8 @@ export interface ServiceSettings {
   standaloneProbe: boolean
   probeIntervalMinutes: number
   defaultMaxTokens: number
+  /** `/v1/models` 对外用哪套名字：both / alias / id（见 src/aliases.js）。 */
+  aliasMode?: 'both' | 'alias' | 'id'
 }
 export interface Summary {
   version: string

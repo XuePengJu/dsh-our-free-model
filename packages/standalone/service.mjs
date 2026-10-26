@@ -4,6 +4,7 @@ import path from 'node:path'
 import net from 'node:net'
 import crypto from 'node:crypto'
 import { commitsAnswer } from '../../src/adapter.js'
+import { aliasModelRow, buildAliasRows, normalizeAliasSettings, resolveModelAlias } from '../../src/aliases.js'
 import { buildComboCatalog, comboChain, COMBO_PREFIX, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { publicModelRows as snapshotModelRows } from '../../src/core/completion.js'
 import { recordTurn } from '../../src/store.js'
@@ -269,6 +270,12 @@ export async function startStandalone({
     const disabledSet = () => new Set(Array.isArray(settings.get().disabledModels) ? settings.get().disabledModels : [])
     const visibleRows = () => { const disabled = disabledSet(); return realRows().filter(row => !disabled.has(row.id)) }
     const comboRows = () => buildComboCatalog(normalizeCombos(settings.get().combos), visibleRows())
+    // 别名层：可读名 → 真实 id。按当前目录现算、只落在 settings 的改名/关闭覆盖上，
+    // 因此渠道刷新掉某个模型时它的别名一并消失，不会留下指向空处的旧名字。
+    // 分配必须基于**含禁用行**的全量目录：若按可见目录算，禁用 A 渠道的同名模型
+    // 会让 B 渠道的模型接管纯名，正在用这个名字的客户端就被静默换到了另一个模型。
+    const aliasSettings = () => normalizeAliasSettings(settings.get().aliases)
+    const aliasRows = () => buildAliasRows(realRows(), aliasSettings())
     const completeCombo = async (entry, request, onChunk) => {
       // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
       // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
@@ -480,33 +487,64 @@ export async function startStandalone({
       get gatewayLatency() { return core.gatewayLatency },
       get catalog() { return [...realRows(), ...comboRows()] },
       state: () => ({ ...core.state(), catalog: [...realRows(), ...comboRows()] }),
+      aliasRows: () => aliasRows(),
+      aliasSettings,
       publicModelRows: () => {
         const disabled = disabledSet()
-        return [
+        const real = [
           ...snapshotModelRows(core.state()).filter(row => !row.id.startsWith(COMBO_PREFIX) && !disabled.has(row.id)),
           ...channels.publicModelRows().filter(row => !disabled.has(row.id)),
           ...comboRows().map(entry => ({
             id: entry.id, object: 'model', created: Math.floor(Date.now() / 1000), owned_by: 'our-free-model',
+            // 组合是用户起的虚拟模型：给个 name 才能被按显示名建索引的客户端列出来，
+            // 后缀「· 组合」让它在清单里和同名真模型区分开，不会被去重吞掉。
+            name: `${entry.name ?? entry.id} · 组合`,
             context_window: entry.contextWindow,
           })),
         ]
+        const mode = aliasSettings().mode
+        // `id` 是历史行为；`both` 额外广播别名；`alias` 只广播别名。
+        // 三种模式下原始 id 都能路由，切换模式不会让已配好的客户端突然 404。
+        if (mode === 'id') return real
+        const byId = new Map(real.map(row => [row.id, row]))
+        const aliased = []
+        const replaced = new Set()
+        for (const row of aliasRows()) {
+          const target = byId.get(row.target)
+          if (target === undefined) continue
+          // 能力/上下文/计费字段全部继承真实行：别名只是换了个名字，不是另一种模型。
+          // `name` 由 aliasModelRow 换成别名本身——客户端按显示名去重，继承原名会被
+          // 当成重复项静默丢掉，外部客户端的「添加模型」弹窗里就只剩原始 id。
+          aliased.push(aliasModelRow(target, row.alias))
+          replaced.add(row.target)
+        }
+        // `alias` 模式下只藏「已经有别名」的行：组合、以及 id 本来就认得出的模型
+        // 没有别名可用，必须原样留着，否则它们会在清单里凭空消失。
+        if (mode === 'alias') return [...real.filter(row => !replaced.has(row.id)), ...aliased]
+        return [...real, ...aliased]
       },
       complete: (request, onChunk) => {
+        // 别名必须在任何分发判断之前展开：渠道按 `provider/` 前缀认路，
+        // 禁用表存的也是真实 id，晚一步展开就会既认不出渠道、也漏掉禁用。
+        const model = resolveModelAlias(request.model, aliasRows())
+        const routed = model === request.model ? request : { ...request, model }
         // 已关闭的模型对推理一律 404：客户端看到的目录里根本没有它。
-        if (disabledSet().has(request.model)) {
+        // 报错回显调用方写的名字（可能是别名）：读这句话的人要对上的是自己在
+        // 客户端里填的那一行，而不是内部展开后的 id。
+        if (disabledSet().has(model)) {
           return Promise.reject(Object.assign(new Error(`model "${request.model}" is disabled`), { statusCode: 404 }))
         }
-        if (channels.handles(request.model)) return channels.complete(request, onChunk)
-        if (request.model.startsWith(COMBO_PREFIX)) {
-          const entry = comboRows().find(row => row.id === request.model)
+        if (channels.handles(model)) return channels.complete(routed, onChunk)
+        if (model.startsWith(COMBO_PREFIX)) {
+          const entry = comboRows().find(row => row.id === model)
           // 组合行按 settings 现算：找不到意味着这条链刚被删光或成员全部失效，
           // 此时不能回落到核心里可能残留的旧行，直接如实 404。
           if (entry === undefined) {
             return Promise.reject(Object.assign(new Error(`model "${request.model}" not found`), { statusCode: 404 }))
           }
-          return completeCombo(entry, request, onChunk)
+          return completeCombo(entry, routed, onChunk)
         }
-        return core.complete(request, onChunk)
+        return core.complete(routed, onChunk)
       },
       async refreshCatalog(options) {
         if (stopped) return

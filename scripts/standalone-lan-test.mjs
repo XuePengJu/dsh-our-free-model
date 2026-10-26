@@ -203,7 +203,10 @@ try {
       assert.ok(!response.text.includes(localKey))
       assert.ok(!response.text.includes(lanKey))
     }
-    assert.ok((await lanRequest('/models')).value.data.some(row => row.id === model))
+    // 默认 alias 模式用可读名广播，原始 id 不再出现：这里要断言的是「LAN 客户端能
+    // 看到这个模型」，不是它叫什么名字，所以别名行也算数。
+    const roster = (await lanRequest('/models')).value.data
+    assert.ok(roster.some(row => row.id === model || row.x_ofm_alias_of === model), JSON.stringify(roster))
   })
   await check('Chat and Responses use the real inference runtime through the relay', async () => {
     const before = calls

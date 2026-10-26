@@ -20,6 +20,8 @@ const warningStates = ['unavailable', 'throttled', 'region-blocked', 'needs-logi
 const sourceNames: Record<string, string> = { anonymous: '匿名模型', kilo: 'Kilo 免费池', eac: 'EAC 协付', combo: '模型组' }
 const channelName = (id: string) => sourceNames[id]
   ?? providers.find(provider => provider.id === id)?.name ?? id
+/** 对外该用哪个名字：有别名就用别名，否则原 ID。复制与展示都走这一个口径。 */
+const readableId = (model: Model) => model.alias || model.id
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const capacity = (value?: number) => value && Number.isFinite(value) && value > 0
   ? value >= 1000 ? `${Number((value / 1000).toFixed(1))}K` : number(value) : '未知'
@@ -199,9 +201,9 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   }
 
   const copyModelId = (model: Model) => {
-    void host.copy(model.id).then(() => {
+    void host.copy(readableId(model)).then(() => {
       if (activeRef.current) {
-        setCopied(model.id)
+        setCopied(readableId(model))
         setTimeout(() => { if (activeRef.current) setCopied(undefined) }, 1800)
       }
     }).catch(host.error)
@@ -353,7 +355,9 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
               onFocusCapture={() => setFocusedId(model.id)} onBlurCapture={event => {
                 if (!event.currentTarget.contains(event.relatedTarget)) setFocusedId(undefined)
               }}>
-              <div role="cell" className="model-identity"><strong>{model.name}</strong><code>{model.id}</code></div>
+              <div role="cell" className="model-identity"><strong>{model.name}</strong>
+                {/* 有别名就亮别名：用户要抄去别处用的是这个，原 ID 退到 title 里备查。 */}
+                <code title={model.alias ? `原始 ID：${model.id}` : undefined}>{readableId(model)}</code></div>
               <div role="cell" className="model-source"><span>{channelName(model.channel)}</span><div className="model-capabilities">
                 <Badge>{model.vision ? '视觉' : '纯文本'}</Badge>{model.reasoning && <Badge tone="blue">思考</Badge>}</div></div>
               <div role="cell" className="model-limits"><span title={model.contextWindow ? `${model.contextWindow} Token` : undefined}>{capacity(model.contextWindow)} <small>上下文</small></span>
@@ -371,9 +375,9 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
               {/* 规则 3：行内 ≤2 钮 + ⋯ 菜单。复制=图标钮，禁用/启用与测试=主操作，
                   低频的隐藏与写入收进 ⋯ 菜单（隐藏=上游体系，写入=本地导出）。 */}
               <div role="cell" className="model-row-actions">
-                <Button variant="ghost" title={`复制 ${model.id}`} aria-label={`复制模型 ID：${model.id}`} onClick={() => copyModelId(model)}
-                  className={copied === model.id ? 'md-copy-done' : ''}>
-                  {copied === model.id ? <Check size={16} /> : <Copy size={16} />}
+                <Button variant="ghost" title={`复制 ${readableId(model)}`} aria-label={`复制模型 ID：${readableId(model)}`} onClick={() => copyModelId(model)}
+                  className={copied === readableId(model) ? 'md-copy-done' : ''}>
+                  {copied === readableId(model) ? <Check size={16} /> : <Copy size={16} />}
                 </Button>
                 <Button variant="outline" disabled={!!toggling && toggling !== model.id}
                   title={model.disabled ? `重新启用 ${model.name}` : `禁用 ${model.name}，禁用后从清单默认视图隐藏`}
@@ -401,6 +405,18 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                       onSelect: () => { void saveVisibility({
                         hiddenModelIds: nextHiddenIds(summary.settings.hiddenModelIds, model.id),
                       }) },
+                    }] : []),
+                    /* 别名行对外只有一个名字，但排查问题时要能拿到渠道原始 ID。 */
+                    ...(model.alias ? [{
+                      key: 'copy-raw',
+                      label: '复制原始 ID',
+                      icon: <Copy size={14} />,
+                      title: model.id,
+                      onSelect: () => {
+                        void host.copy(model.id)
+                          .then(() => { if (activeRef.current) setMessage(`已复制原始 ID：${model.id}`) })
+                          .catch(host.error)
+                      },
                     }] : []),
                     ...(model.channel !== 'combo' ? [
                       {

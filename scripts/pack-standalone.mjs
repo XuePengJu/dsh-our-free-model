@@ -34,7 +34,7 @@ const sourceFiles = [
     .map(name => `packages/standalone/channels/${name}.mjs`),
   'packages/standalone/web/index.html',
   'packages/standalone/web/assets.json',
-  ...['adapter', 'aggregate', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'eac', 'eac-login', 'eac-user', 'effort',
+  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'eac', 'eac-login', 'eac-user', 'effort',
     'egress', 'failure', 'forward', 'http', 'image-pricing', 'kilo', 'local-optimize', 'messages', 'model-test', 'probe', 'recovery',
     'store', 'stream', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
     .map(name => `src/${name}.js`),

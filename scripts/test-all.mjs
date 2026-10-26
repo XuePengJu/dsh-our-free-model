@@ -43,6 +43,7 @@ const suites = [
   ['sanitize', 'sanitize-test.mjs', []],
   ['feed', 'feed-test.mjs', []],
   ['picks', 'picks-test.mjs', []],
+  ['aliases', 'aliases-test.mjs', []],
   ['picks-ui', 'picks-ui-test.mjs', []],
   ['stat-bucket-ui', 'stat-bucket-ui-test.mjs', []],
   ['free-pool', 'free-pool-test.mjs', []],

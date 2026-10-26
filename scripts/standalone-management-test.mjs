@@ -329,8 +329,24 @@ try {
   })
   await check('模型隐藏只过滤公开清单，保留管理入口和历史调用并持久化', async () => {
     const listing = async () => (await (await request('/v1/models', { headers: { authorization: `Bearer ${key}` } })).json()).data
+    // 默认（alias）只广播可读名，而且别名行的 name 必须换成别名本身：客户端把清单
+    // 建成「显示名 -> 模型」的表，继承原始显示名会让它被当成重复项静默丢掉，外部
+    // 客户端的「添加模型」弹窗里就只剩 `nvidia/nemotron...` 这种没人认得出的 id。
+    const aliased = await listing()
+    const aliasRow = aliased.find(row => row.x_ofm_alias_of === kilo)
+    assert.ok(aliasRow, `默认 alias 模式应广播 kilo 的可读名：${JSON.stringify(aliased)}`)
+    assert.equal(aliasRow.name, aliasRow.id, '别名行的 name 必须是别名本身')
+    assert.equal(aliased.some(row => row.id === kilo), false, 'alias 模式不再广播原始 id')
+    assert.equal((await request('/api/management/aliases', { body: { mode: 'both' } })).status, 200)
+    // 后面的断言按原始 id 写死，测的是路由与持久化而不是命名，这里切回 both。
+    assert.equal((await listing()).some(row => row.id === kilo), true, 'both 模式原始 id 也要回来')
     assert.equal((await request('/api/management/settings', { body: { hiddenModelIds: [model, model] } })).status, 200)
-    assert.deepEqual((await listing()).map(row => row.id), [kilo])
+    // 别名是同一个模型的第二个名字：隐藏判定必须同时覆盖两者，否则清单里会留下
+    // 一条能路由到已隐藏模型的别名行，等于把刚藏起来的模型换个名字又摆出来。
+    const ids = (await listing()).map(row => row.id)
+    assert.equal(ids.includes(model), false)
+    assert.equal((await listing()).some(row => row.x_ofm_alias_of === model), false)
+    assert.ok(ids.includes(kilo))
     const summary = await (await request('/api/management/summary')).json()
     assert.deepEqual(summary.settings.hiddenModelIds, [model])
     assert.equal(summary.catalog.find(row => row.id === model).hiddenByUser, true)

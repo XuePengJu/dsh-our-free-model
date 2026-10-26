@@ -204,6 +204,11 @@ export const SETTINGS_INITIAL = {
   /** Named fallback chains. A combo is a virtual model whose answer comes from
    *  the first link that produces output; see src/combos.js. */
   combos: [],
+  /** Readable second names for channel-minted ids (`qodercn/qmodel_38max` ->
+   *  `qwen3.8-max`). Generated from the live catalog; only renames and
+   *  switch-offs are stored here. `mode` picks what `/v1/models` advertises:
+   *  `alias` (default, only readable names), `both`, or `id` only. See src/aliases.js. */
+  aliases: { mode: 'alias', overrides: {} },
   /** The five local answers that avoid a provider call entirely: a quota probe,
    *  a shell command prefix, a session title, a suggestion, a filepath list.
    *  They are pure request-shape matches, so a false positive would answer a real
