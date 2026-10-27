@@ -4666,10 +4666,15 @@ window.__ModuleLoader__.load({
                     h('button', {
                       type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
                       onClick: () => accountAction('test:' + row.id, row.id, async () => {
+                        const startedAt = Date.now()
                         const value = await rpc('account.test', { accountId: row.id }, 90_000)
+                        // 失败原因在 `message`（见 RpcTestAccountResponse）：旧代码读的是
+                        // `error`，该字段后端从不返回，于是文案永远是「测试失败：」后面空着，
+                        // 用户只能看到失败看不到为什么。耗时同理：后端不返回 ms/latencyMs，
+                        // 用本地实测兜底，避免成功时恒显示「（— ms）」。
                         setNotice(value?.ok === false
-                          ? t('chan.test.failed').replace('{reason}', value?.error ?? '')
-                          : t('chan.test.ok').replace('{ms}', String(value?.ms ?? value?.latencyMs ?? '—')))
+                          ? t('chan.test.failed').replace('{reason}', value?.message ?? '')
+                          : t('chan.test.ok').replace('{ms}', String(value?.ms ?? value?.latencyMs ?? (Date.now() - startedAt))))
                       }),
                     }, t('chan.act.test')),
                     h('button', {

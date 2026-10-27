@@ -45,6 +45,8 @@ import { clineProductById } from './cline-product.js'
 import { zcodeProductById } from './zcode-product.js'
 import { GeminiAdapter } from './gemini-adapter.js'
 import { GEMINI, GEMINI_DEFAULT_PROJECT, GEMINI_SESSION_LANE_SMOKE } from './gemini.js'
+import { QwenworkAdapter } from './qwenwork-adapter.js'
+import { QWENWORK } from './qwenwork-product.js'
 import type { BuddyCredential } from './buddy.js'
 import type { LobsteraiCredential } from './lobsterai.js'
 import type { QoderCredential } from './qoder.js'
@@ -52,6 +54,7 @@ import type { ClineCredential } from './cline.js'
 import type { ZcodeCredential } from './zcode.js'
 import type { TraeCredential } from './trae.js'
 import type { GeminiCredential } from './gemini.js'
+import type { QwenworkCredential } from './qwenwork.js'
 import type {
   CodeArtsCredential,
   ProbeAccountResult,
@@ -85,6 +88,7 @@ type ProbeCredential =
   | ZcodeCredential
   | TraeCredential
   | GeminiCredential
+  | QwenworkCredential
 
 /** 探测请求的提示语（与 e2e 探针保持一致，最大化可比性）。 */
 const PROBE_PROMPT = '只回答两个字：收到'
@@ -227,6 +231,13 @@ async function probeWithAdapter(
   //    **完全同款**（同样按 UTC+8 当日 24:00 标记该模型），而那个写入点是
   //    在本分支建立**之后**才进 master 的 —— 正是「清单靠记忆维护」必漏的情形。
   //
+  // 5. 补上 gemini 之后**仍漏掉 qwenwork**（本次，2026-10-27）→ 同型第 5 次。
+  //    与 zcode/gemini 不同，它不是靠「写不写限流标记」暴露的：qwenwork **不写**
+  //    `modelRateLimits`，所以「重测」永远无事发生、看不出破绽；坏的是
+  //    `account.test`（无条件探活）——账号池点「测试」恒失败，而模型清单点「测试」
+  //    恒成功。⇒ 上面的判据（只看谁写限流标记）**不足以**覆盖这种情况，
+  //    新增渠道时也要核对“推理注册处”，而不只是 grep 限流写入方。
+  //
   // ⚠️ **判据是「该 provider 会不会写 `modelRateLimits`」**（写了才有重测按钮、
   // 才需要在这里分派）。但**不要靠记忆维护清单**，直接机械核对写入方：
   //
@@ -234,7 +245,7 @@ async function probeWithAdapter(
   //
   // 命中者（除 `account-pool.ts` 的定义与 `account-probe.ts` 自身的回写）的每个
   // 适配器都必须在这里有分支：buddy（含 workbuddy）/ lobsterai / qoder（含
-  // qodercn）/ cline / zcode / trae / codearts / **gemini**。反例：loomy 的
+  // qodercn）/ cline / zcode / trae / codearts / **gemini** / **qwenwork**。反例：loomy 的
   // 积分耗尽时静默降级、**不写**标记，故它落 else 无害（`retestAccount`
   // 取不到 modelId 时根本不构造适配器）。新增 provider 时务必同步本分支，
   // 并补 `tests/unit/account-probe-adapter.spec.ts` 的对应用例。
@@ -251,6 +262,7 @@ async function probeWithAdapter(
     | ZcodeAdapter
     | TraeAdapter
     | GeminiAdapter
+    | QwenworkAdapter
     | CodeArtsAdapter
   if (buddyProduct !== undefined) {
     adapter = new BuddyAdapter({
@@ -340,6 +352,27 @@ async function probeWithAdapter(
       sessionLane: GEMINI_SESSION_LANE_SMOKE,
       project: GEMINI_DEFAULT_PROJECT,
       product: GEMINI,
+    })
+  } else if (entry.provider === QWENWORK.id) {
+    // 千问办公（QwenWork）→ QwenworkAdapter。
+    //
+    // ⚠️ 本分支是「分派表漏加」的**第 5 次**（前四次见上方注释）。qwenwork 上线时
+    // 只接了推理注册（`registerQwenworkLlm`），探测分派表没同步 ⇒ 账号池的「测试」
+    // 落到下面的 else，被交给**华为云 HMAC 签名**的 CodeArtsAdapter 去发阿里系的
+    // token，必然失败。而模型清单的「测试」走 `runtime.testModel`（真实渠道 worker），
+    // 同一账号同一模型却成功 —— 于是出现「账号池说失败、模型清单说可用」的矛盾
+    // （用户报障的真实原因）。这不影响真实推理，只是探活按钮误报。
+    //
+    // 它**不写** `modelRateLimits`（额度耗尽时静默降级），故「重测」对它本无动作；
+    // 需要本分支的是 `account.test`（无条件探活）这条路径。
+    //
+    // 探测只发一次最小纯文本请求，不涉及图片/工具，故除 product 外无需其它钩子
+    //（`readImage` 只在图片内联时用到）。
+    adapter = new QwenworkAdapter({
+      credentialRef: ref,
+      resolveCredential: async () => credential as QwenworkCredential,
+      refresh: async () => {},
+      product: QWENWORK,
     })
   } else {
     adapter = new CodeArtsAdapter({
