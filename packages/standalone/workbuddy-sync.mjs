@@ -34,6 +34,16 @@ const DEFAULT_CONTEXT_WINDOW = 131072
 const DEFAULT_MAX_OUTPUT = 32768
 
 /**
+ * 客户端真正会渲染的思考档位（`convertInternalModelToOptions` 的静态表）。
+ *
+ * 模型自己声明的 `none` / `off` 档不在表里：客户端「关闭思考」根本不是某个
+ * 档位，而是选项上的 `isThinking: false`，档位只表示开启时的强度。把 `none`
+ * 写进 `supportedEfforts` 只会让选择器少一项；若某模型**只**声明了关闭档，
+ * 过滤后档位表为空，面板打开却没有任何可选强度，比不写更糟。
+ */
+const CLIENT_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+
+/**
  * 带状态码的错误：管理路由的统一 catch 按 `statusCode` 原样把具体原因
  * 回给页面（而非笼统的 500「管理操作失败」），满足「拒绝写入并明确报错」。
  */
@@ -97,12 +107,15 @@ export function isOwnedByOfm(entry) {
  *   （见 vendor/channel-pack/src/reasoning-ladder.ts 的强度序）。
  * - 免费车道与组合行：只声明「能不能思考」，没有档位表。免费车道的档位是本地
  *   token 阶梯（src/effort.js），网关根本不下发 effort 字段，写成任何档位都是
- *   虚构 —— 故整个字段都不写，客户端按「只有思考开关」处理。
+ *   虚构 —— 故档位表整段不写，客户端按「只有思考开关」处理。
  *
- * 规范名照原样透传（含 `none`/`ultra`）：客户端只渲染它认识的那几档，多写的
- * 值不会误发；而一旦客户端日后补上标签，文件里已有正确值，无需再同步一次。
+ * 规范名只在落到客户端静态表（{@link CLIENT_EFFORTS}）内时才写：`none` 是
+ * 「关闭思考」在客户端侧的等价物，而客户端的关闭根本不是档位（见
+ * buildWorkbuddyEntryFromModel 的说明），写进去只会让选择器少一项；`ultra`
+ * 之类客户端不认识的档位同理不留。**过滤后为空即视为「没有档位表」**——
+ * 一个只声明了关闭档的模型，写空数组会让面板打开却没有任何可选强度。
  *
- * 返回 `undefined` 表示该行没声明档位表（不写 `reasoning`）；
+ * 返回 `undefined` 表示该行没声明可用的档位表（只写开关，不写档位）；
  * 否则返回 `{ supported, defaultEffort }`，其中 `defaultEffort` 仍可能缺省
  * （声明值不在自己的档位表内时，宁可留空交给请求层，也不写一个会被网关就近
  * 落档的档位）。
@@ -116,7 +129,8 @@ function reasoningDeclarationFor(model) {
     for (const row of rows) {
       if (typeof row.canonical === 'string' && row.canonical !== '') canonical.set(row.id, row.canonical)
     }
-    const supported = [...new Set(rows.map(row => canonical.get(row.id)).filter(effort => effort !== undefined))]
+    const supported = [...new Set(rows.map(row => canonical.get(row.id))
+      .filter(effort => effort !== undefined && CLIENT_EFFORTS.has(effort)))]
     if (supported.length === 0) return undefined
     const declaredDefault = typeof reasoning.default === 'string' ? canonical.get(reasoning.default) : undefined
     return {
@@ -128,7 +142,8 @@ function reasoningDeclarationFor(model) {
     const name = effort => (effort === 'disabled' ? 'none' : effort)
     const supported = [...new Set(model.efforts
       .filter(effort => typeof effort === 'string' && effort !== '')
-      .map(name))]
+      .map(name)
+      .filter(effort => CLIENT_EFFORTS.has(effort)))]
     if (supported.length === 0) return undefined
     const declaredDefault = typeof model.effortDefault === 'string' ? name(model.effortDefault) : undefined
     return {
@@ -144,8 +159,26 @@ function reasoningDeclarationFor(model) {
  * combo 行的 vision/reasoning/contextWindow/maxOutput 已由 buildComboCatalog
  * 算好交集，字段形状与真实模型行一致。
  *
- * `reasoning` 子对象只在拿得到模型自己的档位声明时才写：写一个空档位表等于
- * 宣称「有档位可选」，客户端的选择器会因此空转。
+ * ## `canDisableThinking: false` 为什么是写死的（不是读模型声明）
+ *
+ * 客户端把「关闭思考」做成一个**选项**，不是一个开关值：
+ *
+ * ```js
+ * l = s?.canDisableThinking !== !1          // 缺省就当「可关」
+ * return supportsReasoning ? (onlyReasoning || !l ? [开启版] : [关闭版, 开启版]) : [关闭版]
+ * ```
+ *
+ * 列表**第一项是关闭版**，而用户的选择按模型 id 存在 localStorage，恢复时按
+ * `id + isThinking` 精确匹配；匹配不上（首次使用、改过 id、清过缓存）就回退到
+ * 第一项 —— 于是「每次都被自己关掉」。写 `true` 与不写完全等价，都生成两个
+ * 选项、都默认关闭；只有写 `false` 才只生成开启版，从根上消掉这个回退路径。
+ *
+ * 代价是关不掉思考，且客户端不提供「可关但默认开」的组合，只能二选一。本服务
+ * 所有车道都按「默认开」交付：免费车道的池化账号本来就忽略一切 thinking 开关
+ * （只认 max_tokens，见 src/effort.js 头部），声明成可关才是假的。
+ *
+ * 档位表（`supportedEfforts`）仍然严格照模型声明投影，且只在非空时写：写一个
+ * 空档位表等于宣称「有档位可选」，客户端的选择器会因此空转。
  */
 export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
   const supportsReasoning = model.reasoning === true ||
@@ -163,12 +196,15 @@ export function buildWorkbuddyEntryFromModel(model, { baseUrl, forwardKey }) {
     useCustomProtocol: false,
     maxInputTokens: positiveInt(model.contextWindow ?? model.context_window) ?? DEFAULT_CONTEXT_WINDOW,
     maxOutputTokens: positiveInt(model.maxOutput ?? model.max_tokens) ?? DEFAULT_MAX_OUTPUT,
-    ...(declaration === undefined ? {} : {
+    ...(supportsReasoning ? {
       reasoning: {
-        supportedEfforts: declaration.supported,
-        ...(declaration.defaultEffort === undefined ? {} : { defaultEffort: declaration.defaultEffort }),
+        ...(declaration === undefined ? {} : {
+          supportedEfforts: declaration.supported,
+          ...(declaration.defaultEffort === undefined ? {} : { defaultEffort: declaration.defaultEffort }),
+        }),
+        canDisableThinking: false,
       },
-    }),
+    } : {}),
   }
 }
 

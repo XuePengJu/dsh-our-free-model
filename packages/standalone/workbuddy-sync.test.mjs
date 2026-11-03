@@ -129,7 +129,11 @@ test('buildWorkbuddyEntryFromModel: channel row projects ladder and default from
     context_window: 4096, max_tokens: 1024,
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
   assert.equal(entry.supportsReasoning, true)
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['high', 'none'], defaultEffort: 'high' })
+  // `none` 是「关闭」在客户端侧的等价物，而关闭不是档位 —— 不进档位表；
+  // canDisableThinking 恒为 false（见 workbuddy-sync.mjs 的机制说明）。
+  assert.deepEqual(entry.reasoning, {
+    supportedEfforts: ['high'], defaultEffort: 'high', canDisableThinking: false,
+  })
   assert.equal(entry.supportsImages, true)
   assert.equal(entry.maxInputTokens, 4096)
   assert.equal(entry.maxOutputTokens, 1024)
@@ -147,13 +151,15 @@ test('buildWorkbuddyEntryFromModel: private ladder ids are translated, order kep
       default: 'extra_high',
     },
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
-  assert.deepEqual(trae.reasoning, { supportedEfforts: ['low', 'high', 'xhigh'], defaultEffort: 'xhigh' })
+  assert.deepEqual(trae.reasoning, {
+    supportedEfforts: ['low', 'high', 'xhigh'], defaultEffort: 'xhigh', canDisableThinking: false,
+  })
 
   // 未登记强度的私有 id（无 canonical）不可表达 → 不进档位表。
   const opaque = buildWorkbuddyEntryFromModel({
     id: 'x', reasoning: { efforts: [{ id: 'weird' }, { id: 'high', canonical: 'high' }], default: 'weird' },
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
-  assert.deepEqual(opaque.reasoning, { supportedEfforts: ['high'] })
+  assert.deepEqual(opaque.reasoning, { supportedEfforts: ['high'], canDisableThinking: false })
 })
 
 test('buildWorkbuddyEntryFromModel: EAC/Kilo efforts map disabled to none, default follows', () => {
@@ -161,32 +167,44 @@ test('buildWorkbuddyEntryFromModel: EAC/Kilo efforts map disabled to none, defau
     id: 'z-ai/glm-5.3', reasoning: true, efforts: ['disabled', 'low', 'high', 'max'], effortDefault: 'high',
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
   assert.equal(entry.supportsReasoning, true)
-  assert.deepEqual(entry.reasoning, { supportedEfforts: ['none', 'low', 'high', 'max'], defaultEffort: 'high' })
+  assert.deepEqual(entry.reasoning, {
+    supportedEfforts: ['low', 'high', 'max'], defaultEffort: 'high', canDisableThinking: false,
+  })
 
   // 声明值不在自己的档位表内 → 留空交给请求层，绝不写一个会被就近落档的档位。
   const stale = buildWorkbuddyEntryFromModel({
     id: 'x', reasoning: true, efforts: ['low', 'high'], effortDefault: 'ultra',
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
-  assert.deepEqual(stale.reasoning, { supportedEfforts: ['low', 'high'] })
+  assert.deepEqual(stale.reasoning, { supportedEfforts: ['low', 'high'], canDisableThinking: false })
 
-  // 关闭档为默认档时同样翻译。
+  // 默认档就是关闭档时，`none` 既不是客户端档位、也不在过滤后的表内 → 留空。
   const off = buildWorkbuddyEntryFromModel({
     id: 'y', reasoning: true, efforts: ['disabled', 'high'], effortDefault: 'disabled',
   }, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
-  assert.deepEqual(off.reasoning, { supportedEfforts: ['none', 'high'], defaultEffort: 'none' })
+  assert.deepEqual(off.reasoning, { supportedEfforts: ['high'], canDisableThinking: false })
 })
 
-test('buildWorkbuddyEntryFromModel: a bare reasoning flag writes no ladder', () => {
+test('buildWorkbuddyEntryFromModel: a bare reasoning flag writes the switch but no ladder', () => {
   // 免费车道（只有本地 token 阶梯，网关不收 effort 字段）与组合行（无档位交集）：
-  // 写死任何档位都是虚构，客户端退化为「只有思考开关」才是诚实的。
+  // 写死任何档位都是虚构，只写「不可关闭」这一个开关字段才是诚实的。
+  // 少了 canDisableThinking:false，客户端会生成 [关闭版, 开启版] 并默认落到关闭。
   for (const model of [
     { id: 'free', name: 'Free', reasoning: true },
     { id: 'combo:x', name: 'x', channel: 'combo', combo: ['free'], reasoning: true },
   ]) {
     const entry = buildWorkbuddyEntryFromModel(model, { baseUrl: BASE_URL, forwardKey: FORWARD_KEY })
     assert.equal(entry.supportsReasoning, true)
-    assert.equal('reasoning' in entry, false)
+    assert.deepEqual(entry.reasoning, { canDisableThinking: false })
   }
+})
+
+test('buildWorkbuddyEntryFromModel: a row without reasoning gets no reasoning block at all', () => {
+  const entry = buildWorkbuddyEntryFromModel(
+    { id: 'plain-no-think', reasoning: false },
+    { baseUrl: BASE_URL, forwardKey: FORWARD_KEY },
+  )
+  assert.equal(entry.supportsReasoning, false)
+  assert.equal('reasoning' in entry, false)
 })
 
 test('buildWorkbuddyEntries: enabled combos only, capacities are the intersection', () => {
