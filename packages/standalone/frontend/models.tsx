@@ -17,9 +17,7 @@ const availabilityNames: Record<string, string> = {
 }
 /** 需要用户动作/会挡住调用的状态：徽章用警示色。 */
 const warningStates = ['unavailable', 'throttled', 'region-blocked', 'needs-login']
-const sourceNames: Record<string, string> = { anonymous: '匿名模型', kilo: 'Kilo 免费池', eac: 'EAC 协付', combo: '模型组' }
-const channelName = (id: string) => sourceNames[id]
-  ?? providers.find(provider => provider.id === id)?.name ?? id
+const channelName = (id: string) => providers.find(provider => provider.id === id)?.name ?? id
 /** 对外该用哪个名字：有别名就用别名，否则原 ID。复制与展示都走这一个口径。 */
 const readableId = (model: Model) => model.alias || model.id
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
@@ -94,8 +92,8 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
   const activeRef = useRef(active)
   activeRef.current = active
   const models = useMemo<Model[]>(() => filterModels(summary.catalog, filters), [summary.catalog, filters])
-  const channels = useMemo(() => [...new Set(['anonymous', 'kilo', 'eac', ...summary.catalog.map(model => model.channel), filters.channel])]
-    .filter(id => id !== 'all'), [summary.catalog, filters.channel])
+  const channels = useMemo(() => [...new Set([...summary.catalog.map(model => model.channel), filters.channel])]
+    .filter(id => id !== 'all' && id !== ''), [summary.catalog, filters.channel])
   const focusedIndex = focusedId ? models.findIndex(model => model.id === focusedId) : -1
   const rangeExtractor = useCallback((range: Range) => {
     const visible = defaultRangeExtractor(range)
@@ -324,7 +322,11 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
             const failed = manual && state === 'unknown'
             const availabilityName = failed ? '实测失败' : manual && state === 'available' ? '实测可用' : availabilityNames[state] ?? '未知状态'
             const disabledReason = model.disabled ? '模型已禁用，可在「已禁用」页重新启用' : !summary.settings.enabled ? '推理服务已暂停' : !model.routable && !model.hiddenByUser ? '模型尚未公开，请检查渠道账号或模型设置' : operation ? '请等待当前操作完成' : ''
-            const canHide = ['anonymous', 'kilo', 'eac', 'aggregate', 'combo'].includes(model.channel)
+            // 单渠道剪裁后所有行都来自渠道 Worker（`channel` 必填）。原判断只放行
+            // anonymous/kilo/eac/aggregate/combo 五个 id，剪裁后它们全不存在，
+            // 结果「更多操作」菜单对每个真实模型都不渲染 —— 隐藏模型和复制原始 ID
+            // 两个入口一起消失。判据改成「是渠道行即可」。
+            const canHide = Boolean(model.channel)
             return <div role="row" aria-rowindex={item.index + 2} key={item.key} data-index={item.index} data-model-id={model.id}
               className="model-table-row" ref={virtual.measureElement} style={{ transform: `translateY(${item.start}px)` }}
               onFocusCapture={() => setFocusedId(model.id)} onBlurCapture={event => {
@@ -401,6 +403,6 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
       <p>{summary.catalog.length ? '调整搜索条件或清空筛选。' : '刷新清单后重试，或检查渠道连接。'}</p>
       {filtered && <Button variant="outline" onClick={() => changeFilters(initialFilters)}><SlidersHorizontal size={15} />清空筛选</Button>}
     </div>}
-    <p className="footnote">清单收录不代表实时可用。Kilo 免费池可能记录提示词，请勿发送敏感内容。</p>
+    <p className="footnote">清单收录不代表实时可用。账号渠道按各自服务商的条款处理请求内容。</p>
   </div>
 }

@@ -4108,3 +4108,23 @@ input:disabled, select:disabled, textarea:disabled, .ui-input:disabled {
 
 /* 窄屏导航横向排布时不显示分组标题（覆盖上面的 display:flex） */
 @media (max-width: 700px) { :root .nav-group-label { display: none; } }
+
+/* ---------- Z+.9 账号池：单渠道视图 ---------- */
+/* 本分支只剩一个渠道，原来「左 340px 列表 + 搜索 + 状态 chips + 筛选浮层」的主从布局
+   退化成整页主体：页头即渠道身份（标题写渠道名、右侧放启用开关），
+   下面直接是账号卡与安全说明。 */
+.channel-single {
+  display: flex; flex-direction: column; gap: 14px;
+  max-width: 980px; min-width: 0;
+}
+/* flex gap 已经给过间距，安全说明不必再叠一层 margin */
+.channel-single > .detail-security-note { margin-top: 0; }
+.channels-heading .channels-tools { flex-shrink: 0; }
+/* 启用开关与「供应商与备份」是两类操作（前者改渠道状态、后者跳子页），用细分隔线分开 */
+.channels-heading .provider-enable-toggle {
+  padding-right: 12px; border-right: 1px solid var(--line-soft);
+}
+@media (max-width: 700px) {
+  .channels-heading .channels-tools { width: 100%; }
+  .channels-heading .provider-enable-toggle { padding-right: 0; border-right: 0; }
+}

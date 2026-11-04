@@ -1,10 +1,14 @@
-import { ChartColumn, ChevronRight, Cpu, Layers, LayoutDashboard, LogOut, Monitor, Moon, PlugZap, Settings, ShieldCheck, Sun, Terminal } from 'lucide-react'
+import { ChartColumn, ChevronRight, Cpu, Layers, LayoutDashboard, LogOut, Monitor, Moon, PlugZap, ShieldCheck, Sun, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
+import { providers } from 'ofm-provider-list'
 import { Button } from './ui'
 import { stopThemeTicker } from '../theme.mjs'
 import type { Host, Page, Summary } from '../types'
 
+// 侧边栏「渠道」组只有这一项，名字直接取渠道名：本分支只剩一个渠道，
+// 叫「账号池」反而要求用户先在页面里找「哪个账号池」。
+const channelName = providers[0]?.name ?? '账号池'
 const navigation = [
   { label: '工作空间', items: [
     { id: 'overview', name: '概览', icon: LayoutDashboard },
@@ -12,8 +16,7 @@ const navigation = [
     { id: 'usage', name: '用量与路由', icon: ChartColumn },
     { id: 'logs', name: '请求日志', icon: Terminal },
   ] },
-  { label: '渠道', items: [{ id: 'channels', name: '账号池', icon: PlugZap }] },
-  { label: '管理', items: [{ id: 'settings', name: '服务设置', icon: Settings }] },
+  { label: '渠道', items: [{ id: 'channels', name: channelName, icon: PlugZap }] },
 ] as const
 
 type Origin = { x: number; y: number }
@@ -105,8 +108,7 @@ export function ThemeSwitch() {
 }
 
 export const pageNames: Record<Page, string> = {
-  overview: '概览', models: '模型清单', usage: '用量与路由', logs: '请求日志', channels: '账号池',
-  settings: '服务设置',
+  overview: '概览', models: '模型清单', usage: '用量与路由', logs: '请求日志', channels: channelName,
 }
 
 export function Sidebar({ page, summary, host }: { page: Page; summary?: Summary; host: Host }) {

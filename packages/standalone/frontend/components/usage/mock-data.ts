@@ -20,13 +20,9 @@ import { PROVIDER_META } from '../../usage-data.mjs'
 
 import type {
   BusinessStrip,
-  CandidateLabelKind,
-  CandidateState,
-  ChainSummary,
   ChannelModelRow,
   ChannelRow,
   ChannelTableMode,
-  CurrentRequest,
   KpiCard,
   LedgerAccountRow,
   LedgerChannelKind,
@@ -36,14 +32,9 @@ import type {
   LedgerProviderRow,
   LedgerTotals,
   ProviderMeta,
-  RoutingCandidate,
-  RoutingSource,
-  RoutingTotals,
   StreamRow,
   ThroughputSeries,
-  UsageAttempt,
   UsageView,
-  Verdict,
   VerdictBullet,
 } from '../../types'
 
@@ -213,55 +204,6 @@ const buildModelRows = (channelRows: ChannelRow[]): ChannelModelRow[] => {
   }))
 }
 
-/** 降级链清单（与原型 CHAINS 一致）。 */
-const buildChains = (): ChainSummary[] => {
-  const member = (provider: string, model: string) => {
-    const meta = PROVIDERS[provider]
-    return { provider, providerName: meta.name, providerShort: meta.short, accent: meta.accent, model }
-  }
-  return [
-    {
-      comboId: 'combo:auto',
-      name: 'auto',
-      strategy: 'fallback',
-      strategyLabel: '顺序降级',
-      members: [
-        member('trae', 'deepseek-v3.2-exp'),
-        member('qoder', 'qwen3-max'),
-        member('minimax', 'MiniMax-M3'),
-        member('zcode', 'glm-4.6'),
-        member('buddy', 'kimi-k2-0905'),
-        member('codearts', 'deepseek-v3.2'),
-      ],
-      requests: 1084,
-      reroutes: 24,
-    },
-    {
-      comboId: 'combo:deepseek',
-      name: 'deepseek',
-      strategy: 'fallback',
-      strategyLabel: '顺序降级',
-      members: [
-        member('trae', 'deepseek-v3.2-exp'),
-        member('codearts', 'deepseek-v3.2'),
-        member('buddy', 'deepseek-v3.1'),
-      ],
-      requests: 132,
-      reroutes: 3,
-    },
-    {
-      comboId: 'direct',
-      name: '直连',
-      strategy: 'direct',
-      strategyLabel: '直连',
-      members: [member('qoder', 'qwen3-max')],
-      requests: 24,
-      reroutes: 0,
-    },
-  ]
-}
-
-/** 实时请求流（最新在前）。 */
 const buildStream = (now: number): StreamRow[] => {
   const seed: { provider: string; model: string; account: string; tps: number; ttftMs: number; tokens: number; failed?: boolean }[] = [
     { provider: 'qoder', model: 'qwen3-max', account: '#1 主号', tps: 63.2, ttftMs: 790, tokens: 8_421 },
@@ -298,44 +240,6 @@ const buildStream = (now: number): StreamRow[] => {
  * 不能中英混搭；原型用英文 `answering…` / `pending`，落地统一译成中文）。
  * 未到达的候选显示该渠道的平均速度，用于横向比较。
  */
-const buildCandidates = (): RoutingCandidate[] => {
-  const averageTps: Record<string, number> = {}
-  for (const row of MOCK_LEDGER_ROWS) averageTps[row.provider] = row.tps
-  const rows: {
-    provider: string
-    model: string
-    account: string
-    state: CandidateState
-    tps?: number
-    labelKind: CandidateLabelKind
-    label: string
-    reason?: string
-  }[] = [
-    { provider: 'trae', model: 'deepseek-v3.2-exp', account: '#2 Peng', state: 'active', tps: 53.5, labelKind: 'answering', label: '应答中…' },
-    { provider: 'qoder', model: 'qwen3-max', account: '#1 主号', state: 'skipped', labelKind: 'rate', label: '429 · 稍后重试', reason: '429 · 稍后重试' },
-    { provider: 'minimax', model: 'MiniMax-M3', account: '#1 签到号', state: 'pending', tps: averageTps.minimax, labelKind: 'idle', label: '待命' },
-    { provider: 'zcode', model: 'glm-4.6', account: '#1 默认', state: 'pending', tps: averageTps.zcode, labelKind: 'idle', label: '待命' },
-    { provider: 'buddy', model: 'kimi-k2-0905', account: '#3 备用', state: 'pending', tps: averageTps.buddy, labelKind: 'idle', label: '待命' },
-    { provider: 'codearts', model: 'deepseek-v3.2', account: '#1 免费额度', state: 'pending', tps: averageTps.codearts, labelKind: 'idle', label: '待命' },
-  ]
-  return rows.map(row => {
-    const meta = PROVIDERS[row.provider]
-    return {
-      candidateId: `${row.provider}/${row.model}`,
-      provider: row.provider,
-      providerName: meta.name,
-      providerShort: meta.short,
-      accent: meta.accent,
-      model: row.model,
-      account: row.account,
-      state: row.state,
-      tps: row.tps,
-      labelKind: row.labelKind,
-      label: row.label,
-      reason: row.reason,
-    }
-  })
-}
 
 /** 「按模型统计」表的原始行：模型 id 用 `provider/model`（与真实 /stats 的下发形态一致）。 */
 const buildUsageModels = (): UsageModel[] =>
@@ -375,36 +279,6 @@ export function mockUsageView(now = Date.now()): UsageView {
 
   return {
     providerMeta: PROVIDERS,
-    sources: [
-      { id: 'claude-code', name: 'Claude Code', accent: '#7c8dff', sub: 'combo:auto · 并行 2 路', active: true },
-      { id: 'codex-cli', name: 'Codex CLI', accent: '#3ec9a0', sub: 'combo:deepseek', active: false },
-      { id: 'direct', name: '直连调用', accent: '#f0b45e', sub: 'trae/deepseek-v3.2-exp', active: false },
-    ],
-    activeChainId: 'combo:auto',
-    candidates: buildCandidates(),
-    current: {
-      id: '#8842',
-      hit: 'TRAE · #2 Peng',
-      ttftMs: 631,
-      tps: 53.5,
-      outputTokens: 742,
-      failed: false,
-    },
-    verdict: {
-      text: 'TRAE 接管了这次请求。',
-      bullets: [
-        { color: '#7c8dff', text: 'Claude Code 请求 combo:auto' },
-        { color: '#3ec9a0', text: 'TRAE 排第 1，直接命中' },
-        { color: '#f0b45e', text: 'Qoder 曾 429，被跳过' },
-      ],
-    },
-    routingTotals: { requests: 42, reroutes: 27, errors: 0 },
-    // 最近一个走查回合（与 verdict 的要点自洽：TRAE 命中、Qoder 429 被跳过）。
-    // turnAt 相同 = 同一回合；elapsedMs 是距回合起点的累计值。
-    attempts: [
-      { turnAt: now - 42_000, at: now - 40_000, chainId: 'combo:auto', chainName: 'combo:auto', index: 0, candidateId: 'trae/deepseek-v3.2-exp', outcome: 'hit', reason: '', elapsedMs: 2000 },
-      { turnAt: now - 42_000, at: now - 8_000, chainId: 'combo:auto', chainName: 'combo:auto', index: 1, candidateId: 'qoder/qwen3-max', outcome: 'skipped', reason: '429 · 稍后重试', elapsedMs: 34_000 },
-    ],
     kpis: [
       {
         key: 'tokens',
@@ -459,7 +333,6 @@ export function mockUsageView(now = Date.now()): UsageView {
     ledgerTotals: { ...ledgerTotals, requests, inputTokens, outputTokens, cacheReadTokens, errors, avgTps, avgTtftMs },
     channelRows,
     modelRows: buildModelRows(channelRows),
-    chains: buildChains(),
     // 口径明细条：与 KPI 同源，保证同屏数字自洽
     strip: {
       turns: 1_084,

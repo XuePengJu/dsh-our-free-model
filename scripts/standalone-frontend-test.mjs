@@ -7,7 +7,6 @@ import { usageDays, usageModels } from '../packages/standalone/frontend/usage-da
 import { settingsDraft, settingsChanged, syncSettings, validateSettingsDraft } from '../packages/standalone/frontend/settings-data.mjs'
 import { verifySettingsHost } from './standalone-settings-host-test.mjs'
 import { verifyModelOperation } from './standalone-model-operation-test.mjs'
-import { verifyChannelFilters } from './standalone-channel-filter-test.mjs'
 import { spawnSync } from 'node:child_process'
 
 const web = new URL('../packages/standalone/web/', import.meta.url)
@@ -99,8 +98,6 @@ const modelsChunk = assets.find(name => name.startsWith('models-'))
 assert.ok(modelsChunk && app.includes(modelsChunk), '入口必须按需导入模型页面')
 const usageChunk = assets.find(name => name.startsWith('usage-'))
 assert.ok(usageChunk && app.includes(usageChunk), '入口必须按需导入用量页面')
-const settingsChunk = assets.find(name => name.startsWith('settings-'))
-assert.ok(settingsChunk && app.includes(settingsChunk), '入口必须按需导入服务设置')
 for (const [_, name] of html.matchAll(/(?:src|href)="\/assets\/([^"]+)"/g)) {
   assert.ok(assets.includes(name), `HTML 资源未登记：${name}`)
 }
@@ -233,5 +230,4 @@ assert.deepEqual(savedSettings, {
 }, '草稿操作不能改动输入配置')
 await verifySettingsHost()
 await verifyModelOperation()
-verifyChannelFilters()
-console.log('standalone-frontend: 资源登记、四页面分包、模型筛选、统计日期分页、设置校验与草稿同步、迟到摘要及退出保存检查通过')
+console.log('standalone-frontend: 资源登记、四页面分包、统计日期分页、设置校验与草稿同步、迟到摘要及退出保存检查通过')

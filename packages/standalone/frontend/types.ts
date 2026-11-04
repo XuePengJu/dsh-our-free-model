@@ -1,4 +1,4 @@
-export type Page = 'overview' | 'models' | 'usage' | 'logs' | 'channels' | 'settings'
+export type Page = 'overview' | 'models' | 'usage' | 'logs' | 'channels'
 export interface Model {
   id: string
   name: string
@@ -577,15 +577,6 @@ export interface ThroughputSeries {
 /** 页面数据聚合：一个对象喂 7 个子组件。 */
 export interface UsageView {
   providerMeta: Record<string, ProviderMeta>
-  /** 路由实况。 */
-  sources: RoutingSource[]
-  activeChainId: string
-  candidates: RoutingCandidate[]
-  current: CurrentRequest | null
-  verdict: Verdict
-  routingTotals: RoutingTotals
-  /** B 档 attempts；批次 5 直接填入。 */
-  attempts: UsageAttempt[]
   /** KPI 固定 5 张。 */
   kpis: KpiCard[]
   /** 图。 */
@@ -596,8 +587,6 @@ export interface UsageView {
   ledgerTotals: LedgerTotals
   channelRows: ChannelRow[]
   modelRows: ChannelModelRow[]
-  /** 降级链清单。 */
-  chains: ChainSummary[]
   /** 口径明细条的 6+2 个业务数字。 */
   strip: BusinessStrip
   /** 「按模型统计」表的原始行（未经搜索/排序/分页，交给 `usageModels()` 处理）。 */

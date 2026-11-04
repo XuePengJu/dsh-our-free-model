@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowRight, Boxes, Check, CircleCheck, Copy, KeyRound, Layers3, MoreHorizontal, Network, RefreshCw, RotateCcw, Terminal, Zap } from 'lucide-react'
+import { Activity, Boxes, Check, CircleCheck, Copy, KeyRound, Layers3, MoreHorizontal, RefreshCw, RotateCcw, Terminal, Zap } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, DropdownMenu } from './ui'
+import { RefreshSettings, SaveState, useServiceSettings } from './settings-panel'
 import { resolveEndpointBase } from '../endpoint-origin'
 import { loadSavedModelId, resolveDefaultModelId, saveClientModelId } from '../client-config'
 import { useAutoRefreshSpin } from '../use-auto-refresh-spin'
@@ -70,6 +71,8 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   // 默认接入模型：初始解析一次（记住上次选择，否则优先模型组，再退首个可接入模型）。
   const [modelId, setModelId] = useState(() => resolveDefaultModelId(summary.catalog, loadSavedModelId()))
   const routableModels = summary.catalog.filter(model => model.routable)
+  // 服务设置与运行检查共用一张表单：一次保存同时覆盖两栏的字段。
+  const settings = useServiceSettings(summary, host)
 
   /**
    * 4 张指标卡。只给「累计 Token」留 `numeric`（老板只批了这一张做补间）；
@@ -101,11 +104,6 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
   // 失败行 key：`${at}:${model}`。原来用 `${at}-${index}`，index 会随列表长度漂移，
   // 同一条失败请求换个下标就被当成新行 → 差分失效。
   const freshFailures = useEntranceDiff(failures, row => `${row.at}:${row.model ?? ''}`, failureEntrance)
-  const sources = [
-    { name: '匿名与 Kilo', sub: '无需账号的免费模型', icon: Zap, count: summary.catalog.filter(row => row.channel === 'anonymous' || row.channel === 'kilo').length, page: 'models' as const },
-    { name: '账号池', sub: '13 个供应商，独立账号池', icon: Network, count: summary.catalog.filter(row => !['anonymous', 'kilo', 'eac'].includes(row.channel)).length, page: 'channels' as const },
-  ]
-
   const copyEndpoint = () => {
     void host.copy(`${resolveEndpointBase(summary.baseUrl)}/v1`).then(() => {
       setCopied(true)
@@ -225,57 +223,36 @@ export function Overview({ summary, stats, host }: Snapshot & { host: Host }) {
       <p>{metric.detail}</p>
     </Card>)}</div>
 
-    {/* ===== 主区：Token 用量 + 运行检查 ===== */}
-    <div className="dashboard-main-grid">
-      <Card className="usage-panel ov-chart-panel">
-        {/* 规则 2：卡片操作上移标题行右侧，底部只留口径说明。 */}
-        <div className="card-heading"><div><h2>Token 用量</h2><p>最近 7 天的输入与输出</p></div>
-          <button className="heading-action" onClick={() => host.navigate('usage')}>查看全部用量 <ArrowRight size={14} /></button></div>
-        <div className="usage-total ov-chart-total">{compact(total)} <span>Token</span></div>
-        <div className="dashboard-chart ov-chart" role="img" aria-label={`最近七天 Token 用量：${days.map(day => `${day.id} ${day.value}`).join('；')}`}>
-          <div className="chart-grid-lines"><span /><span /><span /><span /></div>
-          {days.map(day => <div className="dashboard-chart-column ov-chart-col" key={day.id} title={`${day.id} · ${number(day.value)} Token`}>
-            <div className={`dashboard-chart-bar ${day.value === 0 ? 'zero' : ''}`}
-              style={{ height: barsGrown ? `${Math.max(2, day.value / max * 80)}%` : '0%' }} />
-            <span>{day.id.slice(5).replace('-', '/')}</span>
-          </div>)}
-          {total === 0 && <div className="chart-empty ov-chart-empty"><Activity size={22} /><span>还没有调用记录</span><small>接入客户端后，用量会显示在这里</small></div>}
+    {/* ===== 主区：运行检查（含模型刷新；改动即自动保存，无保存按钮） ===== */}
+    <Card className="ov-runtime settings-browser" data-testid="settings-ready">
+      <div className="card-heading">
+        <div><h2>运行检查</h2><p>服务状态与模型刷新，改动即自动保存</p></div>
+        <div className="card-heading-actions">
+          <Badge tone={failures.length ? 'warning' : 'success'}>{failures.length ? '有失败记录' : '暂无失败记录'}</Badge>
+          <SaveState form={settings} />
         </div>
-        <div className="card-foot"><span>按实际请求记录统计</span></div>
-      </Card>
-
-      <Card className="ov-failures">
-        <div className="card-heading"><div><h2>运行检查</h2><p>服务与最近的失败请求</p></div>
-          <div className="card-heading-actions">
-            <Badge tone={failures.length ? 'warning' : 'success'}>{failures.length ? '有失败记录' : '暂无失败记录'}</Badge>
-            <button className="heading-action" onClick={() => host.navigate('settings')}>服务设置 <ArrowRight size={14} /></button>
-          </div></div>
-        <div className="runtime-check"><CircleCheck size={17} /><span>渠道模块</span><strong>{summary.channels.state === 'ready' ? '已就绪' : summary.channels.state === 'failed' ? '加载失败' : '初始化中'}</strong></div>
-        <div className="runtime-check"><RefreshCw size={17} /><span>模型自动刷新</span><strong>{summary.automaticRefresh ? `每 ${summary.settings.probeIntervalMinutes} 分钟` : '已暂停'}</strong></div>
-        {failures.length ? <div className="failure-list ov-failure-list">{failures.map(row =>
-          <div key={`${row.at}:${row.model ?? ''}`}
-            className={`ov-failure-row${freshFailures.has(`${row.at}:${row.model ?? ''}`) ? ' is-new' : ''}`}>
-            <span>{row.model ?? '未知模型'}</span>
-            <small>{row.at ? new Date(row.at).toLocaleTimeString('zh-CN') : '时间未知'} · 请求未完成</small>
-          </div>)}</div>
-          : <div className="runtime-empty ov-runtime-empty"><CircleCheck size={18} /><span>最近的请求样本中没有失败记录</span></div>}
-        <div className="card-foot"><span title={summary.dataDir}>数据仅保存在本机独立目录</span></div>
-      </Card>
-    </div>
-
-    {/* ===== 底部：模型来源（横排） ===== */}
-    <div className="ov-bottom">
-      <Card className="ov-sources">
-        <div className="card-heading"><div><h2>模型来源</h2><p>所有渠道，共用一个接入地址</p></div>
-          <Badge>{sources.reduce((sum, source) => sum + source.count, 0)} 个来源</Badge></div>
-        <div className="source-list ov-source-list">{sources.map((source, index) => <button className="source-row ov-source-row" key={source.name} onClick={() => host.navigate(source.page)}
-          style={{ animationDelay: `${index * 60}ms` }}>
-          <span className="source-icon"><source.icon size={18} /></span>
-          <span><strong>{source.name}</strong><small>{source.sub}</small></span>
-          <Badge>{source.count} 个模型</Badge><ArrowRight size={14} />
-        </button>)}</div>
-      </Card>
-    </div>
+      </div>
+      <div className="ov-runtime-grid">
+        <div className="ov-runtime-status">
+          <div className="runtime-check"><CircleCheck size={17} /><span>渠道模块</span><strong>{summary.channels.state === 'ready' ? '已就绪' : summary.channels.state === 'failed' ? '加载失败' : '初始化中'}</strong></div>
+          <div className="runtime-check"><RefreshCw size={17} /><span>模型自动刷新</span><strong>{summary.automaticRefresh ? `每 ${summary.settings.probeIntervalMinutes} 分钟` : '已暂停'}</strong></div>
+          <div className="ov-settings-divider"><span>最近失败</span></div>
+          {failures.length ? <div className="failure-list ov-failure-list">{failures.map(row =>
+            <div key={`${row.at}:${row.model ?? ''}`}
+              className={`ov-failure-row${freshFailures.has(`${row.at}:${row.model ?? ''}`) ? ' is-new' : ''}`}>
+              <span>{row.model ?? '未知模型'}</span>
+              <small>{row.at ? new Date(row.at).toLocaleTimeString('zh-CN') : '时间未知'} · 请求未完成</small>
+            </div>)}</div>
+            : <div className="runtime-empty ov-runtime-empty"><CircleCheck size={18} /><span>最近的请求样本中没有失败记录</span></div>}
+        </div>
+        <div className="ov-runtime-settings">
+          <fieldset disabled={settings.status === 'saving'} className="settings-fieldset">
+            <RefreshSettings form={settings} automaticRefresh={summary.automaticRefresh} />
+          </fieldset>
+        </div>
+      </div>
+      <div className="card-foot"><span title={summary.dataDir}>数据仅保存在本机独立目录</span></div>
+    </Card>
 
     {/* 重置 API Key 确认层：危险操作最后一道闸，确认后才真正调 /key/rotate。 */}
     <ConfirmDialog open={confirmingRotate} danger title="重置 API Key"

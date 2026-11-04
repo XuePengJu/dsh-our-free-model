@@ -48,7 +48,6 @@ const suites = [
   ['auto-checkin-schedule', 'auto-checkin-schedule-test.mjs', []],
   ['channel-image-pricing', 'channel-image-pricing-test.mjs', []],
   ['standalone-lan', 'standalone-lan-test.mjs', []],
-  ['standalone-channel-filter', 'standalone-channel-filter-test.mjs', []],
   ['standalone-model-operation', 'standalone-model-operation-test.mjs', []],
   ['standalone-settings-host', 'standalone-settings-host-test.mjs', []],
   ['standalone-login-terminal', 'standalone-login-terminal-test.mjs', []],

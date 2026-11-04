@@ -59,10 +59,9 @@ const flush = async () => { for (const effect of effects.splice(0)) effect(); aw
 render(); await flush()
 let tree = render()
 const host = () => all(tree).find(node => node.type === 'Sidebar').props.host
-host().navigate('settings'); tree = render()
-assert.ok(all(tree).some(node => node.type === 'LazyPage' && node.props.name === 'settings'))
+// 服务设置已并入概览页，「设置草稿随页面保留」不再成立：概览常驻挂载，
+// 草稿由概览内的设置卡片自己持有。这里只验证仍按需挂载的两个页面。
 host().navigate('models'); tree = render()
-assert.ok(all(tree).some(node => node.type === 'LazyPage' && node.props.name === 'settings' && node.props.active === false), '切页后保留设置组件及草稿，但停止非活动页面任务')
 assert.ok(all(tree).some(node => node.type === 'LazyPage' && node.props.name === 'models' && node.props.active === true))
 host().navigate('usage'); tree = render()
 assert.ok(all(tree).some(node => node.type === 'LazyPage' && node.props.name === 'models' && node.props.active === false), '模型筛选状态在切页后保留')
@@ -86,4 +85,4 @@ assert.equal(tree.props.id, 'app')
 releaseOldKey({ ok: false, status: 401, json: async () => ({ error: '旧会话已过期' }) })
 await oldKey; tree = render()
 assert.equal(tree.props.id, 'app', '旧会话迟到 401 不得登出新会话')
-console.log('ok  切页保留设置草稿与模型筛选，非活动页面暂停任务，退出移除工作空间')
+console.log('ok  切页保留模型筛选，非活动页面暂停任务，退出移除工作空间')

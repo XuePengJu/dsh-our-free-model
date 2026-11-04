@@ -907,3 +907,47 @@ label.settings-field { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .settings-status-saving .settings-status-dot { animation: none !important; }
 }
+
+/* ---------- 8. 并入概览页的卡片形态 ---------- */
+/* 原「服务设置」页剪裁后只剩刷新这一组设置，并入「运行检查」卡：
+   整宽单卡 + 内部两栏（左状态 / 右设置），改动即自动保存，没有保存按钮。 */
+.ov-runtime { display: flex; flex-direction: column; min-width: 0; }
+.ov-runtime-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 8px 40px; align-items: start; margin-top: 4px;
+}
+.ov-runtime-status { min-width: 0; }
+.ov-runtime-settings { min-width: 0; }
+
+/* 字段行：标签块吃掉剩余宽度并允许换行，控件固定宽度。
+   早先在窄栏里只写了 min-width:0 没给 flex-grow，说明文字被压成一条竖排。 */
+.ov-runtime-settings .settings-field {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.ov-runtime-settings .settings-field > span,
+.ov-runtime-settings .settings-field > label { flex: 1 1 auto; min-width: 0; }
+.ov-runtime-settings .settings-field small { max-width: 34ch; }
+.ov-runtime-settings .settings-number { width: 132px; flex: 0 0 auto; }
+.ov-runtime-settings .settings-note { margin-top: 12px; }
+
+/* 保存状态：安静的一行字，成功用对勾，失败可点重试。 */
+.ov-save-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ov-save-state.is-saved { color: var(--green-ink, #3f9d6b); }
+.ov-save-state.is-error { color: var(--red-ink, #d05b5b); }
+.ov-save-retry {
+  all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  color: inherit; font-size: 12px;
+}
+.ov-save-retry:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
+
+.ov-settings-divider {
+  display: flex; align-items: center; gap: 10px; margin: 18px 0 6px;
+  font-size: 11px; letter-spacing: 0.04em; color: var(--muted);
+}
+.ov-settings-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+@media (max-width: 950px) {
+  .ov-runtime-grid { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .ov-runtime-settings { border-top: 1px solid var(--line); padding-top: 8px; }
+}

@@ -3,10 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { shared } from 'ofm-shared-client'
 import { ChannelBrowser } from './components/channel-browser'
 import { ConfirmDialog } from './components/ui'
-import { SlidersHorizontal } from 'lucide-react'
 import 'ofm-shared-styles.css'
 
-const { EacAuth, useEacLogin, DICT, Tank, usePool, poolReading, capacityText, CHANNEL_PROVIDERS, LogsPage } = shared
+const { DICT, CHANNEL_PROVIDERS, LogsPage } = shared
 const h = React.createElement
 const t = key => DICT.zh[key] ?? key
 t.locale = 'zh'
@@ -33,10 +32,10 @@ async function rpc(method, payload = {}) {
   if (!result.ok) throw new Error(result.error?.message ?? '渠道操作失败')
   return result.value
 }
-const lockedProviders = new Set(['buddy', 'workbuddy', 'loomy'])
+const lockedProviders = new Set(CHANNEL_PROVIDERS.map(row => row.id))
 
 function ChannelTools({ summary }) {
-  const [provider, setProvider] = React.useState('buddy')
+  const [provider, setProvider] = React.useState(CHANNEL_PROVIDERS[0]?.id ?? 'workbuddy')
   const [status, setStatus] = React.useState()
   const [lock, setLock] = React.useState()
   const [busy, setBusy] = React.useState(false)
@@ -103,7 +102,6 @@ function ChannelTools({ summary }) {
     if (payload) void run(async () => { await rpc('backup.import', { payload }) })
   }
   return h('section', { className: 'ofm_hero', 'aria-label': '供应商与数据管理' },
-    h('h3', null, '供应商与数据管理'),
     h('div', { className: 'ofm_row' },
       h('label', null, '供应商 ', h('select', { value: provider, disabled: busy, onChange: event => setProvider(event.target.value) },
         CHANNEL_PROVIDERS.map(row => h('option', { value: row.id, key: row.id }, row.name)))),
@@ -134,46 +132,18 @@ function ChannelTools({ summary }) {
 
 function ChannelConsole({ summary }) {
   const [page, setPage] = React.useState('accounts')
-  // 请求日志与用量均已提升为顶层页，这里只剩供应商与备份一个低频子页。
-  const tools = [
-    { key: 'tools', label: '供应商与备份', icon: h(SlidersHorizontal, { size: 14 }), onSelect: () => setPage('tools') },
-  ]
+  // 账号池页头现在由 ChannelBrowser 自己渲染（标题就是渠道名，右侧带「启用渠道」开关），
+  // 因为那个开关要读 provider.status，状态本来就在组件里轮询，搬出来得再提升一层。
+  if (page === 'accounts') return h(ChannelBrowser, { rpc, summary, onOpenTools: () => setPage('tools') })
   return h(React.Fragment, null,
     h('header', { className: 'dashboard-heading channels-heading' },
       h('div', null, h('div', { className: 'heading-eyebrow' }, 'WORKSPACE / CHANNELS'),
-        h('h1', null, '账号池'), h('p', null, '连接你的账号，把各家的免费额度汇集到一个 API。')),
-      // 主视图即「登录与账号池」主从布局；供应商与备份这个低频页入口平铺页头右侧
-      // （老板拍板：空间够就别折叠，一次点击直达，与其他页面头部按钮组同款）。
-      // 进入后页头右侧提供「← 返回账号池」。
-      page === 'accounts'
-        ? h('div', { className: 'channels-tools', role: 'group', 'aria-label': '数据与工具' },
-            tools.map(tool => h('button', { type: 'button', key: tool.key, className: 'ui-button ui-button-outline', onClick: tool.onSelect }, tool.icon, tool.label)))
-        : h('button', { type: 'button', className: 'ui-button ui-button-outline channels-back',
-            onClick: () => setPage('accounts') }, '← 返回账号池')),
-    page === 'accounts' ? h(ChannelBrowser, { rpc, summary })
-      : h('div', { className: 'channels-subpage' },
-          h(ChannelTools, { summary })))
+        h('h1', null, '供应商与备份')),
+      h('button', { type: 'button', className: 'ui-button ui-button-outline channels-back',
+        onClick: () => setPage('accounts') }, '← 返回')),
+    h('div', { className: 'channels-subpage' }, h(ChannelTools, { summary })))
 }
 
-function EacPage({ summary }) {
-  const [auth, onAuth] = React.useState(summary.eacAuth)
-  const login = useEacLogin({ t, summary, onAuth })
-  const { pool } = usePool()
-  const reading = pool == null ? null : poolReading(pool)
-  React.useEffect(() => { login.refresh() }, [login.refresh])
-  return h(React.Fragment, null,
-    h('header', { className: 'dashboard-heading' },
-      h('div', null, h('div', { className: 'heading-eyebrow' }, 'WORKSPACE / EAC'),
-        h('h1', null, 'EAC 协付渠道'), h('p', null, '使用本机独立授权，连接共享资源池。'))),
-    h(EacAuth, { t, auth, eacLogin: login }),
-    h('div', { className: 'ofm_hero' },
-      h('h3', null, 'EAC 实时资源池'),
-      pool == null ? h('p', null, pool === undefined ? '正在查询资源池…' : '资源池暂时无法查询，请稍后刷新。')
-        : h(React.Fragment, null,
-          h(Tank, { pct: reading.pct, level: reading.level, size: 'xl' }),
-          h('p', null, `当前并发：${pool.inflight} · 24 小时活跃：${reading.active ?? '未知'} · 容量：${pool.pool ?? '未知'}`),
-          h('p', null, capacityText(pool, t)))))
-}
 
 // 请求日志顶层页：每实例独立 rpc 生命周期，卸载时 abort 在途请求。
 export function LogsMount() {
@@ -183,12 +153,12 @@ export function LogsMount() {
 }
 
 let root
-export function show(kind, summary) {
+export function show(summary) {
   if (!root) {
     ctx.state.lifetime = new AbortController()
     root = createRoot(document.getElementById('channel-root'))
   }
-  root.render(h(kind === 'eac' ? EacPage : ChannelConsole, { t, ctx, summary }))
+  root.render(h(ChannelConsole, { t, ctx, summary }))
 }
 export function hide() {
   ctx.state.lifetime.abort()

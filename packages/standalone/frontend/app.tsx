@@ -8,7 +8,7 @@ import type { Host, Page, ProbeProgress, ServiceSettings, Snapshot, UsageAttempt
 import './app.css'
 
 const API = '/api/management'
-const pageNames: Page[] = ['overview', 'models', 'usage', 'logs', 'channels', 'settings']
+const pageNames: Page[] = ['overview', 'models', 'usage', 'logs', 'channels']
 const platform = document.getElementById('root')?.dataset.loginPlatform ?? (/Windows/i.test(navigator.userAgent) ? 'windows' : /Macintosh|Mac OS/i.test(navigator.userAgent) ? 'macos' : 'unsupported')
 const terminalName = platform === 'windows' ? 'PowerShell' : '终端'
 type Request = <T = any>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) => Promise<T>
@@ -65,7 +65,7 @@ function LoadingScreen() { return <div id="loading-screen" className="loading-sc
 function ChannelMount({ summary }: { summary: Snapshot['summary'] & { reload(): void } }) {
   const [module, setModule] = useState<typeof import('./channels.mjs')>(); const generation = useRef(0); const summaryRef = useRef(summary); summaryRef.current = summary
   useEffect(() => { const current = ++generation.current; let alive = true; void import('./channels.mjs').then(value => { if (alive && current === generation.current) setModule(value) }); return () => { alive = false; generation.current++; module?.hide() } }, [])
-  useEffect(() => { if (!module) return; module.show('channels', summaryRef.current); return () => module.hide() }, [module])
+  useEffect(() => { if (!module) return; module.show(summaryRef.current); return () => module.hide() }, [module])
   return <div id="channel-root" className="ofm_root" role={module ? undefined : 'status'}>{module ? null : '正在加载渠道管理…'}</div>
 }
 // 请求日志独立页（顶层导航）：复用 channels.mjs 里的 LogsPage，自带独立 rpc 上下文，
@@ -75,8 +75,8 @@ function LogsMount() {
   useEffect(() => { let alive = true; void import('./channels.mjs').then(value => { if (alive) setModule(value) }); return () => { alive = false } }, [])
   return <div className="ofm_root" role={module ? undefined : 'status'}>{module ? <module.LogsMount /> : '正在加载请求日志…'}</div>
 }
-function LazyPage({ name, snapshot, host, active }: { name: 'models' | 'usage' | 'settings'; snapshot: Snapshot; host: Host; active: boolean }) {
-  const [module, setModule] = useState<any>(); useEffect(() => { let alive = true; const loaded = name === 'models' ? import('./models') : name === 'usage' ? import('./usage') : import('./settings'); void loaded.then(value => { if (alive) setModule(value) }); return () => { alive = false } }, [name])
+function LazyPage({ name, snapshot, host, active }: { name: 'models' | 'usage'; snapshot: Snapshot; host: Host; active: boolean }) {
+  const [module, setModule] = useState<any>(); useEffect(() => { let alive = true; const loaded = name === 'models' ? import('./models') : import('./usage'); void loaded.then(value => { if (alive) setModule(value) }); return () => { alive = false } }, [name])
   if (!module) return <p role="status">正在加载页面…</p>; const Component = module[name === 'models' ? 'Models' : name === 'usage' ? 'Usage' : 'Settings']; return <Component summary={snapshot.summary} stats={snapshot.stats} host={host} active={active} />
 }
 function App() {
@@ -111,6 +111,6 @@ function App() {
   const content: ReactNode = snapshot && page === 'overview' ? <Overview {...snapshot} host={host} /> : snapshot && page === 'channels' ? <ChannelMount key={page} summary={{ ...snapshot.summary, reload: () => { void loadData() } }} /> : snapshot && page === 'logs' ? <LogsMount /> : null
   if (mode === 'loading') return <LoadingScreen />
   if (mode === 'login') return <LoginScreen request={async (...args) => { const result = await request(...args); if (args[0] === '/session') await loadData(); return result }} auto={!loggedOut.current} />
-  return <div id="app" className="app-shell"><aside className="sidebar"><Sidebar page={page} summary={snapshot?.summary} host={host} /></aside><main><header className="topbar"><Topbar page={page} /></header>{snapshot?.summary.networkMode === 'fixture' && <div className="notice test-mode-notice notice-enter" role="alert">当前为本机替身测试模式：账号、模型回答与额度均为测试数据。</div>}{notice && <div className="notice notice-enter" role="status">{notice}<button className="text-button" onClick={() => setNotice('')}>关闭</button></div>}{error && <div className="notice error-notice notice-enter" role="alert"><AlertCircle size={16} /><span>{error}</span><button className="text-button" onClick={() => { setError(''); void loadData() }}>重试</button></div>}<section className="page">{content}{snapshot && (['models', 'usage', 'settings'] as const).filter(name => visited.includes(name)).map(name => <div key={name} hidden={page !== name}><LazyPage name={name} snapshot={snapshot} host={host} active={page === name} /></div>)}</section><footer>OUR FREE MODEL <span>·</span> 本地运行 · 由你掌控</footer></main></div>
+  return <div id="app" className="app-shell"><aside className="sidebar"><Sidebar page={page} summary={snapshot?.summary} host={host} /></aside><main><header className="topbar"><Topbar page={page} /></header>{snapshot?.summary.networkMode === 'fixture' && <div className="notice test-mode-notice notice-enter" role="alert">当前为本机替身测试模式：账号、模型回答与额度均为测试数据。</div>}{notice && <div className="notice notice-enter" role="status">{notice}<button className="text-button" onClick={() => setNotice('')}>关闭</button></div>}{error && <div className="notice error-notice notice-enter" role="alert"><AlertCircle size={16} /><span>{error}</span><button className="text-button" onClick={() => { setError(''); void loadData() }}>重试</button></div>}<section className="page">{content}{snapshot && (['models', 'usage'] as const).filter(name => visited.includes(name)).map(name => <div key={name} hidden={page !== name}><LazyPage name={name} snapshot={snapshot} host={host} active={page === name} /></div>)}</section><footer>OUR FREE MODEL <span>·</span> 本地运行 · 由你掌控</footer></main></div>
 }
 createRoot(document.getElementById('root')!).render(<App />)
