@@ -292,11 +292,6 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
         })}
       </div>
       <div className="model-list-tail">
-        {/* 上游 v2.5.2 的整组隐藏开关：与本地禁用体系互不影响，只决定清单默认展示哪些模型。 */}
-        <label className="model-visibility-toggle" title={visibility.hideFree}><input type="checkbox" role="switch" checked={summary.settings.hideFreeModels === true}
-          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideFreeModels: event.target.checked }) }} />{visibility.shortFree}</label>
-        <label className="model-visibility-toggle" title={visibility.hideEac}><input type="checkbox" role="switch" checked={summary.settings.hideEacModels === true}
-          disabled={visibilitySaving} onChange={event => { void saveVisibility({ hideEacModels: event.target.checked }) }} />{visibility.shortEac}</label>
         <span role="status" data-testid="model-result-count">{number(models.length)} / {number(summary.catalog.length)}<span className="count-unit"> 个模型</span></span>
         {filtered && <Button variant="ghost" title="清空筛选" aria-label="清空筛选" onClick={() => changeFilters(initialFilters)}><X size={14} /><span className="clear-label">清空筛选</span></Button>}
       </div>

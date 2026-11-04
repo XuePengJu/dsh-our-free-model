@@ -43,8 +43,6 @@ export interface ServiceSettings {
   enabled: boolean
   exposeRegionModels: boolean
   hiddenModelIds: string[]
-  hideFreeModels: boolean
-  hideEacModels: boolean
   streamRecovery: boolean
   standaloneProbe: boolean
   probeIntervalMinutes: number

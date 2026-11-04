@@ -157,8 +157,6 @@ export const SETTINGS_INITIAL = {
   exposeRegionModels: true,
   /** Advertisement only: retain catalog entries and historical model resolution. */
   hiddenModelIds: [],
-  hideFreeModels: false,
-  hideEacModels: false,
   /** Minutes between background availability re-probes. */
   probeIntervalMinutes: 15,
   /** Serve the OpenAI-compatible forward listener for other local harnesses. */
@@ -194,17 +192,7 @@ export const SETTINGS_INITIAL = {
     rtk: true,
     prompts: { caveman: 'off', ponytail: 'off' },
   },
-  /** The aggregate lane: third-party providers reached with the user's own key.
-   *  Keys live in this 0600 file, never in a shared settings document, and the
-   *  API masks them on the way out. */
-  aggregate: {
-    enabled: true,
-    providers: {},
-  },
-  /** Named fallback chains. A combo is a virtual model whose answer comes from
-   *  the first link that produces output; see src/combos.js. */
-  combos: [],
-  /** Readable second names for channel-minted ids (`qodercn/qmodel_38max` ->
+  /** Readable second names for channel-minted ids (`workbuddy/qmodel_38max` ->
    *  `qwen3.8-max`). Generated from the live catalog; only renames and
    *  switch-offs are stored here. `mode` picks what `/v1/models` advertises:
    *  `alias` (default, only readable names), `both`, or `id` only. See src/aliases.js. */
@@ -255,8 +243,6 @@ export function publicModelVisibility(settings) {
   return {
     hiddenModelIds: [...new Set((Array.isArray(settings?.hiddenModelIds) ? settings.hiddenModelIds : [])
       .filter(validHiddenModelId))].slice(0, 1000),
-    hideFreeModels: settings?.hideFreeModels === true,
-    hideEacModels: settings?.hideEacModels === true,
   }
 }
 
@@ -266,24 +252,18 @@ export function validateModelVisibility(patch) {
     throw Object.assign(new TypeError('settings must be a JSON object'), { statusCode: 400 })
   }
   const result = {}
-  for (const key of ['hideFreeModels', 'hideEacModels', 'hiddenModelIds']) {
-    if (!Object.hasOwn(patch, key)) continue
-    const value = patch[key]
-    if (key === 'hiddenModelIds'
-      ? !Array.isArray(value) || value.length > 1000 || value.some(id => !validHiddenModelId(id))
-      : typeof value !== 'boolean') {
-      throw Object.assign(new TypeError(`${key} must be ${key === 'hiddenModelIds' ? 'an array of at most 1000 nonempty model ids (up to 300 characters each)' : 'a boolean'}`), { statusCode: 400 })
+  if (Object.hasOwn(patch, 'hiddenModelIds')) {
+    const value = patch.hiddenModelIds
+    if (!Array.isArray(value) || value.length > 1000 || value.some(id => !validHiddenModelId(id))) {
+      throw Object.assign(new TypeError('hiddenModelIds must be an array of at most 1000 nonempty model ids (up to 300 characters each)'), { statusCode: 400 })
     }
-    result[key] = Array.isArray(value) ? [...new Set(value)] : value
+    result.hiddenModelIds = [...new Set(value)]
   }
   return result
 }
 
 export function isModelHidden(entry, settings) {
-  return (Array.isArray(settings?.hiddenModelIds) && settings.hiddenModelIds.includes(entry.id))
-    || (settings?.hideFreeModels === true && (!entry.channel || entry.channel === 'anonymous' || entry.channel === 'kilo'
-      || (entry.channel === 'combo' && Array.isArray(entry.lanes) && entry.lanes.length > 0 && entry.lanes.every(lane => lane === 'free'))))
-    || (settings?.hideEacModels === true && entry.channel === 'eac')
+  return Array.isArray(settings?.hiddenModelIds) && settings.hiddenModelIds.includes(entry.id)
 }
 
 export const STATS_INITIAL = {

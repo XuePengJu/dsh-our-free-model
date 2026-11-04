@@ -1,21 +1,11 @@
 export function visibilityCopy(locale) {
   return String(locale).toLowerCase().startsWith('en') ? {
-    hideFree: 'Hide anonymous and Kilo free models',
-    hideEac: 'Hide EAC models',
-    // 模型页工具条空间紧，用短文案；设置页仍用完整句式说明影响。
-    shortFree: 'Hide free',
-    shortEac: 'Hide EAC',
     hide: 'Hide model',
     show: 'Show model',
     hidden: 'Hidden by preference',
     groupHidden: 'Turn off group hiding first',
     saved: 'Model visibility saved',
   } : {
-    hideFree: '隐藏匿名与 Kilo 免费模型',
-    hideEac: '隐藏 EAC 模型',
-    // 模型页工具条空间紧，用短文案；设置页仍用完整句式说明影响。
-    shortFree: '隐藏免费',
-    shortEac: '隐藏 EAC',
     hide: '隐藏模型',
     show: '显示模型',
     hidden: '已按偏好隐藏',

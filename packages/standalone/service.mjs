@@ -5,15 +5,12 @@ import net from 'node:net'
 import crypto from 'node:crypto'
 import { commitsAnswer } from '../../src/adapter.js'
 import { aliasModelRow, buildAliasRows, normalizeAliasSettings, resolveModelAlias } from '../../src/aliases.js'
-import { buildComboCatalog, comboChain, COMBO_PREFIX, isComboEntry, normalizeCombos } from '../../src/combos.js'
-import { publicModelRows as snapshotModelRows } from '../../src/core/completion.js'
 import { recordTurn } from '../../src/store.js'
 import { recordAttempt } from '../../src/core/attempts.js'
 import { createModelRuntime, createRuntimeStores } from '../../src/core/runtime.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from '../../src/forward.js'
 import { isLoopbackHost } from '../../src/trust.js'
 import { createManagement } from './management.mjs'
-import { createStandaloneEac } from './eac.mjs'
 import { createChannelRuntime } from './channels/runtime.mjs'
 import { classifyChannelFailure, probeChannelModels, testChannelModel } from './channel-probe.mjs'
 import { MODEL_TEST_TIMEOUT_MS } from '../../src/model-test.js'
@@ -135,7 +132,6 @@ export async function startStandalone({
   let listener
   let management
   let channels
-  let eac
   let timer
   let refreshInFlight
   let closing
@@ -247,20 +243,13 @@ export async function startStandalone({
     })
     settings.flush()
     if (settings.writeFailed) throw new Error('could not persist the standalone API key')
-    eac = createStandaloneEac({
-      dataDir,
-      ...process.env.OFM_TEST_UPSTREAM ? { openExternal: async () => false } : {},
-      onSaved: () => { void runtime?.refreshSealedLane().catch(error => logger.warn?.(`EAC 清单刷新失败：${error.message}`)) },
-    })
     runtime = createModelRuntime({
       ...stores, logger, attributionUserAgent: `${PRODUCT}/${VERSION}`,
-      sealedCredential: eac.credential,
     })
     channels = await createChannelRuntime({ dataDir, logger, stats: stores.stats })
     const core = runtime
-    // 渠道行与组合行在 service 层组装：核心目录只认识免费/Kilo/EAC/聚合车道，
-    // 而模型组（combo）的成员可以来自账号渠道——那类成员只有渠道 Worker 能推理。
-    // 每次读取都按当前 settings 和渠道清单现算，因此管理页改动立即生效。
+    // 渠道行在 service 层组装：核心目录只负责本网关自己的模型，账号渠道的
+    // 模型只有渠道 Worker 能推理。每次读取都按渠道清单现算，因此刷新立即生效。
     const channelRows = () => channels.publicModelRows().map(row => ({
       ...row, contextWindow: row.context_window, maxOutput: row.max_tokens,
     }))
@@ -271,166 +260,12 @@ export async function startStandalone({
     // 推理路由、组合链成员与探测中统一剔除，但保留在目录里供「已关闭」页展示。
     const disabledSet = () => new Set(Array.isArray(settings.get().disabledModels) ? settings.get().disabledModels : [])
     const visibleRows = () => { const disabled = disabledSet(); return realRows().filter(row => !disabled.has(row.id)) }
-    const comboRows = () => buildComboCatalog(normalizeCombos(settings.get().combos), visibleRows())
     // 别名层：可读名 → 真实 id。按当前目录现算、只落在 settings 的改名/关闭覆盖上，
     // 因此渠道刷新掉某个模型时它的别名一并消失，不会留下指向空处的旧名字。
     // 分配必须基于**含禁用行**的全量目录：若按可见目录算，禁用 A 渠道的同名模型
     // 会让 B 渠道的模型接管纯名，正在用这个名字的客户端就被静默换到了另一个模型。
     const aliasSettings = () => normalizeAliasSettings(settings.get().aliases)
     const aliasRows = () => buildAliasRows(realRows(), aliasSettings())
-    const completeCombo = async (entry, request, onChunk) => {
-      // 与核心 runCombo 同一条提交规则：在第一个可见正文块之前，整条候选可以被
-      // 无声丢弃并换下一个；一旦开始产出，后续失败走正常错误路径，绝不拼接。
-      const started = Date.now()
-      // 降级尝试环：只记「试过谁、为什么换掉、花了多久」。core 侧的 runCombo 有同名
-      // 的一笔（src/adapter.js），两条推理路径共写同一个 stats store。注意不记速度——
-      // tps/ttft 只存在于单模型的解码窗口内，这里拿不到，编造出来的数字比没有更糟。
-      const note = (candidate, index, outcome, reason) => {
-        try {
-          recordAttempt(stores.stats, {
-            // turnAt = 本回合起点，同一回合每一行都相同（前端靠它分组）。
-            turnAt: started,
-            at: Date.now(), chainId: entry.id, chainName: entry.name, index,
-            candidateId: candidate.id, outcome, reason, elapsedMs: Date.now() - started,
-          }, message => logger.warn?.(message))
-        } catch { /* 记录失败不影响推理 */ }
-      }
-      /**
-       * 失败回合也要进 /stats：此前 forward 路径只在命中时记回合，链全灭/被中止的
-       * 回合只进走查环、不进周期数字——「降级接管」KPI 与候选链对不上，正是从
-       * 这里漏的。attempts 与 core 侧 rejectedTurn 同口径（走到第几个候选，1 起）。
-       */
-      const rejectTurn = attempts => {
-        try {
-          recordTurn(stores.stats, { at: started, model: entry.id, ok: false, recovered: false, attempts, origin: 'forward' })
-        } catch { /* 统计失败不影响推理 */ }
-      }
-      const candidates = comboChain(entry, realRows())
-      if (candidates.length === 0) {
-        rejectTurn(0)
-        return { text: '', toolCalls: [], error: `the chain "${entry.name}" has no model available on this egress` }
-      }
-      let last
-      for (const [index, candidate] of candidates.entries()) {
-        if (request.signal?.aborted) {
-          note(candidate, index, 'aborted', 'aborted')
-          rejectTurn(index)
-          return last ?? { text: '', toolCalls: [], error: 'aborted' }
-        }
-        let committed = false
-        const held = []
-        const sink = chunk => {
-          if (committed) { onChunk?.(chunk); return }
-          held.push(chunk)
-          if (commitsAnswer(chunk)) {
-            committed = true
-            for (const item of held) onChunk?.(item)
-            held.length = 0
-          }
-        }
-        try {
-          // __ofmComboMember：成员是组合内部的物理尝试，不各自记「用户回合」。
-          // 回合由本函数按 outcome 统一记一笔（命中记 ok、全灭记 rejectTurn）；
-          // token/用量仍走成员自己的 complete 如实记。
-          last = channels.handles(candidate.id)
-            ? await channels.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
-            : await core.complete({ ...request, model: candidate.id, __ofmComboMember: true }, onChunk === undefined ? undefined : sink)
-        } catch (error) {
-          last = { text: '', toolCalls: [], error: error?.message ?? String(error) }
-        }
-        if (committed) {
-          note(candidate, index, 'hit', '')
-          try {
-            recordTurn(stores.stats, { at: Date.now(), model: entry.id, ok: last?.error === undefined, recovered: index > 0, attempts: index + 1, origin: 'forward' })
-          } catch { /* 统计失败不影响推理 */ }
-          return last
-        }
-        // 非流式：整包返回，没有逐块提交可判。与 commitsAnswer 等价的整包规则
-        // 是「无 error 且带非空正文或工具调用」——调用方真的拿到了答案。
-        //
-        // 首版在这里没有早停：没有 onChunk 就没有 sink，`committed` 永远不置位，
-        // 循环会把每个成员都跑一遍并返回最后一个的结果——前位候选明明答了、
-        // 后位候选却失败时，调用方拿到的居然是失败。本次修掉：答了即停，
-        // 与流式/核心 runCombo 的提交语义对齐。
-        if (onChunk === undefined) {
-          const answered = last?.error === undefined
-            && (String(last?.text ?? '').trim() !== '' || (Array.isArray(last?.toolCalls) && last.toolCalls.length > 0))
-          if (answered) {
-            note(candidate, index, 'hit', '')
-            try {
-              recordTurn(stores.stats, { at: started, model: entry.id, ok: true, recovered: index > 0, attempts: index + 1, origin: 'forward' })
-            } catch { /* 统计失败不影响推理 */ }
-            return last
-          }
-        }
-        // 流式未提交，或非流式没有给出答案：这个候选被整条丢弃，换下一个。
-        note(candidate, index, 'skipped', last?.error ?? 'failed')
-      }
-      rejectTurn(candidates.length)
-      return last ?? { text: '', toolCalls: [], error: `the chain "${entry.name}" exhausted every candidate` }
-    }
-    // 组合（combo）模型的手工实测。
-    //
-    // 组合行是 service 层用 comboRows() 现算的虚拟行，既不被 channels.handles 认领
-    // （渠道 Worker 只认 provider/model），也不在 core.testModel 的 core.catalog 里
-    // （核心目录只认识免费/Kilo/EAC/聚合车道）。此前 combo 点「测试」两头落空，
-    // 一律掉进 core.testModel 抛 `Unknown model`——页面能列出来、能推理（complete
-    // 有 comboRows 分流），偏偏测不了。这里补上同一道分流：走 completeCombo 真实
-    // 发一次探测请求（链首可用候选起步、按顺序降级），把整条链当成一个可测单元。
-    //
-    // 判定与持久化仍走上游那一套：成功/失败都写 manualResults（与自动探测分开
-    // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
-    const latestComboTests = new Map()
-    const testComboRow = async (entry, id, effort, options = {}) => {
-      const { signal } = options
-      const token = {}
-      latestComboTests.set(id, token)
-      const persist = row => {
-        if (stopped || signal?.aborted || latestComboTests.get(id) !== token) return false
-        stores.availability.edit(value => ({ ...value, manualResults: { ...value.manualResults, [id]: row } }))
-        stores.availability.flush()
-        return !stores.availability.writeFailed
-      }
-      const started = Date.now()
-      try {
-        // 与 testChannelModel 同一套探测口径：system 前置 + 最小 user 消息，满足
-        // 腾讯系网关「首条必须是 system」的约束；completeCombo 沿链降级直到有人
-        // 真正回话，整条链的可用性由最终是否有正文判定。
-        const outcome = await completeCombo(entry, {
-          model: id, signal,
-          openAi: {
-            messages: [
-              { role: 'system', content: 'You are a connectivity test endpoint. Reply briefly with the requested word.' },
-              { role: 'user', content: 'Reply with exactly: OK' },
-            ],
-            max_tokens: 32,
-          },
-        })
-        const failure = outcome?.error
-        if (failure !== undefined && failure !== null && String(failure).trim() !== '') {
-          throw Object.assign(new Error(String(failure)), { channelVerdict: true })
-        }
-        const text = typeof outcome?.text === 'string' ? outcome.text : ''
-        if (text.trim() === '') throw Object.assign(new Error('实测没有返回任何正文'), { channelVerdict: true })
-        const elapsed = Date.now() - started
-        const persisted = persist({
-          state: 'available', source: 'manual', at: Date.now(),
-          latencyMs: elapsed, ttftMs: elapsed,
-        })
-        return { model: id, effort, ok: true, latencyMs: elapsed, ttftMs: elapsed, text: text.slice(0, 2000), sample: text.slice(0, 60), persisted }
-      } catch (error) {
-        if (!signal?.aborted) {
-          const verdict = classifyChannelFailure(error, started)
-          persist({
-            state: verdict.state, source: 'manual', at: Date.now(),
-            detail: verdict.detail, latencyMs: verdict.latencyMs,
-          })
-        }
-        throw error
-      } finally {
-        if (latestComboTests.get(id) === token) latestComboTests.delete(id)
-      }
-    }
     // 渠道模型的手工实测。
     //
     // 核心 testModel 只在 `core.catalog` 里 find，而账号渠道行是 service 层拼进
@@ -442,12 +277,6 @@ export async function startStandalone({
     // 存，迟到的旧探测不能覆盖新实测），并用 token 挡住更早那次测试的迟到写入。
     const latestChannelTests = new Map()
     const testChannelRow = async (id, effort, options = {}) => {
-      if (id.startsWith(COMBO_PREFIX)) {
-        const entry = comboRows().find(row => row.id === id)
-        // 找不到组合行：这条链刚被删光或成员全部失效，交给 core 如实报 404。
-        if (entry === undefined) return core.testModel(id, effort, options)
-        return testComboRow(entry, id, effort, options)
-      }
       if (!channels.handles(id)) return core.testModel(id, effort, options)
       const { signal } = options
       const token = {}
@@ -487,23 +316,14 @@ export async function startStandalone({
       testModel: testChannelRow,
       get egress() { return core.egress },
       get gatewayLatency() { return core.gatewayLatency },
-      get catalog() { return [...realRows(), ...comboRows()] },
-      state: () => ({ ...core.state(), catalog: [...realRows(), ...comboRows()] }),
+      get catalog() { return realRows() },
+      state: () => ({ ...core.state(), catalog: realRows() }),
       aliasRows: () => aliasRows(),
       aliasSettings,
       publicModelRows: () => {
         const disabled = disabledSet()
-        const real = [
-          ...snapshotModelRows(core.state()).filter(row => !row.id.startsWith(COMBO_PREFIX) && !disabled.has(row.id)),
-          ...channels.publicModelRows().filter(row => !disabled.has(row.id)),
-          ...comboRows().map(entry => ({
-            id: entry.id, object: 'model', created: Math.floor(Date.now() / 1000), owned_by: 'our-free-model',
-            // 组合是用户起的虚拟模型：给个 name 才能被按显示名建索引的客户端列出来，
-            // 后缀「· 组合」让它在清单里和同名真模型区分开，不会被去重吞掉。
-            name: `${entry.name ?? entry.id} · 组合`,
-            context_window: entry.contextWindow,
-          })),
-        ]
+        // 单渠道构建：公开清单只来自渠道 Worker（WorkBuddy 国际版账号）。
+        const real = channels.publicModelRows().filter(row => !disabled.has(row.id))
         const mode = aliasSettings().mode
         // `id` 是历史行为；`both` 额外广播别名；`alias` 只广播别名。
         // 三种模式下原始 id 都能路由，切换模式不会让已配好的客户端突然 404。
@@ -537,15 +357,6 @@ export async function startStandalone({
           return Promise.reject(Object.assign(new Error(`model "${request.model}" is disabled`), { statusCode: 404 }))
         }
         if (channels.handles(model)) return channels.complete(routed, onChunk)
-        if (model.startsWith(COMBO_PREFIX)) {
-          const entry = comboRows().find(row => row.id === model)
-          // 组合行按 settings 现算：找不到意味着这条链刚被删光或成员全部失效，
-          // 此时不能回落到核心里可能残留的旧行，直接如实 404。
-          if (entry === undefined) {
-            return Promise.reject(Object.assign(new Error(`model "${request.model}" not found`), { statusCode: 404 }))
-          }
-          return completeCombo(entry, routed, onChunk)
-        }
         return core.complete(routed, onChunk)
       },
       async refreshCatalog(options) {
@@ -600,7 +411,7 @@ export async function startStandalone({
       probeProgress: () => ({ ...probeProgress }),
     }
     management = createManagement({
-      stores, runtime, channels, eac,
+      stores, runtime, channels,
       info: () => ({
         product: PRODUCT, version: VERSION, dataDir,
         baseUrl: `http://${host === '::1' ? '[::1]' : host}:${listener?.port ?? requestedPort}`,
@@ -663,7 +474,6 @@ export async function startStandalone({
         clearTimeout(timer)
         lifetime.abort()
         management.dispose()
-        eac.dispose()
         runtime.dispose()
         closing = (async () => {
           try {
@@ -680,7 +490,6 @@ export async function startStandalone({
     stopped = true
     clearTimeout(timer)
     management?.dispose()
-    eac?.dispose()
     runtime?.dispose()
     await relayChanges
     await closeRelay()

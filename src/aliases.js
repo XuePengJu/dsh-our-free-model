@@ -44,7 +44,6 @@ export const ALIAS_MODES = Object.freeze(['both', 'alias', 'id'])
 export const ALIAS_MODE_DEFAULT = 'alias'
 export const ALIAS_MAX_LEN = 64
 const ALIAS_MODE_SET = new Set(ALIAS_MODES)
-const COMBO_PREFIX = 'combo:'
 
 /** Letters, numbers and dots survive; every other separator becomes one dash. */
 export function aliasFromName(name) {
@@ -122,7 +121,7 @@ function claimAlias(base, id, reserved, used, entry) {
   const free = candidate => candidate !== '' && !reserved.has(candidate) && !used.has(candidate)
   if (free(base)) return base
   const channel = aliasFromName(entry?.channel)
-  if (channel !== '' && channel !== 'combo') {
+  if (channel !== '') {
     const tagged = `${base.slice(0, ALIAS_MAX_LEN - channel.length - 1)}-${channel}`.replace(/^[-.]+/, '')
     if (free(tagged)) return tagged
   }
@@ -164,7 +163,7 @@ export function buildAliasRows(catalog, rawSettings) {
   const claimed = new Map()
   for (const entry of entries) {
     const id = String(entry?.id ?? '').trim()
-    if (id === '' || entry?.channel === 'combo' || id.startsWith(COMBO_PREFIX)) continue
+    if (id === '') continue
     const explicit = settings.overrides[id]?.alias
     const wanted = explicit ?? suggestedAlias(entry)
     if (wanted === '') continue
