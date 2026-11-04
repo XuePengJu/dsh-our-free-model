@@ -1,15 +1,13 @@
 {
-  "name": "dsh-our-free-model",
+  "name": "workbuddy-gateway",
   "version": "2.5.10",
   "private": true,
   "type": "module",
-  "description": "Our Free Model（Ebony-Vinyl/dsh-our-free-model 的 fork）— 在 dsh 里装上这个插件即可，无需登录、注册或填 API Key，就能使用包括 DeepSeek V4.1 Flash、Kimi K3 在内的前沿模型，桌面端另有 EAC 协付渠道；2.0 起接入 CodeArts、CodeBuddy、WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax、ZCode、Gemini 十三个账号渠道（原有匿名免费通道保留）（登录、账号池、积分领取、本地 OpenAI 网关与局域网转发、数据看板与运行日志），九页毛玻璃界面统一呈现。本 fork 另增强独立本地服务：模型组可视化编排、WorkBuddy 配置同步、macOS 桌面壳。",
-  "main": "./index.js",
+  "description": "WorkBuddy 国际版单渠道本地网关：只保留 workbuddy（www.workbuddy.ai）一个账号渠道，提供 OpenAI / Anthropic 兼容接口与独立管理控制台（模型清单、用量、请求日志）。基于 dsh-our-free-model 剪裁，不含 dsh 插件形态、免费车道与其它账号渠道。",
+  "main": "./packages/standalone/service.mjs",
   "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
-    "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json"
+    ".": "./packages/standalone/service.mjs",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "pack:standalone": "node scripts/pack-standalone.mjs",
@@ -21,57 +19,26 @@
     "build:standalone-ui": "node scripts/build-standalone-ui.mjs",
     "typecheck:standalone": "npm --prefix packages/standalone run typecheck",
     "test:standalone-channels": "node scripts/standalone-channels-test.mjs",
-    "test": "node scripts/test-all.mjs --mode contributor",
-    "test:all": "node scripts/test-all.mjs",
-    "test:contributor": "node scripts/test-all.mjs --mode contributor",
-    "test:release": "node scripts/test-all.mjs --mode release",
-    "manifest": "node scripts/build-manifest.mjs",
-    "channel-pack": "node scripts/build-channel-pack.mjs",
-    "manifest:check": "node scripts/build-manifest.mjs --check",
-    "selftest": "node scripts/host-selftest.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "channel-pack": "node scripts/build-channel-pack.mjs"
   },
   "files": [
-    "index.js",
-    "client.js",
-    "adapter",
+    "packages",
     "src",
     "vendor/channel-pack/pack.js",
-    "vendor/channel-pack/qoder-auth-wasm.wasm",
     "vendor/channel-pack/NOTICE.md",
     "vendor/channel-pack/LICENSE",
-    "locale",
     "icon.svg",
-    "cordis.patch.yml",
     "LICENSE"
   ],
   "keywords": [
-    "dsh",
-    "dsh-plugin",
-    "free-model",
-    "llm-provider"
+    "workbuddy",
+    "llm-gateway",
+    "openai-compatible"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "immediately": true,
-      "inject": []
-    }
-  },
   "license": "MIT",
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-commands": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.1",
-    "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.4"
-  },
   "devDependencies": {
     "jose": "6.1.3",
     "undici": "8.11.2",

@@ -9,7 +9,6 @@ const navigation = [
   { label: '工作空间', items: [
     { id: 'overview', name: '概览', icon: LayoutDashboard },
     { id: 'models', name: '模型清单', icon: Cpu },
-    { id: 'combos', name: '模型组', icon: Layers },
     { id: 'usage', name: '用量与路由', icon: ChartColumn },
     { id: 'logs', name: '请求日志', icon: Terminal },
   ] },
@@ -106,7 +105,7 @@ export function ThemeSwitch() {
 }
 
 export const pageNames: Record<Page, string> = {
-  overview: '概览', models: '模型清单', combos: '模型组', usage: '用量与路由', logs: '请求日志', channels: '账号池',
+  overview: '概览', models: '模型清单', usage: '用量与路由', logs: '请求日志', channels: '账号池',
   settings: '服务设置',
 }
 

@@ -1,4 +1,4 @@
-export type Page = 'overview' | 'models' | 'combos' | 'usage' | 'logs' | 'channels' | 'settings'
+export type Page = 'overview' | 'models' | 'usage' | 'logs' | 'channels' | 'settings'
 export interface Model {
   id: string
   name: string
@@ -197,13 +197,6 @@ export interface Host {
   probeProgress(): Promise<ProbeProgress>
   setModelDisabled(id: string, disabled: boolean): Promise<void>
   saveSettings(settings: Partial<ServiceSettings>): Promise<ServiceSettings>
-  listCombos(): Promise<Combo[]>
-  saveCombo(combo: ComboDraft): Promise<Combo[]>
-  deleteCombo(id: string): Promise<Combo[]>
-  syncCombosToWorkbuddy(baseUrl?: string, target?: 'ai'): Promise<WorkbuddySyncResult>
-  writeModelToWorkbuddy(id: string, baseUrl?: string, target?: 'ai'): Promise<WorkbuddyWriteResult>
-  listWorkbuddyBackups(): Promise<WorkbuddyBackup[]>
-  restoreWorkbuddyBackup(file: string): Promise<{ restored: boolean; total: number; at: number }>
   /**
    * 渠道账本快照（`GET /api/management/usage/ledger`）。
    *

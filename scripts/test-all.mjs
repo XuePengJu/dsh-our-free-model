@@ -63,10 +63,8 @@ const suites = [
   ['standalone-channels', 'standalone-channels-test.mjs', []],
   ['standalone-channel-failure', 'standalone-channel-failure-test.mjs', []],
   ['standalone-channel-probe-scheduler', 'standalone-channel-probe-scheduler-test.mjs', []],
-  // 本项目自己的两个回归：用量页四档周期，以及 WorkBuddy 配置写入（后者放在
-  // packages/standalone 里，用相对路径挂进统一入口，避免同一份测试存在两处）。
+  // 本项目自己的回归：用量页四档周期。
   ['usage-period', 'usage-period-test.mjs', []],
-  ['workbuddy-sync', '../packages/standalone/workbuddy-sync.test.mjs', []],
   // 上游 v2.5.2/2.5.3 新增的回归套件（合并时保留我方 usage-period/workbuddy-sync，
   // 同时挂载上游这批新测试；测试文件随合并已落地到 scripts/）。
   ['reload', 'reload-test.mjs', []],

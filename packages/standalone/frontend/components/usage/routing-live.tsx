@@ -26,7 +26,7 @@ export const gatewayPort = (): string => {
     if (location.port !== '') return location.port
     return location.protocol === 'https:' ? '443' : '80'
   } catch {
-    return '18900'
+    return '18910'
   }
 }
 

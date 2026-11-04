@@ -3,18 +3,11 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { buildStats } from '../../src/core/stats.js'
 import { ATTEMPT_LIMIT, readAttempts } from '../../src/core/attempts.js'
-import { COMBO_PREFIX, COMBO_STRATEGIES, comboId, isComboEntry, normalizeCombos } from '../../src/combos.js'
 import { ALIAS_MAX_LEN, ALIAS_MODES, aliasFromName, buildAliasRows, normalizeAliasSettings, publicAliasSettings, suggestedAlias } from '../../src/aliases.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
 import { classifyChannelFailure } from './channel-probe.mjs'
 import { openLoginTerminal } from './login-terminal.mjs'
-import {
-  listWorkbuddyBackups,
-  restoreWorkbuddyBackup,
-  syncWorkbuddyModels,
-  writeWorkbuddyModel,
-} from './workbuddy-sync.mjs'
 import { publicModelVisibility, validateModelVisibility, isModelHidden } from '../../src/store.js'
 
 const PREFIX = '/api/management'
@@ -44,19 +37,6 @@ function clampInt(raw, fallback, min, max) {
   const value = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : Number.NaN
   if (!Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-// WorkBuddy 写入地址：允许管理页把「当前访问的域名/IP」作为接入地址写进 ~/.workbuddy/models.json。
-// 仅接受无路径、无查询的 http(s) 源地址（origin），其余一律回退服务端绑定地址。
-function resolveWorkbuddyBase(requested, fallback) {
-  if (requested === undefined || requested === null || requested === '') return fallback
-  if (typeof requested !== 'string') throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址')
-  let parsed
-  try { parsed = new URL(requested) } catch { throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址') }
-  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.origin !== requested) {
-    throw fail(400, 'baseUrl 必须是不带路径的 http(s) 源地址')
-  }
-  return requested
 }
 
 function matches(actual, expected) {
@@ -99,26 +79,6 @@ function validateSettings(patch) {
     result[key] = value
   }
   return result
-}
-
-/** 模型组（combo）的表单校验：字段全部来自页面输入，按不受信任处理。 */
-function validateCombo(body) {
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  if (name === '' || name.length > 60) throw fail(400, '请输入 60 字以内的模型组名称')
-  const id = typeof body.id === 'string' && body.id.startsWith(COMBO_PREFIX) ? body.id : comboId(name)
-  if (id === '') throw fail(400, '模型组名称无法生成有效标识，请换一个名称')
-  const models = [...new Set((Array.isArray(body.models) ? body.models : [])
-    .map(value => String(value ?? '').trim())
-    .filter(value => value !== ''))]
-  if (models.length === 0) throw fail(400, '请至少勾选一个模型')
-  if (models.length > 32) throw fail(400, '一条链最多 32 个模型')
-  if (models.some(value => value.length > 300)) throw fail(400, '模型 ID 过长')
-  if (models.includes(id)) throw fail(400, '模型组不能包含它自己')
-  const strategy = body.strategy === undefined ? 'fallback' : body.strategy
-  if (!COMBO_STRATEGIES.includes(strategy)) throw fail(400, '调度策略必须是 fallback 或 round-robin')
-  const stickyLimit = body.stickyLimit === undefined ? 1 : Number(body.stickyLimit)
-  if (!Number.isInteger(stickyLimit) || stickyLimit < 1 || stickyLimit > 64) throw fail(400, '粘滞轮数必须是 1 到 64 的整数')
-  return { id, name, models, strategy, stickyLimit, enabled: body.enabled !== false }
 }
 
 export function managementSettings(value) {
@@ -258,7 +218,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
 
   // 与 service 侧同口径：别名按**含禁用行**的全量目录分配，禁用某个模型只是让
   // 那个名字消失（请求 404），绝不会把纯名让给另一个渠道的同名模型。
-  const aliasCatalog = () => (runtime.catalog ?? []).filter(row => !isComboEntry(row))
+  const aliasCatalog = () => runtime.catalog ?? []
   const aliasPayload = () => {
     const settings = normalizeAliasSettings(stores.settings.get().aliases)
     const active = new Map((runtime.aliasRows?.() ?? []).map(row => [row.target, row]))
@@ -484,31 +444,6 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (until) sessions.set(id, until)
       bootstrap = null
       json(res, 200, { key: stores.settings.get().forwardKey })
-    } else if (method === 'GET' && pathname === `${PREFIX}/combos`) {
-      json(res, 200, { combos: normalizeCombos(stores.settings.get().combos) })
-    } else if (method === 'POST' && pathname === `${PREFIX}/combos`) {
-      const body = await readBody(req)
-      const combo = validateCombo(body)
-      const combos = normalizeCombos(stores.settings.get().combos)
-      if (typeof body.id === 'string' && body.id.startsWith(COMBO_PREFIX)) {
-        const index = combos.findIndex(row => row.id === body.id)
-        if (index < 0) throw fail(404, '要编辑的模型组不存在')
-        combos[index] = combo
-      } else {
-        if (combos.some(row => row.id === combo.id)) throw fail(409, '同名模型组已存在，请换一个名称')
-        combos.push(combo)
-      }
-      persist({ combos })
-      // 组合行由 service 层按 settings 现算，落盘即生效，无需刷新目录。
-      json(res, 200, { combos })
-    } else if (method === 'POST' && pathname === `${PREFIX}/combos/delete`) {
-      const body = await readBody(req)
-      if (typeof body.id !== 'string' || !body.id.startsWith(COMBO_PREFIX)) throw fail(400, '请提供要删除的模型组')
-      const before = normalizeCombos(stores.settings.get().combos)
-      const combos = before.filter(row => row.id !== body.id)
-      if (combos.length === before.length) throw fail(404, '模型组不存在')
-      persist({ combos })
-      json(res, 200, { combos })
     } else if (method === 'GET' && pathname === `${PREFIX}/aliases`) {
       json(res, 200, aliasPayload())
     } else if (method === 'POST' && pathname === `${PREFIX}/aliases`) {
@@ -559,39 +494,6 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       }
       persist({ aliases: { ...current, overrides } })
       json(res, 200, aliasPayload())
-    } else if (method === 'POST' && pathname === `${PREFIX}/combos/export-workbuddy`) {
-      // 幂等全量同步：启用且可解析的模型组 upsert 进 ~/.workbuddy/models.json，
-      // 顺带刷新归属单模型条目并清理 combo: 残留；详见 workbuddy-sync.mjs。
-      // 可选 body.baseUrl：把写入条目的接入地址切到管理页当前访问的域名/IP。
-      // 可选 body.target === 'ai'：写入 WorkBuddy AI 国际版（~/.workbuddy-ai/models.json），默认写 ~/.workbuddy。
-      const body = await readBody(req)
-      const settings = stores.settings.get()
-      const result = await syncWorkbuddyModels({
-        combos: normalizeCombos(settings.combos), catalog: runtime.catalog,
-        baseUrl: resolveWorkbuddyBase(body.baseUrl, info().baseUrl), forwardKey: settings.forwardKey,
-        dirName: body.target === 'ai' ? '.workbuddy-ai' : undefined,
-      })
-      json(res, 200, result)
-    } else if (method === 'POST' && pathname === `${PREFIX}/models/export-workbuddy`) {
-      // 单模型 upsert：只写这一个条目，不清理任何其他条目（无二次确认）。
-      // 可选 body.baseUrl：同上，跟随管理页选择的接入地址。
-      // 可选 body.target === 'ai'：写入 WorkBuddy AI 国际版（~/.workbuddy-ai/models.json），默认写 ~/.workbuddy。
-      const body = await readBody(req)
-      const baseUrl = resolveWorkbuddyBase(body.baseUrl, info().baseUrl)
-      const dirName = body.target === 'ai' ? '.workbuddy-ai' : undefined
-      if (typeof body.id !== 'string' || body.id === '' || body.id.length > 300) throw fail(400, '请提供有效的模型 ID')
-      const model = runtime.catalog.find(row => row.id === body.id && !isComboEntry(row))
-      if (!model) throw fail(404, '模型清单中没有这个模型')
-      const result = await writeWorkbuddyModel({
-        model, baseUrl, forwardKey: stores.settings.get().forwardKey, dirName,
-      })
-      json(res, 200, result)
-    } else if (method === 'GET' && pathname === `${PREFIX}/workbuddy/backups`) {
-      json(res, 200, { backups: await listWorkbuddyBackups() })
-    } else if (method === 'POST' && pathname === `${PREFIX}/workbuddy/backups/restore`) {
-      const body = await readBody(req)
-      if (typeof body.file !== 'string') throw fail(400, '请提供要恢复的备份文件名')
-      json(res, 200, await restoreWorkbuddyBackup(body.file))
     } else if (method === 'POST' && pathname === `${PREFIX}/models/disabled`) {
       // 模型开关：关闭后从公开清单、推理路由、组合链与默认视图中统一剔除，
       // 仅保留在目录里供「已关闭」页展示与一键恢复。

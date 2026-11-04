@@ -23,7 +23,7 @@ const VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta
 
 export function resolveStandaloneDataDir(env = process.env, home = os.homedir()) {
   const configured = typeof env.OFM_HOME === 'string' ? env.OFM_HOME.trim() : ''
-  return configured === '' ? path.join(home, '.our-free-model') : path.resolve(configured)
+  return configured === '' ? path.join(home, '.workbuddy-gateway') : path.resolve(configured)
 }
 
 /** 内核自动释放的互斥端点，串行化同一数据目录的锁检查与回收。 */
@@ -235,7 +235,7 @@ export async function startStandalone({
     stores = createRuntimeStores({ dataDir, logger })
     const { settings } = stores
     const savedPort = settings.get().standalonePort
-    const requestedPort = port ?? (Number.isInteger(savedPort) && savedPort >= 0 && savedPort <= 65535 ? savedPort : 18900)
+    const requestedPort = port ?? (Number.isInteger(savedPort) && savedPort >= 0 && savedPort <= 65535 ? savedPort : 18910)
     const existingKey = settings.get().forwardKey
     const key = typeof existingKey === 'string' && existingKey !== '' ? existingKey : generateKey()
     const savedLanPort = settings.get().standaloneLanPort
@@ -264,7 +264,9 @@ export async function startStandalone({
     const channelRows = () => channels.publicModelRows().map(row => ({
       ...row, contextWindow: row.context_window, maxOutput: row.max_tokens,
     }))
-    const realRows = () => [...core.catalog.filter(entry => !isComboEntry(entry)), ...channelRows()]
+    // 单渠道构建：模型行只来自 WorkBuddy 国际版渠道 Worker。
+    // 原实现还会拼上核心目录（免费车道 / EAC / Kilo / 聚合），本分支已剪除。
+    const realRows = () => channelRows()
     // 用户主动关闭的模型（settings.disabledModels，行 ID 集合）：从公开清单、
     // 推理路由、组合链成员与探测中统一剔除，但保留在目录里供「已关闭」页展示。
     const disabledSet = () => new Set(Array.isArray(settings.get().disabledModels) ? settings.get().disabledModels : [])
@@ -553,7 +555,8 @@ export async function startStandalone({
           probeProgress = { running: true, phase: 'catalog', done: 0, total: 0, startedAt: Date.now(), finishedAt: 0 }
         }
         try {
-          await Promise.all([core.refreshCatalog(options), channels.refresh().catch(error => { if (!stopped) throw error })])
+          // 单渠道构建：核心目录不再有免费车道可刷，只刷新渠道 Worker 的清单。
+          await channels.refresh().catch(error => { if (!stopped) throw error })
           // 渠道模型行不走核心探测（那是对免费网关发的）；核心探测开着的轮次
           // （手动“探测可用性”或开启自动探测后的周期轮）顺带覆盖账号渠道，
           // 判定写进同一个 availability 存储，管理页据此显示真实状态。
@@ -603,7 +606,7 @@ export async function startStandalone({
         baseUrl: `http://${host === '::1' ? '[::1]' : host}:${listener?.port ?? requestedPort}`,
         automaticRefresh: refresh,
         networkMode: process.env.OFM_TEST_UPSTREAM ? 'fixture' : 'live',
-        capabilities: { anonymous: true, kilo: true, eac: true, accountChannels: true, webUi: true, lan: true },
+        capabilities: { anonymous: false, kilo: false, eac: false, accountChannels: true, webUi: true, lan: true },
         lan: lanState(),
       }),
       onSettingsChanged: async () => {
@@ -618,7 +621,7 @@ export async function startStandalone({
       modelRows: runtime.publicModelRows,
       health: () => ({
         ok: true, service: PRODUCT, product: 'standalone', version: VERSION,
-        capabilities: { anonymous: true, kilo: true, eac: true, accountChannels: true, webUi: true },
+        capabilities: { anonymous: false, kilo: false, eac: false, accountChannels: true, webUi: true },
       }),
       handleRequest: management.handleRequest,
       log: message => logger.warn?.(`our-free-model standalone: ${message}`),

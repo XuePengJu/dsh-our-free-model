@@ -236,26 +236,6 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
     }
   }
 
-  // 写入 WorkBuddy / WorkBuddy AI 国际版：幂等单模型 upsert，无二次确认；与 toggleModel 相同的卸载保护。
-  // exportingId 记录「模型 ID + 目标」，让两个写入项的 loading 文案互不串扰。
-  const exportModel = (model: Model, target?: 'ai') => {
-    if (operation || exportingId !== undefined) return
-    const slot = target ? `${model.id}:ai` : model.id
-    setOperation('export'); setExportingId(slot); setError(''); setMessage('')
-    void host.writeModelToWorkbuddy(model.id, resolveEndpointBase(summary.baseUrl), target)
-      .then(result => {
-        if (activeRef.current) {
-          const label = target ? 'WorkBuddy AI 国际版' : 'WorkBuddy'
-          setMessage(`已写入 ${label}：${model.name}（${result.updated > 0 ? '已更新' : '首次新增'}），重启 ${label} 后生效`)
-        }
-      })
-      .catch(reason => {
-        if (!activeRef.current) return
-        setError(reason instanceof Error ? (reason.name === 'TimeoutError' ? '请求超时，请重试。' : reason.message) : '操作失败，请重试。')
-      })
-      .finally(() => { if (activeRef.current) { setOperation(undefined); setExportingId(undefined) } })
-  }
-
   if (!active) return null
   const filtered = Object.entries(filters).some(([key, value]) => value !== initialFilters[key as keyof typeof initialFilters])
   const routable = summary.catalog.filter(model => model.routable && !model.disabled).length
@@ -390,9 +370,7 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                   className={operation === 'test' && test?.model.id === model.id ? 'md-testing' : ''}>
                   {operation === 'test' && test?.model.id === model.id ? <LoaderCircle size={14} className="spinning" /> : <Play size={14} />}测试
                 </Button>
-                {/* combo 行没有真实模型可写入 WorkBuddy（必 404），菜单只剩「隐藏」；
-                    既无隐藏资格又非可写入渠道时整个菜单不渲染。 */}
-                {(canHide || model.channel !== 'combo') && <DropdownMenu triggerLabel={`更多操作：${model.name}`} icon={<MoreHorizontal size={15} />}
+                {canHide && <DropdownMenu triggerLabel={`更多操作：${model.name}`} icon={<MoreHorizontal size={15} />}
                   triggerClassName="md-more" open={openMenuId === model.id}
                   onOpenChange={next => setOpenMenuId(next ? model.id : undefined)}
                   items={[
@@ -418,24 +396,6 @@ export function Models({ summary, host, active }: { summary: Summary; host: Host
                           .catch(host.error)
                       },
                     }] : []),
-                    ...(model.channel !== 'combo' ? [
-                      {
-                        key: 'export',
-                        label: operation === 'export' && exportingId === model.id ? '写入中…' : '写入 WorkBuddy',
-                        icon: operation === 'export' && exportingId === model.id ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
-                        disabled: !!disabledReason || !!operation,
-                        title: disabledReason || `把 ${model.name} 写入 WorkBuddy 配置（~/.workbuddy）`,
-                        onSelect: () => exportModel(model),
-                      },
-                      {
-                        key: 'export-ai',
-                        label: operation === 'export' && exportingId === `${model.id}:ai` ? '写入中…' : '写入 WorkBuddy AI 国际版',
-                        icon: operation === 'export' && exportingId === `${model.id}:ai` ? <LoaderCircle size={14} className="spinning" /> : <Upload size={14} />,
-                        disabled: !!disabledReason || !!operation,
-                        title: disabledReason || `把 ${model.name} 写入 WorkBuddy AI 国际版配置（~/.workbuddy-ai）`,
-                        onSelect: () => exportModel(model, 'ai'),
-                      },
-                    ] : []),
                   ]} />}
               </div>
             </div>

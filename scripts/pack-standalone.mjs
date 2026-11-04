@@ -29,7 +29,7 @@ const sourceFiles = [
   // explicit list, so anything reachable from the entries has to be named here
   // or the isolated package fails to boot with ERR_MODULE_NOT_FOUND.
   'packages/standalone/channel-probe.mjs',
-  'packages/standalone/workbuddy-sync.mjs',
+  'packages/standalone/channel-probe.mjs',
   ...['business', 'contracts', 'credentials', 'images', 'runtime', 'worker']
     .map(name => `packages/standalone/channels/${name}.mjs`),
   'packages/standalone/web/index.html',
@@ -142,7 +142,7 @@ exec "$ofm_package_dir/runtime/node" "$ofm_package_dir/packages/standalone/cli.m
   ./start.command --port 0 --data-dir "/绝对路径/独立数据目录"
 
 无需安装 Node、npm、DSH 或项目依赖。终端会打印一次性管理登录链接。
-默认只监听本机回环地址，端口 18900；冲突时自动选用可用端口。
+默认只监听本机回环地址，端口 18910；冲突时自动选用可用端口。
 默认数据目录 ~/.our-free-model；OFM_HOME 或 --data-dir 可以覆盖。
 停止服务请在运行终端按 Ctrl+C。替换程序包时保留数据目录即可。
 本包不包含用户账号、API Key、历史记录或本机配置。不要共用正在运行的数据目录。

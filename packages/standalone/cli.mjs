@@ -5,8 +5,8 @@ import { startStandalone } from './service.mjs'
 const usage = `Our Free Model 独立本地服务
 用法：node packages/standalone/cli.mjs [选项]
 
-  --port <端口>       监听端口，默认 18900（冲突时自动选择可用端口）
-  --data-dir <目录>   数据目录，默认 OFM_HOME 或 ~/.our-free-model
+  --port <端口>       监听端口，默认 18910（冲突时自动选择可用端口）
+  --data-dir <目录>   数据目录，默认 OFM_HOME 或 ~/.workbuddy-gateway
   --no-refresh        跳过启动与周期刷新；仍可手动刷新和推理
   --probe             启用并保存自动探测设置，会产生上游请求
   --lan               启用并保存 LAN 推理中继（独立密钥，管理页仍仅限本机）

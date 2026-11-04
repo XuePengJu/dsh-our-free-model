@@ -1,7 +1,7 @@
 /** 仅转换独立端承载；渠道业务仍来自原插件页面。 */
 import fs from 'node:fs'
 import vm from 'node:vm'
-let source = fs.readFileSync(new URL('../../client.js', import.meta.url), 'utf8')
+let source = fs.readFileSync(new URL('../../packages/standalone/frontend/shared-channels.js', import.meta.url), 'utf8')
 function replaceOnce(from, to) {
   if (source.split(from).length !== 2) throw new Error(`共享页面替换位置改变：${from.slice(0, 90)}`)
   source = source.replace(from, to)

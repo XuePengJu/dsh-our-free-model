@@ -15,11 +15,14 @@ import { fetchKiloListing } from '../kilo.js'
 import { sessionForConversation } from '../upstream.js'
 import { createForwardCompletion, publicModelRows } from './completion.js'
 
-const FALLBACK_CATALOG = buildCatalog([
-  'mimo-v2.6-flash-free', 'mimo-v2.5-free', 'ling-3.0-flash-fin-free',
-  'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free', 'space-bunny-free',
-  'muse-spark-1.3-contributor-free', 'muse-spark-1.2-contributor-free',
-])
+/**
+ * 单渠道构建：核心目录不再内置任何免费模型种子。
+ *
+ * 原实现会在这里灌入 OpenCode Zen 的免费清单兜底，使「清单拉取失败」时仍有
+ * 可点选的模型。本分支只保留 WorkBuddy 国际版账号渠道，模型行全部来自
+ * `packages/standalone/service.mjs` 的渠道 Worker，因此核心目录恒为空。
+ */
+const FALLBACK_CATALOG = []
 
 /** 路径由产品入口决定；核心不解析 DSH_HOME，也不发现宿主服务。 */
 export function createRuntimeStores({ dataDir, logger = console }) {
@@ -42,7 +45,7 @@ export function createRuntimeStores({ dataDir, logger = console }) {
   })
   const stats = open('stats.json', STATS_INITIAL)
   const availability = open('availability.json', { version: 1, at: 0, egress: null, results: {} })
-  const catalogStore = open('catalog.json', { version: 1, at: 0, entries: FALLBACK_CATALOG.map(entry => entry.id) })
+  const catalogStore = open('catalog.json', { version: 1, at: 0, entries: [] })
   if (stats.get().version !== STATS_VERSION) stats.edit(migrateStats)
   return {
     settings, stats, availability, catalogStore,

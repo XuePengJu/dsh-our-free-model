@@ -8,17 +8,14 @@ export const CLIENT_MODEL_STORAGE_KEY = 'ofm:client-model'
 /**
  * 解析默认接入模型 ID，优先级：
  * 1. saved 且 catalog 中存在同 id 且 routable 的模型
- * 2. catalog 中第一个 channel === 'combo' 且 routable 的模型
- * 3. catalog 中第一个 routable 的模型
- * 4. catalog[0]?.id（兜底，可能不可接入）／catalog 为空时返回 ''
+ * 2. catalog 中第一个 routable 的模型
+ * 3. catalog[0]?.id（兜底，可能不可接入）／catalog 为空时返回 ''
  */
 export function resolveDefaultModelId(catalog: Model[], saved?: string): string {
   if (saved) {
     const matched = catalog.find(row => row.id === saved && row.routable)
     if (matched) return matched.id
   }
-  const combo = catalog.find(row => row.channel === 'combo' && row.routable)
-  if (combo) return combo.id
   const routable = catalog.find(row => row.routable)
   if (routable) return routable.id
   return catalog[0]?.id ?? ''
