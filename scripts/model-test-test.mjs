@@ -52,7 +52,10 @@ test('pre-cancelled test never creates a request', async () => {
 function fixture() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-manual-test-'))
   const stores = createRuntimeStores({ dataDir, logger: { warn() {} } })
-  stores.settings.update({ enabled: true, combos: [] })
+  stores.settings.update({ enabled: true })
+  // 单渠道剪裁后核心目录不再有免费种子，也没有账号渠道可用：这里显式写一条
+  // `buildCatalog` 能物化的 id 进目录缓存，让「手动测试」有对象可测。
+  stores.catalogStore.update({ at: Date.now(), entries: ['mimo-v2.6-flash-free'] })
   const runtime = createModelRuntime({ ...stores, logger: { warn() {} } })
   const id = runtime.catalog[0].id
   return { dataDir, stores, runtime, id, close() { runtime.dispose(); stores.dispose(); fs.rmSync(dataDir, { recursive: true, force: true }) } }

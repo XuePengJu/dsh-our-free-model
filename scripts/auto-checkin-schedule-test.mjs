@@ -1975,15 +1975,17 @@ await test('dismiss：新一轮跑完 lastAt 变了 ⇒ 状态文字重新出现
   assert.equal(engine.state().dismissed, false, '新一轮结果应重新出现')
 })
 
-// === 16. 跨端契约：客户端与服务端的时间判据必须一致 ======================
+// === 16. 跨端契约：控制台与服务端的时间判据必须一致 ======================
 
-await test('跨端契约：client.js 的 AUTO_TIME_RE 与 AUTO_CHECKIN_TIME_RE 一致', async () => {
-  // `client.js` 里有一份**副本**（注释说明是刻意的：让输入框能立刻拒绝半打好的值，
+await test('跨端契约：channel-browser.tsx 的 AUTO_TIME_RE 与 AUTO_CHECKIN_TIME_RE 一致', async () => {
+  // 控制台里有一份**副本**（注释说明是刻意的：让输入框能立刻拒绝半打好的值，
   // 而不必等一次往返）。副本本身没问题，**漂移**才是问题 —— 加宽格式时若只改一边，
   // 表现是「UI 能存、调度不生效」。故这里逐值比对两边的判定结果。
-  const clientSource = fs.readFileSync(path.join(root, 'client.js'), 'utf8')
+  const clientSource = fs.readFileSync(
+    path.join(root, 'packages/standalone/frontend/components/channel-browser.tsx'), 'utf8',
+  )
   const matched = clientSource.match(/const AUTO_TIME_RE = (\/.*?\/)\n/)
-  assert.ok(matched, 'client.js 里找不到 AUTO_TIME_RE 定义（被改名或删掉了？）')
+  assert.ok(matched, 'channel-browser.tsx 里找不到 AUTO_TIME_RE 定义（被改名或删掉了？）')
   // eslint-disable-next-line no-new-func
   const clientRe = new Function(`return ${matched[1]}`)()
   const samples = [

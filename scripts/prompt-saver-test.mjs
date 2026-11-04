@@ -339,17 +339,11 @@ check('the last of several breakpoints is the anchor', () => {
   assert.deepEqual(body.system.map(block => block.text), ['a', 'b', segment(CAVEMAN), 'c'])
 })
 
-// ── composition with the sealed lane ─────────────────────────────────────────
-// `applySealedPacingHint` is private to src/adapter.js, so the test replicates
-// the one mutation it makes (append to the system message, or add one). The
-// hint text is pinned to the source so the replica cannot drift silently.
+// ── composition with a system hint ───────────────────────────────────────────
+// 剪裁后 adapter 不再有 sealed 车道的 pacing hint；下面只保留「注入位置与既有
+// 系统消息共存」这条纯组合语义，hint 文本仅作为夹具字符串使用。
 
 const PACING_HINT = 'Avoid overthinking: keep your reasoning brief and proportionate to the task.'
-
-check('the adapter still carries the pacing hint this composition test replicates', () => {
-  const source = fs.readFileSync(new URL('../src/adapter.js', import.meta.url), 'utf8')
-  assert.ok(source.includes(PACING_HINT), 'src/adapter.js no longer carries the sealed-lane pacing hint')
-})
 
 check('a prompt injected after the pacing hint leaves both texts intact', () => {
   const body = { model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: true }

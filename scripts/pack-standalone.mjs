@@ -24,23 +24,19 @@ const sourceFiles = [
   'packages/standalone/management.mjs',
   'packages/standalone/login-terminal.mjs',
   'packages/standalone/open-external.mjs',
-  'packages/standalone/eac.mjs',
   // Local-only modules imported by service/management: the packer copies an
   // explicit list, so anything reachable from the entries has to be named here
   // or the isolated package fails to boot with ERR_MODULE_NOT_FOUND.
-  'packages/standalone/channel-probe.mjs',
   'packages/standalone/channel-probe.mjs',
   ...['business', 'contracts', 'credentials', 'images', 'runtime', 'worker']
     .map(name => `packages/standalone/channels/${name}.mjs`),
   'packages/standalone/web/index.html',
   'packages/standalone/web/assets.json',
-  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'eac', 'eac-login', 'eac-user', 'effort',
-    'egress', 'failure', 'forward', 'http', 'image-pricing', 'kilo', 'local-optimize', 'messages', 'model-test', 'probe', 'recovery',
-    'store', 'stream', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
+  ...['adapter', 'aliases', 'anthropic', 'catalog', 'channel', 'deferred-response', 'effort',
+    'egress', 'failure', 'forward', 'http', 'image-pricing', 'local-optimize', 'messages', 'model-test', 'probe', 'recovery',
+    'store', 'stream', 'trust', 'upstream']
     .map(name => `src/${name}.js`),
   ...['attempts', 'completion', 'runtime', 'stats', 'usage-periods'].map(name => `src/core/${name}.js`),
-  'src/providers/index.js',
-  'src/providers/registry.json',
   'src/route/classify.js',
   ...['index', 'inject', 'prompts'].map(name => `src/token-saver/${name}.js`),
   ...['index', 'constants', 'autodetect', 'applyFilter', 'hitLine', 'registry']

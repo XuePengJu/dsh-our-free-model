@@ -76,10 +76,6 @@ check('an entry whose id is already its own slug gets no alias', () => {
   assert.equal(suggestedAlias({ id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }), 'deepseek-v4.1-flash')
 })
 
-check('combo rows are not aliased', () => {
-  assert.ok(!rows.some(row => row.target.startsWith('combo:')))
-})
-
 console.log('assignment stability')
 
 check('a disabled model keeps its name, it is not handed to a neighbour', () => {

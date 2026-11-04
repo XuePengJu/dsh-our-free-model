@@ -114,7 +114,7 @@ async function child(args, env = {}) {
 
 try {
   await check('default data path ignores DSH_HOME', () => {
-    assert.equal(resolveStandaloneDataDir({ DSH_HOME: dshHome }, scratch), path.join(scratch, '.our-free-model'))
+    assert.equal(resolveStandaloneDataDir({ DSH_HOME: dshHome }, scratch), path.join(scratch, '.workbuddy-gateway'))
     assert.equal(resolveStandaloneDataDir({ OFM_HOME: dataDir, DSH_HOME: dshHome }, scratch), dataDir)
   })
   await check('different runtimes own independent settings and statistics', () => {
@@ -177,10 +177,13 @@ try {
     const health = await response.json()
     assert.equal(response.status, 200)
     assert.equal(health.product, 'standalone')
-    assert.equal(health.capabilities.eac, true)
+    // 单渠道剪裁后只剩账号渠道：匿名/Kilo/EAC 三条车道都已不存在，能力位恒为 false。
+    assert.equal(health.capabilities.anonymous, false)
+    assert.equal(health.capabilities.kilo, false)
+    assert.equal(health.capabilities.eac, false)
     assert.equal(health.capabilities.accountChannels, true)
-    await listingStarted
-    assert.equal(kiloCalls, 0)
+    unhold()
+    holdListing = undefined
   })
   if (!service) throw new Error('standalone did not start')
   const key = JSON.parse(fs.readFileSync(service.keyFile)).forwardKey
@@ -199,180 +202,37 @@ try {
     assert.equal((await fetch(`${service.url}/v1/models`, { headers: { authorization: 'Bearer dsh-only-key' } })).status, 401)
     const response = await fetch(`${service.url}/v1/models`, { headers: { authorization: `Bearer ${key}` } })
     assert.equal(response.status, 200)
-    assert.ok((await response.json()).data.length > 0)
+    // 单渠道剪裁后模型行只来自已登录的 WorkBuddy 账号渠道；本用例没有账号，
+    // 所以清单为空，而不是再从免费车道兜底出模型。
+    assert.ok(Array.isArray((await response.json()).data))
   })
-  await check('concurrent catalog refreshes coalesce with the boot round', async () => {
-    const extra = service.runtime.refreshCatalog({ probe: false })
-    assert.equal(listingCalls, 1)
-    unhold()
-    holdListing = undefined
-    await Promise.all([service.ready, extra])
-    assert.equal(listingCalls, 1)
-    assert.equal(kiloCalls, 1)
-    assert.equal(turns.length, 0, 'default startup must not spend availability probe requests')
-    assert.deepEqual(service.runtime.catalog.map(entry => entry.id), [model, kiloModel])
-  })
-  await check('a probe request is not swallowed by an in-flight listing-only refresh', async () => {
-    holdListing = new Promise(resolve => { unhold = resolve })
-    listingStarted = new Promise(resolve => { signalListingStarted = resolve })
-    const before = listingCalls
-    const listingOnly = service.runtime.refreshCatalog({ probe: false })
-    await listingStarted
-    const probed = service.runtime.refreshCatalog({ probe: true })
-    unhold()
-    holdListing = undefined
-    await Promise.all([listingOnly, probed])
-    assert.equal(listingCalls, before + 2)
-    assert.equal(turns.length, 1, 'only the anonymous model should be probed')
-    assert.equal(service.runtime.catalog.find(row => row.channel === 'kilo')?.id, kiloModel)
-  })
-  await check('non-streaming Chat Completions uses the shared core', async () => {
+  await check('without a signed-in account the catalog stays empty and inference is refused', async () => {
+    await service.ready
+    assert.deepEqual(service.runtime.catalog, [])
     const response = await jsonRequest(`${service.url}/v1/chat/completions`, {
-      model, messages: [{ role: 'user', content: 'hello' }],
-    }, key)
-    const body = await response.json()
-    assert.equal(response.status, 200)
-    assert.equal(body.choices[0].message.content, 'core-ok')
-    assert.equal(body.usage.prompt_tokens, 11)
-    assert.equal(body.usage.completion_tokens, 7)
-  })
-  await check('streaming completions preserve deltas, usage and terminal frames', async () => {
-    const response = await jsonRequest(`${service.url}/v1/chat/completions`, {
-      model, messages: [{ role: 'user', content: 'hello' }], stream: true,
-    }, key)
-    assert.equal(response.status, 200)
-    const body = await response.text()
-    assert.match(body, /core-ok/)
-    assert.match(body, /completion_tokens/)
-    assert.match(body, /\[DONE\]/)
-  })
-  await check('Responses requests and the Kilo lane also run independently', async () => {
-    const responses = await jsonRequest(`${service.url}/v1/responses`, { model, input: 'hello' }, key)
-    const body = await responses.json()
-    assert.equal(responses.status, 200)
-    assert.ok(JSON.stringify(body.output).includes('core-ok'))
-    const kilo = await jsonRequest(`${service.url}/v1/chat/completions`, {
-      model: kiloModel, messages: [{ role: 'user', content: 'hello' }],
-    }, key)
-    assert.equal(kilo.status, 200)
-    assert.equal((await kilo.json()).choices[0].message.content, 'kilo-ok')
-  })
-  await check('独立服务的目录、探测和推理都带 v2 客户端指纹', () => {
-    assert.ok(anonymousRequests.some(req => req.method === 'GET'))
-    assert.ok(anonymousRequests.filter(req => req.method === 'POST').length >= 4)
-    for (const req of anonymousRequests) {
-      assert.equal(req.headers['user-agent'], 'opencode/latest/2.0.26/cli')
-    }
-  })
-  await check('unknown models are refused before spending an upstream call', async () => {
-    const before = turns.length
-    const response = await jsonRequest(`${service.url}/v1/chat/completions`, {
-      model: 'missing-model', messages: [{ role: 'user', content: 'hello' }],
+      model: 'any-model', messages: [{ role: 'user', content: 'hello' }],
     }, key)
     assert.equal(response.status, 404)
-    assert.equal(turns.length, before)
   })
   await check('statistics persist and repeated shutdown releases the listener and lock', async () => {
     assert.equal(service.runtime.state().settings.forwardKey, key)
     assert.equal(fs.existsSync(path.join(dataDir, 'service.lock')), true)
     await Promise.all([service.close(), service.close()])
     assert.equal(fs.existsSync(path.join(dataDir, 'service.lock')), false)
-    const stats = JSON.parse(fs.readFileSync(path.join(dataDir, 'stats.json')))
-    assert.ok(stats.requests >= 4)
+    // 没有任何已登录账号时不会有成功的推理，stats.json 可能还没落盘；这里只守住
+    // 「设置已持久化」与「关闭后监听器不再响应」这两个仍成立的事实。
+    const settings = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json')))
+    assert.equal(settings.forwardKey, key)
     await assert.rejects(fetch(`${service.url}/health`))
-    await assert.rejects(service.runtime.complete({ model, openAi: {} }), { statusCode: 503 })
+    await assert.rejects(service.runtime.complete({ model: 'any-model', openAi: {} }), { statusCode: 503 })
   })
   await check('restart reuses only its own cached catalog, key and port', async () => {
-    const calls = listingCalls
     const previousPort = service.port
     service = await startStandalone({ dataDir, refresh: false, logger: { warn() {} } })
     assert.equal(service.port, previousPort)
     assert.equal(JSON.parse(fs.readFileSync(service.keyFile)).forwardKey, key)
-    assert.deepEqual(service.runtime.catalog.map(entry => entry.id), [model, kiloModel])
-    assert.equal(listingCalls, calls)
+    assert.deepEqual(service.runtime.catalog, [])
     assert.equal(fs.readFileSync(sentinelPath, 'utf8'), sentinel)
-  })
-  await check('an empty Kilo pool clears its cached models and stops routing them', async () => {
-    kiloListing = { data: [] }
-    await service.runtime.refreshCatalog({ probe: false })
-    assert.deepEqual(service.runtime.catalog.map(entry => entry.id), [model])
-    await assert.rejects(service.runtime.complete({ model: kiloModel, openAi: {} }), { statusCode: 404 })
-  })
-  await check('stopping during a listing prevents late writes and more channel requests', async () => {
-    holdListing = new Promise(resolve => { unhold = resolve })
-    listingStarted = new Promise(resolve => { signalListingStarted = resolve })
-    const before = kiloCalls
-    const pending = service.runtime.refreshCatalog()
-    await listingStarted
-    await service.close()
-    // 正常退出会刷出上一轮尚未落盘的缓存；只检查退出后没有迟到写入。
-    const catalogBefore = fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8')
-    unhold()
-    holdListing = undefined
-    await pending
-    assert.equal(kiloCalls, before)
-    assert.equal(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'), catalogBefore)
-    const calls = listingCalls
-    await service.runtime.refreshCatalog()
-    assert.equal(listingCalls, calls)
-  })
-  await check('周期探测遵守 429 退避，到期恢复，手动强制探测仍可执行', async () => {
-    const nativeTimeout = globalThis.setTimeout
-    const nativeNow = Date.now
-    const started = nativeNow()
-    let elapsed = 0
-    let periodic
-    let onScheduled
-    let probeService
-    const warnings = []
-    // 捕获真实周期任务并推进时钟，避免测试等待数十分钟。
-    globalThis.setTimeout = (callback, ms, ...args) => {
-      const handle = nativeTimeout(callback, ms, ...args)
-      if (ms === 15 * 60_000) {
-        periodic = { callback, args, handle }
-        onScheduled?.()
-      }
-      return handle
-    }
-    Date.now = () => started + elapsed
-    throttleTurns = true
-    const runPeriod = async () => {
-      assert.ok(periodic, '服务应安排下一轮周期任务')
-      elapsed += 15 * 60_000
-      clearTimeout(periodic.handle)
-      let deadline
-      const scheduled = new Promise((resolve, reject) => {
-        onScheduled = resolve
-        deadline = nativeTimeout(() => reject(new Error('周期刷新未完成')), 5000)
-      })
-      periodic.callback(...periodic.args)
-      try { await scheduled } finally { clearTimeout(deadline); onScheduled = undefined }
-    }
-    try {
-      const before = turns.length
-      probeService = await startStandalone({
-        dataDir: path.join(scratch, 'probe-backoff'), port: 0, probe: true,
-        logger: { warn: message => warnings.push(message) },
-      })
-      await probeService.ready
-      assert.equal(turns.length, before + 1, '启动应探测匿名模型')
-      assert.ok(warnings.some(message => message.includes('pause for 30 minutes')))
-      const listingsBefore = listingCalls
-      await runPeriod()
-      assert.equal(listingCalls, listingsBefore + 1, '退避期间仍刷新模型清单')
-      assert.equal(turns.length, before + 1, '15 分钟周期不得绕过 30 分钟退避')
-      await runPeriod()
-      assert.equal(turns.length, before + 2, '退避到期后应恢复探测')
-      await probeService.runtime.refreshCatalog({ probe: true, force: true })
-      assert.equal(turns.length, before + 3, '手动强制刷新可以绕过退避')
-      await runPeriod()
-      assert.equal(turns.length, before + 3, '手动强制刷新后周期任务仍遵守新的退避')
-    } finally {
-      await probeService?.close()
-      globalThis.setTimeout = nativeTimeout
-      Date.now = nativeNow
-      throttleTurns = false
-    }
   })
   await check('a separate process boots with plugin and DSH imports forbidden', async () => {
     const result = await child([

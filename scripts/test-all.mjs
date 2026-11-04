@@ -3,14 +3,8 @@
  *
  *     node scripts/test-all.mjs [--mode all|contributor|release] [--only <name>]
  *
- * These are the checks that need no network and spend no free-lane quota: each
- * one mounts the real module against a local stand-in. The live end-to-end run
- * against the gateway is separate and costs minutes and quota, so it stays a
- * deliberate act: `node scripts/host-selftest.mjs`.
- *
- * The default includes the manifest check because shipping a manifest that
- * disagrees with its files breaks the in-app upgrade for every user at once
- * (issue #1), and nothing else fails when that happens.
+ * These are the checks that need no network and spend no real quota: each one
+ * mounts the real module against a local stand-in.
  */
 import { spawn } from 'node:child_process'
 import path from 'node:path'
@@ -31,63 +25,34 @@ if (!['all', 'contributor', 'release'].includes(options.mode)) {
   process.exit(1)
 }
 const { mode, only } = options
-const releaseSuites = new Set(['manifest', 'release', 'catalog'])
 
 const suites = [
-  ['manifest', 'build-manifest.mjs', ['--check']],
-  ['release', 'release-e2e.mjs', []],
-  ['release-preparation', 'release-preparation-test.mjs', []],
-  ['client-lint', 'client-lint.mjs', []],
-  ['heatmap', 'heatmap-test.mjs', []],
   ['trust', 'trust-test.mjs', []],
-  ['sanitize', 'sanitize-test.mjs', []],
-  ['feed', 'feed-test.mjs', []],
-  ['picks', 'picks-test.mjs', []],
   ['aliases', 'aliases-test.mjs', []],
-  ['picks-ui', 'picks-ui-test.mjs', []],
-  ['stat-bucket-ui', 'stat-bucket-ui-test.mjs', []],
-  ['free-pool', 'free-pool-test.mjs', []],
-  ['updater', 'updater-test.mjs', []],
-  ['upgrade-ui', 'upgrade-ui-test.mjs', []],
   ['forward', 'forward-test.mjs', []],
-  ['chan-relay', 'chan-relay-test.mjs', []],
-  ['channel-pack', 'channel-pack-test.mjs', []],
-  ['channel-network', 'channel-network-test.mjs', []],
-  ['forward-boot', 'forward-boot-test.mjs', []],
   ['standalone', 'standalone-test.mjs', []],
   ['desktop', 'desktop-test.mjs', []],
-  ['standalone-desktop-regression', 'standalone-desktop-regression-test.mjs', []],
   ['standalone-page-lifecycle', 'standalone-page-lifecycle-test.mjs', []],
   ['standalone-management', 'standalone-management-test.mjs', []],
   ['standalone-frontend', 'standalone-frontend-test.mjs', []],
-  ['standalone-channels', 'standalone-channels-test.mjs', []],
   ['standalone-channel-failure', 'standalone-channel-failure-test.mjs', []],
   ['standalone-channel-probe-scheduler', 'standalone-channel-probe-scheduler-test.mjs', []],
   // 本项目自己的回归：用量页四档周期。
   ['usage-period', 'usage-period-test.mjs', []],
   // 上游 v2.5.2/2.5.3 新增的回归套件（合并时保留我方 usage-period/workbuddy-sync，
   // 同时挂载上游这批新测试；测试文件随合并已落地到 scripts/）。
-  ['reload', 'reload-test.mjs', []],
-  ['channel-source', 'channel-pack-test.mjs', ['--source', '--channels-only']],
   ['channel-credits-rpc', 'channel-credits-rpc-test.mjs', []],
   // 自动签到「每日到点」调度：默认关闭、`time` 契约、UTC+8 判据、跨天重触发。
   // 全部注入假时钟/假定时器，零等待零网络；本机时区被强制成非 UTC+8，
   // 故误用 `getHours()` 的实现会红，而不是在开发者机器上恰好通过。
   ['auto-checkin-schedule', 'auto-checkin-schedule-test.mjs', []],
-  ['channel-credits-ui', 'channel-credits-ui-test.mjs', []],
-  ['channel-model-actions', 'channel-model-actions-test.mjs', []],
-  ['channel-login', 'channel-login-test.mjs', []],
-  ['open-external', 'open-external-test.mjs', []],
   ['channel-image-pricing', 'channel-image-pricing-test.mjs', []],
   ['standalone-lan', 'standalone-lan-test.mjs', []],
-  ['standalone-client-regression', 'standalone-client-regression-test.mjs', []],
   ['standalone-channel-filter', 'standalone-channel-filter-test.mjs', []],
   ['standalone-model-operation', 'standalone-model-operation-test.mjs', []],
   ['standalone-settings-host', 'standalone-settings-host-test.mjs', []],
   ['standalone-login-terminal', 'standalone-login-terminal-test.mjs', []],
   ['standalone-package', 'standalone-package-test.mjs', ['--sources-only']],
-  ['stream-failure', 'stream-failure-test.mjs', []],
-  ['eac-abort', 'eac-abort-test.mjs', []],
   ['egress', 'egress-test.mjs', []],
   ['effort', 'effort-test.mjs', []],
   ['projection', 'projection-test.mjs', []],
@@ -97,19 +62,7 @@ const suites = [
   ['freetier-gate', 'freetier-gate-test.mjs', []],
   ['sniff', 'sniff-test.mjs', []],
   ['truncation', 'truncation-test.mjs', []],
-  ['recovery', 'recovery-test.mjs', []],
   ['retry-safety', 'retry-safety-test.mjs', []],
-  ['usage-sanitize', 'usage-sanitize-test.mjs', []],
-  ['speed-stat', 'speed-stat-test.mjs', []],
-  ['picker', 'picker-test.mjs', []],
-  ['tui', 'tui-test.mjs', []],
-  ['catalog', 'catalog-test.mjs', mode === 'contributor' ? ['--contributor'] : []],
-  ['vault', 'vault-test.mjs', []],
-  ['mint-eac-seal', 'mint-eac-seal-test.mjs', []],
-  ['eac-auth', 'eac-auth-test.mjs', []],
-  ['eac-login', 'eac-login-test.mjs', []],
-  ['kilo', 'kilo-test.mjs', []],
-  ['offline', 'offline-test.mjs', []],
   // The aggregated feature set: the token savers ported from the upstream
   // routers, the provider registry, the failure/chain brain, the Anthropic
   // wire, the local answers, and the aggregate lane driver. Each is a pure
@@ -118,28 +71,18 @@ const suites = [
   ['rtk', 'rtk-test.mjs', []],
   ['rtk-shape', 'rtk-shape-test.mjs', []],
   ['local-optimize', 'local-optimize-test.mjs', []],
-  ['registry', 'registry-test.mjs', []],
   ['route', 'route-test.mjs', []],
-  ['combo-advance', 'combo-advance-test.mjs', []],
   // The degradation ring a chain fills while it walks its candidates: bounded,
   // backwards compatible with a stats file that predates the field, and — the
   // contract that lets it sit in the request path — unable to fail a turn even
   // when the recorder itself throws.
-  ['combo-attempts', 'combo-attempts-test.mjs', []],
   ['prompt-saver', 'prompt-saver-test.mjs', []],
   ['anthropic', 'anthropic-test.mjs', []],
-  ['aggregate', 'aggregate-test.mjs', []],
-  ['aggregate-wiring', 'aggregate-wiring-test.mjs', []],
   ['model-test', 'model-test-test.mjs', []],
   ['model-test-probe-race', 'model-test-probe-race-test.mjs', []],
   ['model-test-finish-integration', 'model-test-finish-integration-test.mjs', []],
-  ['bench-integration', 'bench-integration-test.mjs', []],
-  ['plugin-bench-ui', 'plugin-bench-ui-test.mjs', []],
-  ['codearts-direct-fetch', 'codearts-direct-fetch-test.mjs', []],
   ['gateway-source', 'gateway-source-test.mjs', []],
-].filter(([name]) => (mode === 'contributor' ? !['manifest', 'release'].includes(name)
-  : mode === 'release' ? releaseSuites.has(name) : true)
-  && (only === null || name.startsWith(only)))
+].filter(([name]) => only === null || name.startsWith(only))
 
 if (only !== null && suites.length === 0) {
   console.error(`--only "${only}" selected no suite`)

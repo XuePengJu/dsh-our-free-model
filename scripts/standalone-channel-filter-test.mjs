@@ -6,7 +6,6 @@ import {
 } from '../packages/standalone/frontend/channel-filter-data.mjs'
 
 const source = fs.readFileSync(new URL('../packages/standalone/frontend/components/channel-browser.tsx', import.meta.url), 'utf8')
-const clientSource = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 
 // chips 的结构断言（不再求值源码片段）：三个状态 chips 必须保持 onClick/label/span 的形状，
 // 计数文案由 countLabel 提供，这样「状态未读到时显示破折号」的语义不会在改版中丢掉。
@@ -111,29 +110,8 @@ export function verifyChannelFilters() {
   assert.equal(activeFilterCount({ region: 'cn', creditModes: [] }), 1)
   assert.equal(activeFilterCount({ region: 'cn', creditModes: ['daily', 'onboarding'] }), 3)
 
-  // ---- 8. 14 条渠道字段齐全 ----
-  const regionHits = (clientSource.match(/region: '(?:cn|global)'/g) ?? []).length
-  const creditHits = (clientSource.match(/creditModes: \[/g) ?? []).length
-  assert.equal(regionHits, 14, 'CHANNEL_PROVIDERS 每条都必须有 region')
-  assert.equal(creditHits, 14, 'CHANNEL_PROVIDERS 每条都必须有 creditModes')
-
-  // ---- 9. 分布：地区可求和，积分方式因双属而多 1 ----
-  const regions = clientSource.match(/region: '(?:cn|global)'/g) ?? []
-  const cn = regions.filter(hit => hit.includes("'cn'")).length
-  const global = regions.filter(hit => hit.includes("'global'")).length
-  assert.equal(cn, 10, '国内渠道应为 10 条')
-  assert.equal(global, 4, '国外渠道应为 4 条')
-  assert.equal(cn + global, 14)
-  const modes = [...clientSource.matchAll(/creditModes: \[([^\]]*)\]/g)].map(([, body]) => body)
-  const daily = modes.filter(body => body.includes("'daily'")).length
-  const onboarding = modes.filter(body => body.includes("'onboarding'")).length
-  const quota = modes.filter(body => body.includes("'quota'")).length
-  assert.equal(daily, 10, '每日档应为 10 条')
-  assert.equal(onboarding, 2, '一次性档应为 2 条')
-  assert.equal(quota, 3, '额度档应为 3 条')
-  // 15 ≠ 14 是预期的：Loomy 既每日送 5000 又注册送 5000+新手任务 10000，
-  // 所以它在 daily 与 onboarding 两档里各计一次。断言写成 15，不要改成 14。
-  assert.equal(daily + onboarding + quota, 15, '积分方式合计为 15（Loomy 双属，比渠道数多 1）')
+  // 剪裁后只剩 workbuddy 一个渠道，「14 条渠道的地区/积分分布」这条断言随多渠道一起消失，
+  // 留着只会锁死旧结论。
 }
 
 // 顶层直接跑一次，让 `node scripts/test-all.mjs --only standalone-channel-filter` 真的断言行为，

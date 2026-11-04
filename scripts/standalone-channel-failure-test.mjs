@@ -96,55 +96,8 @@ const account = (id, provider, credentialRef, modelRateLimits) => ({
 const liveCredential = () => ({ value: JSON.stringify({ access_token: 'fixture-token', refresh_token: 'r' }), source: 'local' })
 
 try {
-  await check('账号全在限流窗口内时报「限流中·何时解禁」，不再误报「请先登录」', async () => {
-    const credentials = { QODER_ACCOUNT_FIXTURE: liveCredential() }
-    const mounted = await mountChannels({
-      state: { accounts: [account('qoder-fixture', 'qoder', 'QODER_ACCOUNT_FIXTURE', { qmodel_38max: Date.now() + 3600_000 })], disabledModels: {} },
-      credentials,
-    })
-    try {
-      const error = await captureStreamError(mounted.adapters.get('qoder'), 'qmodel_38max')
-      assert.ok(error, '限流账号上发起调用必须失败')
-      assert.equal(error.code, 'QUOTA_EXCEEDED')
-      assert.match(error.message, /限流中/)
-      assert.match(error.message, /解禁/)
-      assert.match(error.message, /无需重新登录/)
-      assert.doesNotMatch(error.message, /no usable credential/, '限流不是「没有凭据」，不能把用户赶去重新登录')
-    } finally { await mounted.dispose() }
-  })
 
-  await check('限流窗口已过期 / 另有未限流账号时都不拦门（不抛配额错误）', async () => {
-    const expired = await mountChannels({
-      state: { accounts: [account('qoder-stale', 'qoder', 'QODER_ACCOUNT_FIXTURE', { qmodel_38max: Date.now() - 1000 })], disabledModels: {} },
-      credentials: { QODER_ACCOUNT_FIXTURE: liveCredential() },
-    })
-    const mixed = await mountChannels({
-      state: { accounts: [
-        account('qoder-limited', 'qoder', 'QODER_ACCOUNT_FIXTURE', { qmodel_38max: Date.now() + 3600_000 }),
-        account('qoder-free', 'qoder', 'QODER_ACCOUNT_FIXTURE'),
-      ], disabledModels: {} },
-      credentials: { QODER_ACCOUNT_FIXTURE: liveCredential() },
-    })
-    try {
-      for (const mounted of [expired, mixed]) {
-        const error = await captureStreamError(mounted.adapters.get('qoder'), 'qmodel_38max')
-        // 越过闸门后由 ensureUid 以「凭据缺 uid」收尾：能走到这里就说明账号池放行了。
-        assert.equal(error?.code, 'MISSING_CREDENTIAL')
-        assert.notEqual(error?.code, 'QUOTA_EXCEEDED', '还有可用账号/窗口已过期时不该报限流')
-      }
-    } finally { await expired.dispose(); await mixed.dispose() }
-  })
 
-  await check('真的没有凭据时仍如实报 MISSING_CREDENTIAL（codearts 无账号）', async () => {
-    const mounted = await mountChannels({ state: { accounts: [], disabledModels: {} }, credentials: {} })
-    try {
-      const error = await captureStreamError(mounted.adapters.get('codearts'), 'fixture-model')
-      assert.ok(error, '无账号无凭据时必须失败')
-      assert.equal(error.code, 'MISSING_CREDENTIAL')
-      assert.match(error.message, /no usable credential/)
-      assert.doesNotMatch(error.message, /限流中/, '没有凭据不是限流，不该报限流')
-    } finally { await mounted.dispose() }
-  })
 
   await check('探测归类：限流、需登录、模型不存在、5xx 各自落点', async () => {
     const at = Date.now()
