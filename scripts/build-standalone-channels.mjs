@@ -4,6 +4,16 @@ import crypto from 'node:crypto'
 
 const source = fs.readFileSync(new URL('../vendor/channel-pack/pack.js', import.meta.url), 'utf8')
 let output = source
+
+/**
+ * 注入到产物里的 `LlmError` 稳定别名。
+ *
+ * ⚠️ 独立产物里的类名是 esbuild 的 `LlmErrorN`（数字是全局导入序号），
+ * 手写下标必然随 src 增删而失效 —— 故兜底代码一律引用本别名，并在产物
+ * 顶部显式导入一次（`contracts.mjs` 是独立端自带的契约实现）。
+ */
+const QUOTA_ERROR_IMPORT = 'import { LlmError as __ofmLlmQuotaError } from "./contracts.mjs";'
+
 function replaceOnce(from, to) {
   if (output.split(from).length !== 2) throw new Error(`独立渠道生成位置不唯一或已改变：${from.slice(0, 90)}`)
   output = output.replace(from, to)
@@ -34,7 +44,13 @@ replaceOnce(
     '          modelId',
     '        );',
     '        if (limited !== void 0) {',
-    '          throw new LlmError20(',
+    // ⚠️ 错误类用**本文件显式注入的稳定别名**（见下方 QUOTA_ERROR_IMPORT），
+    // 不写 esbuild 的 `LlmErrorN`：那个数字是全局导入序号的副产物，会随
+    // src 增删而漂移。原先写死的 `LlmError20` 从未真实存在过 —— 即这一分支
+    // 一旦执行就是 `ReferenceError: LlmError20 is not defined`，把「全部限流」
+    // 变成一次 1ms 的莫名失败（与本仓库 2026-11 的 `pickBuddyCredential`
+    // 同一病根：调用点留下了、定义已经不在了）。
+    '          throw new __ofmLlmQuotaError(',
     '            `${provider}：模型 ${modelId} 的可用账号均在限流中，最近一个将于 ${new Date(limited.resetAtMs).toLocaleString("zh-CN")} 解禁。可改用其它 provider / 模型，或等待解禁后再试（无需重新登录）。`,',
     '            "QUOTA_EXCEEDED"',
     '          );',
@@ -67,7 +83,18 @@ replaceOnce('export {\n  Config,', `export {
   collectGatewayModels, collectGatewayEffortViews, toOpenAiModels,
   Config,`)
 if (/@deepseek-ai\/.*["'];/.test(output)) throw new Error('独立产物仍存在宿主 import')
-output = `// 由 scripts/build-standalone-channels.mjs 生成，请勿手改。\n// 原渠道包 SHA256: ${crypto.createHash('sha256').update(source).digest('hex')}\n${output}`
+// 上面那段限流兜底代码依赖两个**打包期才存在的符号**。两个都必须在产物里
+// 真实存在，否则就是运行时 ReferenceError（而且是只在限流时才踩到的暗雷）：
+// - `allAccountsRateLimitedForModel`：pack.js 的顶层函数，只有宿主侧也用得上
+//   时才会被 esbuild 保留（它曾随代码剪裁被 tree-shake 掉，兜底分支随即悬空）；
+// - `__ofmLlmQuotaError`：由本文件注入的稳定导入（见 QUOTA_ERROR_IMPORT）。
+if (!output.includes('function allAccountsRateLimitedForModel(')) {
+  throw new Error('限流兜底依赖的 allAccountsRateLimitedForModel 不在产物里（被 tree-shake 掉了？）')
+}
+if (!output.includes('throw new __ofmLlmQuotaError(')) {
+  throw new Error('限流兜底没有注入 LlmError 的稳定别名（QUOTA_ERROR_IMPORT 是否漏加？）')
+}
+output = `// 由 scripts/build-standalone-channels.mjs 生成，请勿手改。\n// 原渠道包 SHA256: ${crypto.createHash('sha256').update(source).digest('hex')}\n${QUOTA_ERROR_IMPORT}\n${output}`
 const file = new URL('../packages/standalone/channels/business.mjs', import.meta.url)
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== output) throw new Error('独立渠道产物需要重新生成')

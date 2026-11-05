@@ -31,7 +31,7 @@ import { AccountPool, allAccountsRateLimitedForModel } from './account-pool.js'
 import { hasLegacyNamespaceRegistration, settingsOf, suppressAutoSettingsPage } from './settings-compat.js'
 import type { ImageRequestTarget } from './image-budget.js'
 import { buildRaccoonNickname, registerChannelPackRpc } from './channel-pack-rpc.js'
-import { CODEBUDDY, WORKBUDDY, type BuddyProduct } from './product.js'
+import { WORKBUDDY, type BuddyProduct } from './product.js'
 import { mountOpenAiGateway } from './openai-gateway/index.js'
 import { installLoopResume } from './loop-recovery.js'
 import {
@@ -349,10 +349,178 @@ export function apply(ctx: Context, config: { disableOpencode?: boolean; outlet?
     ctx.logger.warn(`[channel-pack] 清理 WorkBuddy 旧版账号失败：${String(error)}`)
   })
 
+  /**
+   * 按凭据 ref 解析 WorkBuddy 凭据。
+   *
+   * 账号池里每个账号各占一个 `WORKBUDDY_ACCOUNT_XXX` ref，选号之后需要按 ref
+   * 取回凭据体；解析这件事与 endpoint 无关，故只有这一份实现。
+   */
+  const resolveBuddyCredentialByRef = async (refName: string): Promise<BuddyCredential | undefined> => {
+    const resolved = await ctx.credentials.resolve(credentialRef(refName))
+    if (!resolved) return undefined
+    try {
+      return JSON.parse(resolved.value) as BuddyCredential
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * WorkBuddy 的**按到期分档选号器**（自带一份余额缓存）。
+   *
+   * ⚠️ **为什么需要它**：一个 WorkBuddy 账号常同时持有多种资源包（实测国际版
+   * 每个号都有「Bonus Pack（14 天到期）」+「Free Plan Subscription（扣费截止
+   * 8 年后）」），而**服务端扣哪个包不由插件决定**。插件能决定的只有「用哪个号」：
+   * 优先用还有「15 天内到期积分」的号（那部分再不用就作废），只剩长期积分的号
+   * 排最后 —— 与「锁定永久积分」配套（锁定时后者直接判不可用）。
+   *
+   * 判据出处见 `buddy-balance-rank.ts`（为什么是 15 天、为什么用 DeductionEndTime
+   * 而不是 CycleEndTime / ExpiredTime，都有实测对照）。
+   */
+  const workbuddyBalanceSelector = new BuddyBalanceSelector({
+    product: WORKBUDDY,
+    resolveCredential: resolveBuddyCredentialByRef,
+  })
+
+  /**
+   * 选号编排：按「enabled + 模型未受限」筛候选 → 按余额分档选号 → 取凭据。
+   *
+   * ⚠️ 余额分档**只在这批候选内部进行** —— 与 Loomy 同一约定：策略建立在
+   * 「模型没有受限且账号没有被停用」的基础上，不能因为某个号积分多就绕开限流标记。
+   *
+   * @returns 选中账号的凭据；`credential` 为空时 `tried` 是「档位最优但凭据坏了」
+   *   的账号集合，调用方要把它作为排除集合传给 `getAvailableAccount` 继续兜底。
+   *   锁定且无可用账号时**抛错**（绝不回落，否则锁定形同虚设）。
+   */
+  const pickBuddyCredential = async (options: {
+    product: BuddyProduct
+    selector: BuddyBalanceSelector
+    /** 报错文案里的产品名（用户要知道去哪个面板解锁）。 */
+    displayName: string
+    modelId?: string
+    /**
+     * 本次请求的模型是否**免费**（消耗 0 积分），由调用方用
+     * `BuddyAdapter.isFreeModel()` 判定后传入。
+     *
+     * ⚠️ 必须是**已确认**的免费：`true` 会跳过余额分档（即不受永久积分锁定约束），
+     * 误判成免费会让付费模型绕开锁定、真烧掉永久积分。故调用方只在确定时传 true。
+     */
+    isFreeModel?: boolean
+  }): Promise<{ credential?: BuddyCredential; tried: Set<string> }> => {
+    const tried = new Set<string>()
+    const candidates = pool
+      .listAccountsByProvider(options.product.id)
+      .filter(a => a.enabled)
+      .filter((a) => {
+        // 与 `getAvailableAccount` 的限流判据保持一致（空 modelId = 不过滤）。
+        const key = options.modelId ?? ''
+        if (key.length === 0) return true
+        if (!a.modelRateLimits) return true
+        const resetAt = a.modelRateLimits[key]
+        return resetAt === undefined || resetAt === 0 || Date.now() >= resetAt
+      })
+      .map(a => ({ id: a.id, credentialRef: a.credentialRef }))
+
+    // 免费模型（消耗 0 积分）不受「锁定永久积分」约束：锁定要保护的是
+    // 「别把永久积分烧掉」，而免费模型既不扣临时积分也不扣永久积分，
+    // 却被那道门一并拦下，报出「账号有余额却没有可用账号」的矛盾错误（真实报障）。
+    //
+    // 这里**只按候选顺序取凭据**，不做余额分档 —— 免费模型没有「该烧哪个包」的
+    // 选择问题，余额查询因此完全不必要（也顺带省掉一次网络请求）。
+    // 限流过滤仍然生效（上面的 filter），不会因免费而绕开模型级限流标记。
+    if (options.isFreeModel === true) {
+      for (const candidate of candidates) {
+        const credential = await resolveBuddyCredentialByRef(candidate.credentialRef)
+        if (credential !== undefined) return { credential, tried }
+        tried.add(candidate.id)
+      }
+      // 免费模型下若凭据全坏，仍落到下面的常规路径，以复用既有的错误语义
+      // （凭据问题应报「凭据不可用」，而不是被误报成「额度已用尽」）。
+    }
+
+    const allowPermanent = !pool.permanentLocked(options.product.id)
+
+    const picked = await pickBuddyAccount(options.selector, candidates, {
+      allowPermanent,
+      resolveCredential: resolveBuddyCredentialByRef,
+    })
+    if (picked.kind === 'account') {
+      return { credential: picked.credential, tried: new Set(picked.tried) }
+    }
+    for (const id of picked.tried) tried.add(id)
+    if (picked.kind === 'locked') {
+      // ⚠️ **锁定时绝不可落到调用方的 `getAvailableAccount` 兜底** —— 那会绕过
+      // 锁定、照样消耗永久积分，锁定形同虚设（与 Loomy 那条同因）。
+      const days = buddyExpiringWindowDays()
+      // ⚠️ 同样要区分「真的用尽」与「查不到」（与 Loomy 那条同型缺陷）：
+      // 把一次网络抖动报成"额度已用尽"，用户会去解锁或白等，而号其实有钱。
+      if (picked.reason?.kind === 'unknown') {
+        throw new Error(
+          `${options.displayName}：无法确认是否有可用账号。已锁定永久积分，而部分账号的余额查询失败`
+          + `（${picked.reason.errors.slice(0, 2).join('；')}）。这些账号**可能仍有**「${days} 天内到期」`
+          + '的积分 —— 请重试，或在 Channel Pack 对应面板检查凭据是否失效。',
+        )
+      }
+      throw new Error(
+        `${options.displayName}：没有可用账号。已锁定永久积分，而所有账号的「${days} 天内到期」`
+        + '积分都已用尽。请在 Channel Pack 的 '
+        + `${options.displayName} 面板解锁永久积分，或等待资源包到期后重新发放额度。`,
+      )
+    }
+    return { tried }
+  }
+
+  /**
+   * 在「候选为空、即将退到单凭据 ref」这一刻，先证明失败原因是不是**限流**。
+   *
+   * ## 它修的是什么（真实缺陷，2026-10-03）
+   *
+   * 用户报障：`/compact` 连续四次报
+   * 「Compaction could not produce a useful summary」，会话日志里 `compaction/end`
+   * 携带的真实错误却是 `buddy: no usable credential; log in from the Channel Pack
+   * panel first` —— 而当时 Channel Pack 里账号**已登录、已启用**，只是它被
+   * `deepseek-v4.1-flash` 的模型级限流标记挡住（解禁时刻就在
+   * `modelRateLimits` 里）。
+   *
+   * 链路：唯一的启用账号被限流 → `pickBuddyCredential` 的候选筛成空集 →
+   * `select()` 只能回一个笼统的 `exhausted`（`reason` 在未锁定时被丢弃）→
+   * 退到单凭据 ref，而 Channel Pack 登录只写 `WORKBUDDY_ACCOUNT_XXX`、该 ref
+   * **根本不存在** → 适配器抛 `MISSING_CREDENTIAL`。
+   *
+   * 即：**凭据问题被误报成「没登录」，而真实原因是限流**。用户据此去重新
+   * 登录，方向完全错。这与本仓库已记录的同类病根一致 —— 用默认归类代替了
+   * 对业务语义的判断（qoder 的 `110` 被误归 `SERVER`、`10605` 排队被漏判）。
+   *
+   * ⚠️ 这里**只改错误语义，不改可用性**：没有账号可用就是没有，压缩该失败
+   * 仍然失败；修的是「用户看到的原因」。绝不静默换模型、也绝不绕过限流标记。
+   *
+   * @param product - 目标 provider（用其 `id` 与 `displayName`）。**只要求这两个字段**。
+   * @param modelId - 本次请求的模型；空串时不做判定（与选号侧约定一致）。
+   * @throws LlmError 带 `QUOTA_EXCEEDED` 码与解禁时刻，仅当**所有**启用账号
+   *   都在该模型上受限时；其余情形静默返回，交给原有的 `MISSING_CREDENTIAL`。
+   */
+  const throwIfAllAccountsRateLimited = (
+    product: { id: string; displayName: string },
+    modelId?: string,
+  ): void => {
+    const limited = allAccountsRateLimitedForModel(
+      // 只统计**启用**账号：停用账号本就不参与自动选号，把它们算进来会
+      // 让「有一个号被停用」的普通情况被误报成「全部限流」。
+      pool.listAccountsByProvider(product.id).filter(a => a.enabled),
+      modelId ?? '',
+    )
+    if (limited === undefined) return
+    throw new LlmError(
+      `${product.displayName}：模型 ${modelId} 的可用账号均在限流中，`
+      + `最近一个将于 ${new Date(limited.resetAtMs).toLocaleString('zh-CN')} 解禁。`
+      + `可改用其它 provider / 模型，或等待解禁后再试（无需重新登录）。`,
+      'QUOTA_EXCEEDED',
+    )
+  }
+
   // ===== WorkBuddy (腾讯 WorkBuddy) 服务 =====
   // 与 CodeBuddy 同源（同后端、同协议），差异全部由 product 配置承载。
-  // 服务名由 BuddyAuth 依 product.id 派生，故两个产品分别注册为
-  // ctx.buddyAuth / ctx.workbuddyAuth，互不覆盖。
+  // 服务名由 BuddyAuth 依 product.id 派生，故注册为 ctx.workbuddyAuth。
   // 同样不注册斜杠命令：入口在 Channel Pack 的 WorkBuddy 面板。
   const workbuddy = new BuddyAuth(ctx, { product: WORKBUDDY })
   const workbuddyAdapter = registerBuddyLlm(ctx, {

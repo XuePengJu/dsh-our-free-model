@@ -1,10 +1,13 @@
 /**
- * 独立渠道的三处失败语义回归：
+ * 独立渠道的四处失败语义回归：
  *
  * 1. 「限流被误报成未登录」——账号池的候选全落在限流窗口内时，必须抛带解禁
  *    时间的配额错误，而不是 `no usable credential; log in first`；真的没有
  *    凭据时才保留后者。这里挂载**生成的** business.mjs（不是 vendor 源包），
  *    所以断言的是真正上线的那份产物。
+ * 1b. 「凭据解析路径悬空」——`b71e8e5` 剪裁时删掉了 `pickBuddyCredential` 等
+ *    定义却留下调用点，产物里于是出现悬空引用，所有推理请求 1ms 死于
+ *    `ReferenceError`。这条用例把「真的执行到适配器错误语义」钉住。
  * 2. 探测归类（channel-probe.mjs::classifyChannelFailure）——限流、需重新登录、
  *    模型不存在、5xx 各自落点，以及「5xx 不许读成对模型的裁决」这条不对称铁律。
  * 3. 凭据热加载（credentials.mjs）——外部进程替换凭据文件后无需重启即可读到；
@@ -101,7 +104,13 @@ try {
 
   await check('探测归类：限流、需登录、模型不存在、5xx 各自落点', async () => {
     const at = Date.now()
-    assert.deepEqual(classifyChannelFailure({ code: 'QUOTA_EXCEEDED', message: '均在限流中' }, at), { state: 'throttled', detail: '均在限流中', latencyMs: 0 })
+    // ⚠️ 不要深比较整个对象：`latencyMs` 取的是**真实时钟差**，同一毫秒内为 0、
+    // 跨毫秒就变 1 —— 全量跑时实测偶发红（本套件其余用例把进程压起来之后）。
+    // 分类结果才是被测语义，延迟只断言「是个非负整数」。
+    const throttledByCode = classifyChannelFailure({ code: 'QUOTA_EXCEEDED', message: '均在限流中' }, at)
+    assert.equal(throttledByCode.state, 'throttled')
+    assert.equal(throttledByCode.detail, '均在限流中')
+    assert.ok(Number.isInteger(throttledByCode.latencyMs) && throttledByCode.latencyMs >= 0)
     assert.equal(classifyChannelFailure({ statusCode: 429, message: 'slow down' }, at).state, 'throttled')
     assert.equal(classifyChannelFailure({ code: 'MISSING_CREDENTIAL', message: 'qoder: no usable credential; log in first' }, at).state, 'needs-login')
     assert.equal(classifyChannelFailure({ code: 'MISSING_CREDENTIAL', message: 'qoder: 凭据缺少 uid，加密推理无法签名（请重新登录该账号）' }, at).state, 'needs-login')
@@ -167,6 +176,77 @@ try {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'channel-credentials.json'), '[]')
     assert.throws(() => createCredentials(dir), /独立凭据文件格式错误/)
+  })
+
+  /**
+   * 产物级：WorkBuddy 的凭据解析路径**真的能执行**，而不是抛 ReferenceError。
+   *
+   * ## 它钉的是什么（真实缺陷，2026-11）
+   *
+   * 用户导入 WorkBuddy 国际版账号后**所有推理请求 1ms 失败**，真实原因是
+   * `ReferenceError: pickBuddyCredential is not defined` —— 「剪裁到只剩
+   * WorkBuddy 单渠道」那次提交删掉了该函数定义，却留下了调用点。产物里因此
+   * 存在悬空引用，且**只在真正选号时**才踩到。
+   *
+   * 本文件原有的 `mountChannels()` / `account()` 正是为这类断言准备的，但当初
+   * 「挂真实 business.mjs」的用例被剪裁删掉了，helper 沦为死代码 —— 缺口就是
+   * 这样留下来的。故这里把它们重新用起来，挂载**生成的**产物而非 vendor 源包。
+   *
+   * ## 判据为什么不比对文案
+   *
+   * 只断言两件结构上的事：
+   * 1. 不是 `ReferenceError` —— 那是悬空引用的唯一签名；
+   * 2. 是一个带 `code` 的 `LlmError` —— 说明「选号 → 余额分档 → 适配器」这条
+   *    链路真的走完了，错误来自适配器自己的语义层。
+   * 文案（`credential expired and refresh failed` / 401 / 502 …）随上游与
+   * 代码演进会变，绑死它就是造一条脆弱用例。
+   *
+   * 凭据是假值、上游被替身固定成 401，故**零网络、零配额**：与套件其余用例一致。
+   */
+  await check('产物级：WorkBuddy 凭据解析路径不得抛 ReferenceError（悬空引用）', async () => {
+    const ref = 'WORKBUDDY_ACCOUNT_QA000001'
+    const farFuture = String(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    const mounted = await mountChannels({
+      state: {
+        accounts: [account('workbuddy-qa000001', 'workbuddy', ref)],
+        disabledModels: {},
+      },
+      credentials: {
+        [ref]: {
+          value: JSON.stringify({
+            access_token: 'qa-fixture-token',
+            refresh_token: 'qa-fixture-refresh',
+            expires_at: farFuture,
+            refresh_expires_at: farFuture,
+            token_type: 'Bearer',
+            domain: 'www.workbuddy.ai',
+            user_id: 'qa-fixture-uid',
+          }),
+          source: 'local',
+        },
+      },
+    })
+    const realFetch = globalThis.fetch
+    // 恒定 401：让「选号 → 适配器 → 上游」整条链路走完，但一个真实请求都不发。
+    globalThis.fetch = async () => new Response('{"error":"fixture-401"}', {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    })
+    try {
+      const adapter = mounted.adapters.get('workbuddy')
+      assert.ok(adapter !== undefined, 'workbuddy 适配器必须已注册')
+      const error = await captureStreamError(adapter, 'deepseek-v4.1-flash')
+      assert.ok(error !== undefined, '凭据是假的，必须失败 —— 不许静默成功')
+      assert.ok(
+        !(error instanceof ReferenceError),
+        `凭据解析抛了 ReferenceError（产物里的悬空引用）：${error.message}`,
+      )
+      assert.equal(error.name, 'LlmError', `期望 LlmError，实际 ${error.name}: ${error.message}`)
+      assert.equal(typeof error.code, 'string', `LlmError 必须带 code，实际 ${String(error.code)}`)
+    } finally {
+      globalThis.fetch = realFetch
+      await mounted.dispose()
+    }
   })
 } finally {
   fs.rmSync(scratch, { recursive: true, force: true })
