@@ -13,10 +13,11 @@ import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import crypto from 'node:crypto'
 import assert from 'node:assert/strict'
-import { parseVersion, compareVersions, parseManifest, fileUrlOf, downloadManifest, parseUploadPackRefs, PluginUpdater, stageRelease, verifyStaged, backupPackage, restoreBackup, installStaged, verifyInstalled, signManifest, verifyManifestSignature, stableStringify, DEFAULT_MANIFEST_SOURCES, PINNED_MANIFEST_PUBLIC_KEY } from '../src/updater.js'
-import { selfReload } from '../src/reload.js'
+import { parseVersion, compareVersions, parseManifest, fileUrlOf, downloadManifest, parseUploadPackRefs, PluginUpdater, stageRelease, verifyStaged, backupPackage, restoreBackup, installStaged, verifyInstalled, isPackageManagerOwned, profileDirOf, signManifest, verifyManifestSignature, stableStringify, DEFAULT_MANIFEST_SOURCES, PINNED_MANIFEST_PUBLIC_KEY, packageUsesHardLinks, installationIsManaged } from '../src/updater.js'
+import { entryUrlOf, packageUrlOf, selfReload } from '../src/reload.js'
 const CONTROLLED_DEFAULTS = ['http://127.0.0.1:1/never.json']
 
 let failures = 0
@@ -45,6 +46,23 @@ check('compareVersions ordering', () => {
   assert.equal(compareVersions('1.0.0-rc.2', '1.0.0-rc.10'), -1, 'numeric pre parts compare numerically')
   assert.equal(compareVersions('2.0.0', '1.9.9'), 1)
 })
+await checkAsync('package-manager hard links are treated as managed installations', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-hardlink-'))
+  try {
+    const store = path.join(directory, 'store.js')
+    const packageDir = path.join(directory, 'node_modules', 'dsh-our-free-model')
+    fs.mkdirSync(packageDir, { recursive: true })
+    fs.writeFileSync(store, 'shared package bytes')
+    for (const rel of ['package.json', 'index.js', 'client.js']) fs.linkSync(store, path.join(packageDir, rel))
+    assert.equal(packageUsesHardLinks(packageDir), true)
+    assert.equal(installationIsManaged(packageDir), true)
+    const copied = path.join(directory, 'copied')
+    fs.mkdirSync(copied)
+    for (const rel of ['package.json', 'index.js', 'client.js']) fs.copyFileSync(store, path.join(copied, rel))
+    assert.equal(packageUsesHardLinks(copied), false)
+    assert.equal(installationIsManaged(copied), false)
+  } finally { fs.rmSync(directory, { recursive: true, force: true }) }
+})
 check('default update sources do not probe the removed master ref', () => {
   assert.equal(DEFAULT_MANIFEST_SOURCES.some(source => source.includes('/master/')), false)
   assert.ok(DEFAULT_MANIFEST_SOURCES.some(source => source.includes('/main/')))
@@ -68,6 +86,18 @@ check('manifest rejects path escapes and duplicates', () => {
 check('manifest rejects missing or malformed hashes', () => {
   assert.throws(() => parseManifest(manifestOf({ files: [{ path: 'index.js', sha256: 'nope', size: 1 }] })))
   assert.throws(() => parseManifest(manifestOf({ files: [{ path: 'index.js', sha256: 'a'.repeat(64), size: -5 }] })))
+})
+check('signed engine packages fit without raising the ordinary file size limit', () => {
+  const engine = { path: 'vendor/magpie/bin/magpie-win32-x64.exe', sha256: 'c'.repeat(64), size: 68 * 1024 * 1024 }
+  const files = [...manifestOf().files, engine,
+    ...Array.from({ length: 87 }, (_, i) => ({ path: `src/part-${i}.js`, sha256: 'd'.repeat(64), size: 20 }))]
+  assert.equal(parseManifest(manifestOf({ files })).files.length, 90)
+  for (const path of ['src/oversize.js', 'vendor/magpie/bin/other.exe', 'vendor/magpie/bin/magpie-win32-x64.exe.js']) {
+    assert.throws(() => parseManifest(manifestOf({ files: [...manifestOf().files, { ...engine, path }] })), /size/)
+  }
+  assert.throws(() => parseManifest(manifestOf({ files: [...manifestOf().files, { ...engine, size: 128 * 1024 * 1024 + 1 }] })), /size/)
+  const tooMany = [...files, ...Array.from({ length: 39 }, (_, i) => ({ path: `src/extra-${i}.js`, sha256: 'e'.repeat(64), size: 10 }))]
+  assert.throws(() => parseManifest(manifestOf({ files: tooMany })), /cap/)
 })
 check('manifest base must stay manifest-relative (issue #19)', () => {
   for (const base of ['https://evil.example/', '//evil.example/', '/abs', 'C:\escape']) {
@@ -136,7 +166,7 @@ const cdnSnapshot = cdnSource.replace('@main/', `@${SNAPSHOT}/`)
 const gcoreSnapshot = gcoreSource.replace('@main/', `@${SNAPSHOT}/`)
 const proxySnapshot = proxySource.replace('/main/', `/${SNAPSHOT}/`)
 
-function snapshotFetch({ source = rawSnapshot, resolver = { sha: SNAPSHOT }, resolverStatus = 200, manifest = newManifest } = {}) {
+function snapshotFetch({ source = rawSnapshot, resolver = { sha: SNAPSHOT }, resolverStatus = 200, manifest = newManifest, files = newFiles } = {}) {
   const calls = []
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url)
@@ -147,7 +177,7 @@ function snapshotFetch({ source = rawSnapshot, resolver = { sha: SNAPSHOT }, res
     if (clean === source) return new Response(JSON.stringify(manifest))
     const prefix = new URL('../', source).href
     if (clean.startsWith(prefix)) {
-      const body = newFiles[decodeURIComponent(clean.slice(prefix.length))]
+      const body = files[decodeURIComponent(clean.slice(prefix.length))]
       if (body !== undefined) return new Response(body)
     }
     return new Response('not found', { status: 404 })
@@ -505,6 +535,68 @@ await checkAsync('CDN authorization refusal cannot trigger a mirror fallback', a
   } finally { fs.rmSync(data, { recursive: true, force: true }) }
 })
 
+await checkAsync('a release file jsDelivr refuses by size falls back to raw at the same SHA', async () => {
+  // Measured 2026-10-25: the 65 MB vendored engine binary answers 403 on every
+  // jsDelivr edge while ordinary files on the same commit answer 200. That is a
+  // structural refusal, not an authorization one, so the pinned commit's raw
+  // transport is the fallback — and only for the engine binary's own path.
+  const enginePath = 'vendor/magpie/bin/magpie-win32-x64.exe'
+  const engineBody = 'engine-binary-fixture'
+  const withEngine = manifestFor({ ...newFiles, [enginePath]: engineBody })
+  const fixture = snapshotFetch({ source: cdnSnapshot })
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-cdn-oversized-'))
+  const calls = []
+  const fetchImpl = async (url, opts) => {
+    const parsed = new URL(url)
+    calls.push(String(url))
+    if (parsed.pathname.endsWith(`/${enginePath}`)) {
+      if (parsed.hostname === 'cdn.jsdelivr.net' || parsed.hostname === 'gcore.jsdelivr.net') {
+        return new Response(null, { status: 403 })
+      }
+      assert.match(parsed.pathname, new RegExp(`/${SNAPSHOT}/${enginePath}$`), 'the fallback stays on the pinned commit')
+      return new Response(engineBody)
+    }
+    return fixture.fetchImpl(url, opts)
+  }
+  try {
+    await stageRelease({ manifest: parseManifest(withEngine), manifestUrl: cdnSnapshot, stageDir: data, fetchImpl })
+    verifyStaged(data, parseManifest(withEngine))
+    const attempts = calls.filter(url => url.endsWith(enginePath))
+    assert.ok(attempts.some(url => url.includes('raw.githubusercontent.com')), 'raw is tried at the same SHA')
+    assert.equal(fs.readFileSync(path.join(data, ...enginePath.split('/')), 'utf8'), engineBody)
+  } finally { fs.rmSync(data, { recursive: true, force: true }) }
+})
+
+await checkAsync('a gcore-sourced manifest gets the same oversized-file fallback', async () => {
+  // A manifest discovered on the gcore edge composes gcore file URLs; those must
+  // recognize their own origin and reach the same pinned commit on raw.
+  const enginePath = 'vendor/magpie/bin/magpie-win32-x64.exe'
+  const engineBody = 'engine-binary-fixture'
+  const withEngine = manifestFor({ ...newFiles, [enginePath]: engineBody })
+  const fixture = snapshotFetch({ source: gcoreSnapshot })
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-gcore-oversized-'))
+  const calls = []
+  const fetchImpl = async (url, opts) => {
+    const parsed = new URL(url)
+    calls.push(String(url))
+    if (parsed.pathname.endsWith(`/${enginePath}`)) {
+      if (parsed.hostname === 'cdn.jsdelivr.net' || parsed.hostname === 'gcore.jsdelivr.net') {
+        return new Response(null, { status: 403 })
+      }
+      assert.match(parsed.pathname, new RegExp(`/${SNAPSHOT}/${enginePath}$`), 'the fallback stays on the pinned commit')
+      return new Response(engineBody)
+    }
+    return fixture.fetchImpl(url, opts)
+  }
+  try {
+    await stageRelease({ manifest: parseManifest(withEngine), manifestUrl: gcoreSnapshot, stageDir: data, fetchImpl })
+    verifyStaged(data, parseManifest(withEngine))
+    const attempts = calls.filter(url => url.endsWith(enginePath))
+    assert.ok(attempts.some(url => url.includes('raw.githubusercontent.com')), 'gcore also falls back to raw')
+    assert.equal(fs.readFileSync(path.join(data, ...enginePath.split('/')), 'utf8'), engineBody)
+  } finally { fs.rmSync(data, { recursive: true, force: true }) }
+})
+
 const server = serveFrom({ 'repo/feed/manifest.json': JSON.stringify(newManifest), 'repo/index.js': newFiles['index.js'], 'repo/package.json': newFiles['package.json'], 'repo/client.js': newFiles['client.js'], 'repo/src/new-deep.js': newFiles['src/new-deep.js'] })
 const corruptServer = serveFrom({ 'repo/feed/manifest.json': JSON.stringify(corruptManifest), 'repo/index.js': 'tampered\n', 'repo/package.json': newFiles['package.json'], 'repo/client.js': newFiles['client.js'], 'repo/src/new-deep.js': newFiles['src/new-deep.js'] })
 const badManifestServer = serveFrom({ 'repo/feed/manifest.json': '{"version": "oops"}' })
@@ -656,7 +748,9 @@ await checkAsync('PluginUpdater.check detects the newer version', async () => {
   const data = makeDataDir()
   const updater = new PluginUpdater({ pkgDir: pkg, dataDir: data, settings: () => ({ feedUrl: `${base}/repo/feed/announcements.json` }), fetchImpl: fetch, defaultSources: [`${base}/repo/feed/manifest.json`], manifestPublicKey: TEST_PUBLIC_KEY })
   const status = await updater.check()
-  assert.deepEqual(status, { available: true, current: OLD, latest: NEW })
+  assert.equal(status.available, true)
+  assert.equal(status.current, OLD)
+  assert.equal(status.latest, NEW)
   fs.rmSync(pkg, { recursive: true, force: true })
   fs.rmSync(data, { recursive: true, force: true })
 })
@@ -823,10 +917,12 @@ for (const rollback of [false, true]) {
       }
       const updater = fixtureUpdater(pkg, data)
       if (rollback) {
-        await assert.rejects(() => updater.apply({ activate: async () => ({
-          ok: false, restored: true, error: 'controlled activation refusal',
-        }) }), /controlled activation refusal/)
-        assert.equal(updater.currentVersion(), OLD)
+        const result = await updater.apply({ activate: async () => ({
+          ok: false, restored: true, restartRequired: true, error: 'controlled activation refusal',
+        }) })
+        assert.equal(result.restartRequired, true)
+        assert.equal(updater.currentVersion(), NEW)
+        assert.equal(updater.status().restartRequired, true)
       } else {
         await updater.apply({})
         assert.equal(updater.currentVersion(), NEW)
@@ -872,6 +968,159 @@ await checkAsync('legacy rollback receipts containing Rust caches restore only p
   }
 })
 
+
+// ── package-manager ownership (issue #335) ───────────────────────────────────
+// The desktop "real directory" install adds the plugin to the profile's
+// `dependencies`, so pnpm owns `<profile>/node_modules/dsh-our-free-model`.
+// With the default `distribution: self` the in-app upgrader would be a second
+// writer on that directory; it must refuse instead of corrupting the install.
+// Both signals are read beside the profile root, two levels above the package.
+function makeProfilePackage(version = OLD) {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-profile-'))
+  const pkg = path.join(profile, 'node_modules', 'dsh-our-free-model')
+  fs.mkdirSync(pkg, { recursive: true })
+  for (const [rel, body] of Object.entries(version === OLD ? oldFiles : newFiles)) {
+    const target = path.join(pkg, rel)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, body)
+  }
+  return { profile, pkg }
+}
+// A real `pnpm-lock.yaml` importer record for this package (lockfileVersion 9).
+const PNPM_LOCKFILE = [
+  "lockfileVersion: '9.0'",
+  '',
+  'importers:',
+  '',
+  '  .:',
+  '    dependencies:',
+  '      dsh-our-free-model:',
+  '        specifier: file:../dsh-our-free-model-2.3.0.tgz',
+  '        version: file:../dsh-our-free-model-2.3.0.tgz',
+  '',
+].join('\n')
+check('signal 1: a pnpm-lock.yaml specifier for the package marks it as pnpm-owned', () => {
+  const { profile, pkg } = makeProfilePackage()
+  try {
+    fs.writeFileSync(path.join(profile, 'pnpm-lock.yaml'), PNPM_LOCKFILE)
+    assert.equal(isPackageManagerOwned(pkg), true)
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('signal 2: a hoistedLocations entry in .modules.yaml marks it as pnpm-owned', () => {
+  const { profile, pkg } = makeProfilePackage()
+  try {
+    fs.writeFileSync(path.join(profile, 'node_modules', '.modules.yaml'), JSON.stringify({
+      layoutVersion: 5,
+      nodeLinker: 'hoisted',
+      hoistedLocations: { 'dsh-our-free-model@file:../dsh-our-free-model-2.3.0.tgz': ['node_modules/dsh-our-free-model'] },
+    }, undefined, 2))
+    assert.equal(isPackageManagerOwned(pkg), true)
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('scoped layout: the profile root is found above the @scope directory', () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-scoped-profile-'))
+  const pkg = path.join(profile, 'node_modules', '@ebony-vinyl', 'dsh-our-free-model')
+  fs.mkdirSync(pkg, { recursive: true })
+  try {
+    assert.equal(profileDirOf(pkg), profile)
+    assert.equal(profileDirOf(path.join(profile, 'node_modules', 'dsh-our-free-model')), profile)
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('scoped layout: a quoted lockfile key marks the scoped package as pnpm-owned', () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-scoped-lock-'))
+  const pkg = path.join(profile, 'node_modules', '@ebony-vinyl', 'dsh-our-free-model')
+  fs.mkdirSync(pkg, { recursive: true })
+  try {
+    fs.writeFileSync(path.join(profile, 'pnpm-lock.yaml'), [
+      "lockfileVersion: '9.0'",
+      '',
+      'importers:',
+      '',
+      '  .:',
+      '    dependencies:',
+      "      '@ebony-vinyl/dsh-our-free-model':",
+      '        specifier: 2.8.3',
+      '        version: 2.8.3',
+      '',
+    ].join('\n'))
+    assert.equal(isPackageManagerOwned(pkg, '@ebony-vinyl/dsh-our-free-model'), true)
+    assert.equal(isPackageManagerOwned(pkg), false, 'the bare PACKAGE_NAME must not match a scoped key')
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('scoped layout: .modules.yaml hoistedLocations is read beside the profile root', () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-scoped-modules-'))
+  const pkg = path.join(profile, 'node_modules', '@ebony-vinyl', 'dsh-our-free-model')
+  fs.mkdirSync(pkg, { recursive: true })
+  try {
+    fs.writeFileSync(path.join(profile, 'node_modules', '.modules.yaml'), JSON.stringify({
+      layoutVersion: 5,
+      nodeLinker: 'hoisted',
+      hoistedLocations: { '@ebony-vinyl/dsh-our-free-model@2.8.3': ['node_modules/@ebony-vinyl/dsh-our-free-model'] },
+    }, undefined, 2))
+    assert.equal(isPackageManagerOwned(pkg, '@ebony-vinyl/dsh-our-free-model'), true)
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('a plain distribution: self install is not pnpm-owned', () => {
+  const { profile, pkg } = makeProfilePackage()
+  try {
+    // A `node_modules/` directory inside the copy is deliberately not a signal:
+    // under pnpm's hoisted linker the tarball dependency installs without one.
+    fs.mkdirSync(path.join(pkg, 'node_modules', 'dep'), { recursive: true })
+    assert.equal(isPackageManagerOwned(pkg), false, 'a nested node_modules/ inside the copy is not a signal')
+    fs.writeFileSync(path.join(profile, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      some-other-plugin:\n        specifier: 1.0.0\n        version: 1.0.0\n")
+    assert.equal(isPackageManagerOwned(pkg), false, 'another package in the lockfile is not a signal')
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+check('a link: specifier is not byte ownership (pnpm owns the junction, not the files)', () => {
+  // The safe way to keep `distribution: self` next to a `dependencies` entry:
+  // the plugin tree lives in a real directory inside the profile and the
+  // dependency is a relative `link:`. pnpm then records no version and no
+  // integrity for it, so it has no source to re-extract and the in-app
+  // upgrader stays the only writer of those bytes. Refusing here would kill
+  // the only self-upgrade shape that survives a full install. See #335.
+  const { profile, pkg } = makeProfilePackage()
+  try {
+    fs.writeFileSync(path.join(profile, 'pnpm-lock.yaml'), [
+      "lockfileVersion: '9.0'",
+      '',
+      'importers:',
+      '',
+      '  .:',
+      '    dependencies:',
+      '      dsh-our-free-model:',
+      '        specifier: link:vendor/dsh-our-free-model',
+      '        version: link:vendor/dsh-our-free-model',
+      '',
+    ].join('\n'))
+    assert.equal(isPackageManagerOwned(pkg), false, 'a link: specifier records no bytes for pnpm to own')
+  } finally { fs.rmSync(profile, { recursive: true, force: true }) }
+})
+await checkAsync('apply() refuses to self-upgrade a pnpm-owned install', async () => {
+  const { profile, pkg } = makeProfilePackage(OLD)
+  const data = makeDataDir()
+  let fetched = 0
+  try {
+    fs.writeFileSync(path.join(profile, 'pnpm-lock.yaml'), PNPM_LOCKFILE)
+    const updater = new PluginUpdater({
+      pkgDir: pkg, dataDir: data, settings: () => ({}),
+      fetchImpl: async () => { fetched += 1; throw new Error('the refusal must happen before any fetch') },
+      defaultSources: [`${base}/repo/feed/manifest.json`], manifestPublicKey: TEST_PUBLIC_KEY,
+    })
+    await assert.rejects(() => updater.apply({}), error => {
+      assert.match(error.message, /owned by pnpm/)
+      assert.match(error.message, /reinstall/)
+      assert.equal(error.statusCode, 409, 'the refusal carries the settings-API refusal status')
+      return true
+    })
+    assert.equal(fetched, 0, 'no manifest is fetched for a refused install')
+    assert.equal(updaterVersion(pkg), OLD, 'the installed package is untouched')
+    assert.equal(fs.existsSync(path.join(data, 'upgrade-stage')), false, 'nothing is staged')
+    assert.equal(updater.history.length, 0, 'a refusal is not a failed upgrade')
+  } finally {
+    fs.rmSync(profile, { recursive: true, force: true })
+    fs.rmSync(data, { recursive: true, force: true })
+  }
+})
 await checkAsync('a failed apply leaves the installed package and history consistent', async () => {
   const pkg = makePackage(OLD)
   const data = makeDataDir()
@@ -1057,12 +1306,36 @@ await checkAsync('installStaged + verifyInstalled accept a good stage', async ()
   fs.rmSync(stage, { recursive: true, force: true })
 })
 
-function fixtureUpdater(pkg, data, runningVersion = OLD) {
+function fixtureUpdater(pkg, data, runningVersion = OLD, processEpoch) {
   return new PluginUpdater({
-    pkgDir: pkg, dataDir: data, runningVersion, settings: () => ({}),
+    pkgDir: pkg, dataDir: data, runningVersion, processEpoch, settings: () => ({}),
     defaultSources: [`${base}/repo/feed/manifest.json`], manifestPublicKey: TEST_PUBLIC_KEY,
   })
 }
+
+await checkAsync('a verified same-version content update is available and installs after safe restart-required activation (issue #602)', async () => {
+  const pkg = makePackage(OLD)
+  const data = makeDataDir()
+  const files = { ...newFiles, 'package.json': JSON.stringify({ name: 'fake', version: OLD }), 'index.js': "export const v = 'same-version content update'\n" }
+  const unsigned = { ...manifestFor(files), version: OLD }
+  const manifest = { ...unsigned, signature: signManifest(parseManifest(unsigned), testPrivateKey) }
+  const fixture = snapshotFetch({ manifest, files })
+  const updater = new PluginUpdater({ pkgDir: pkg, dataDir: data, runningVersion: OLD, settings: () => ({}), fetchImpl: fixture.fetchImpl, defaultSources: [rawSnapshot], manifestPublicKey: TEST_PUBLIC_KEY })
+  try {
+    assert.equal((await updater.check()).available, true)
+    assert.equal(updater.status().available, true)
+    const result = await updater.apply({ activate: async () => ({ ok: false, restored: true, restartRequired: true, error: 'safe restart' }) })
+    assert.equal(result.restartRequired, true)
+    assert.equal(result.activated, false)
+    assert.equal(updaterVersion(pkg), OLD, 'version remains stable while bytes advance')
+    assert.match(fs.readFileSync(path.join(pkg, 'index.js'), 'utf8'), /same-version content update/)
+    assert.equal(updater.status().restartRequired, true)
+    assert.equal(updater.status().available, false)
+    const restarted = new PluginUpdater({ pkgDir: pkg, dataDir: data, runningVersion: OLD, processEpoch: 'next-process', settings: () => ({}), fetchImpl: fixture.fetchImpl, defaultSources: [rawSnapshot], manifestPublicKey: TEST_PUBLIC_KEY })
+    const activeAfterRestart = new PluginUpdater({ pkgDir: pkg, dataDir: data, runningVersion: OLD, processEpoch: 'next-process', settings: () => ({}), fetchImpl: fixture.fetchImpl, defaultSources: [rawSnapshot], manifestPublicKey: TEST_PUBLIC_KEY })
+    assert.equal(activeAfterRestart.status().restartRequired, false, 'a new host process makes the installed bytes current')
+  } finally { fs.rmSync(pkg, { recursive: true, force: true }); fs.rmSync(data, { recursive: true, force: true }) }
+})
 
 await checkAsync('a failed recheck retains the known target and a successful retry clears the error (issue #148)', async () => {
   const pkg = makePackage(OLD)
@@ -1092,7 +1365,7 @@ await checkAsync('a failed recheck retains the known target and a successful ret
 })
 
 /** Host loader stand-in; the real selfReload still performs every transition. */
-function reloadHost(mode) {
+function reloadHost(mode, pkgDir) {
   const previous = { apply() {}, version: OLD }
   const replacement = { apply() {}, version: NEW }
   let running = previous
@@ -1113,11 +1386,12 @@ function reloadHost(mode) {
         delete: callback => { if (running === callback) running = undefined },
       },
       loader: {
-        internal: { loadCache: new Map() },
+        internal: { loadCache: new Map([[pathToFileURL(path.join(pkgDir, 'index.js')).href, { source: 'reload fixture cache' }]]) },
         unwrapExports: value => value,
         import: async () => {
           if (mode === 'import-failure') throw new Error('replacement import refused')
-          return mode === 'stale-cache' ? previous : replacement
+          if (mode === 'stale-cache') return previous
+          return replacement
         },
       },
     },
@@ -1129,7 +1403,7 @@ for (const mode of ['import-failure', 'startup-failure', 'restore-failure', 'sta
     const pkg = makePackage(OLD)
     const data = makeDataDir()
     const updater = fixtureUpdater(pkg, data)
-    const host = reloadHost(mode)
+    const host = reloadHost(mode, pkg)
     let successor
     try {
       const operation = updater.apply({ activate: async () => {
@@ -1137,7 +1411,7 @@ for (const mode of ['import-failure', 'startup-failure', 'restore-failure', 'sta
         assert.equal(successor.status().applying, true, 'the successor sees the same in-flight upgrade')
         assert.equal(successor.status().lastApplied, undefined, 'no premature success record')
         await assert.rejects(() => successor.apply(), /already running/)
-        return selfReload(host.ctx, { logger: {}, expectedVersion: NEW })
+        return selfReload(host.ctx, { logger: {}, packageUrl: packageUrlOf(pathToFileURL(path.join(pkg, 'index.js')).href), entryUrl: entryUrlOf(pathToFileURL(path.join(pkg, 'index.js')).href), expectedVersion: NEW })
       } })
       if (mode === 'success') {
         await operation
@@ -1146,13 +1420,21 @@ for (const mode of ['import-failure', 'startup-failure', 'restore-failure', 'sta
         assert.equal(successor.status().lastApplied.ok, true, 'the successor observes the committed history')
         assert.equal(successor.status().lastApplied.activated, true)
         assert.equal(successor.status().recoveryRequired, false)
-      } else {
+      } else if (mode === 'restore-failure') {
         await assert.rejects(() => operation, /replacement|restore failed|activation version mismatch/)
         assert.equal(updaterVersion(pkg), OLD)
         assert.equal(updater.status().lastApplied.ok, false)
-        assert.equal(updater.status().recoveryRequired, mode === 'restore-failure')
-        if (mode !== 'restore-failure') assert.equal(host.running().version, OLD)
+        assert.equal(updater.status().recoveryRequired, true)
         assert.equal(updater.status().applying, false)
+      } else {
+        const result = await operation
+        assert.equal(result.restartRequired, true)
+        assert.equal(result.activated, false)
+        assert.equal(updaterVersion(pkg), NEW, 'verified new files stay installed for host restart')
+        assert.equal(updater.status().lastApplied.ok, true)
+        assert.equal(updater.status().restartRequired, true)
+        assert.equal(updater.status().recoveryRequired, false)
+        assert.equal(host.running().version, OLD, 'the live old generation stays intact')
       }
     } finally {
       fs.rmSync(pkg, { recursive: true, force: true })
@@ -1171,7 +1453,7 @@ for (const returnedVersion of [OLD, undefined]) {
         /activation version mismatch/)
       assert.equal(updaterVersion(pkg), OLD)
       assert.equal(updater.status().lastApplied.ok, false)
-      assert.equal(updater.status().phase, 'recovery-required', 'an unknown runtime cannot be declared restored')
+      assert.equal(updater.status().phase, 'recovery-required', 'an unconfirmed old runtime still requires recovery')
       assert.equal(updater.status().recoveryRequired, true)
     } finally {
       fs.rmSync(pkg, { recursive: true, force: true })
@@ -1184,7 +1466,7 @@ await checkAsync('reload and rollback failures remain visible across instances a
   const pkg = makePackage(OLD)
   const data = makeDataDir()
   const updater = fixtureUpdater(pkg, data)
-  const host = reloadHost('import-failure')
+  const host = reloadHost('import-failure', pkg)
   const original = fs.copyFileSync
   try {
     fs.copyFileSync = (from, to, ...args) => {
@@ -1193,19 +1475,19 @@ await checkAsync('reload and rollback failures remain visible across instances a
       }
       return original(from, to, ...args)
     }
-    await assert.rejects(() => updater.apply({ activate: () => selfReload(host.ctx, { logger: {} }) }),
-      /replacement import refused.*rollback also failed.*EPERM/)
-    const status = fixtureUpdater(pkg, data).status()
+    const outcome = await updater.apply({ activate: () => selfReload(host.ctx, { logger: {}, packageUrl: packageUrlOf(pathToFileURL(path.join(pkg, 'index.js')).href), entryUrl: entryUrlOf(pathToFileURL(path.join(pkg, 'index.js')).href) }) })
+    assert.equal(outcome.restartRequired, true)
+    const status = fixtureUpdater(pkg, data, OLD, updater.deps.processEpoch).status()
     assert.equal(status.current, OLD)
     assert.equal(status.installedVersion, NEW)
     assert.equal(status.versionMismatch, true)
-    assert.equal(status.recoveryRequired, true)
+    assert.equal(status.restartRequired, true)
+    assert.equal(status.recoveryRequired, false)
     assert.equal(status.applying, false, 'a terminated attempt is not permanently busy')
-    assert.equal(status.lastApplied.ok, false)
+    assert.equal(status.lastApplied.ok, true)
     assert.equal(status.lastApplied.to, NEW)
-    assert.match(status.error, /rollback also failed/)
-    assert.equal(updaterVersion(updater.backupDir), OLD, 'the repair material is retained')
-    await assert.rejects(() => fixtureUpdater(pkg, data).apply(), /requires recovery/)
+    assert.equal(updaterVersion(updater.backupDir), OLD, 'the retained prior copy remains available if needed')
+    await assert.rejects(() => fixtureUpdater(pkg, data).apply(), /restart the host/)
   } finally {
     fs.copyFileSync = original
   }

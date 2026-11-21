@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Our Free Model",
-  "version": "2.5.10",
+  "version": "2.8.9",
   "identifier": "com.ourfreemodel.desktop",
   "build": {
     "frontendDist": "../splash",
@@ -28,9 +28,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "macOS": {
-      "minimumSystemVersion": "11.0"
-    },
     "windows": {
       "nsis": {
         "headerImage": "nsis-header.bmp",

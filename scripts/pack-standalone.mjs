@@ -22,6 +22,7 @@ const sourceFiles = [
   'packages/standalone/cli.mjs',
   'packages/standalone/service.mjs',
   'packages/standalone/management.mjs',
+  'packages/standalone/desktop-update.mjs',
   'packages/standalone/login-terminal.mjs',
   'packages/standalone/open-external.mjs',
   'packages/standalone/eac.mjs',
@@ -30,15 +31,34 @@ const sourceFiles = [
   // or the isolated package fails to boot with ERR_MODULE_NOT_FOUND.
   'packages/standalone/channel-probe.mjs',
   'packages/standalone/workbuddy-sync.mjs',
+  'packages/standalone/workbench.mjs',
+  'packages/standalone/client-terminal.mjs',
+  'packages/standalone/providers.mjs',
+  'packages/standalone/library.mjs',
+  'packages/standalone/routing.mjs',
+  'packages/standalone/feedback.mjs',
   ...['business', 'contracts', 'credentials', 'images', 'runtime', 'worker']
     .map(name => `packages/standalone/channels/${name}.mjs`),
   'packages/standalone/web/index.html',
   'packages/standalone/web/assets.json',
-  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'eac', 'eac-login', 'eac-user', 'effort',
-    'egress', 'failure', 'forward', 'http', 'image-pricing', 'kilo', 'local-optimize', 'messages', 'model-test', 'probe', 'recovery',
-    'store', 'stream', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
+  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'disclaimer', 'eac', 'eac-login', 'eac-user', 'effort',
+    'egress', 'engine-payload', 'failure', 'forward', 'gemini', 'http', 'image-pricing', 'kilo', 'local-optimize',
+    'loopback-fetch', 'magpie-engine', 'magpie-models', 'magpie-policy', 'messages', 'model-test', 'open-external', 'probe', 'recovery',
+    'store', 'stream', 'subscriptions', 'subscription-completion', 'subscription-adapter', 'token-saver', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
     .map(name => `src/${name}.js`),
   ...['attempts', 'completion', 'runtime', 'stats', 'usage-periods'].map(name => `src/core/${name}.js`),
+  'src/core.js',
+  'src/bun-fetch.js',
+  // The opencode2api port the free lane's shaping layer delegates to
+  // (src/o2a/SYNC.md), shipped as the release bundle built by
+  // build-legacy-payload.mjs — the official assets are inlined into it.
+  'src/o2a.js',
+  // The extension platform the standalone service mounts like the plugin does
+  'src/extensions.js',
+  // The plugin kernel: manifest, scans, built-ins, page bridge, bundled shelf
+  'src/plugins.js',
+  // The semver helpers extensions.js imports (updater.js is not shipped here)
+  'src/semver.js',
   'src/providers/index.js',
   'src/providers/registry.json',
   'src/route/classify.js',

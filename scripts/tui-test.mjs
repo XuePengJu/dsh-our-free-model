@@ -84,13 +84,17 @@ check('the probe loop and the egress watch armed on plain timers', armed.sort((a
 check('and every one of them is unref’d, so the plugin cannot hold the app open',
   armed.filter(ms => !unrefed.includes(ms)), [])
 check('the dashboard half is the only thing left waiting', ctx.__captured.serverRoutes.length, 0)
-// Two nested fibers now pend, and both are the same bargain: the channel pack
-// waits for credentials/commands/llm (a composition without them loses the
-// absorbed channels and keeps the free lane), the dashboard half waits for
-// webServer. Neither is in the plugin's own `inject`, which stays `['llm']` —
-// that is the property this check exists to protect.
+// Three nested fibers now pend, and all three are the same bargain: the trust
+// fence waits for connection/connection.authentication (`connection.admit` reads
+// `connection.authentication` through the *calling* fiber's inject list, so the
+// fence has to ask from a fiber that declares both), the channel pack waits for
+// credentials/commands/llm (a composition without them loses the absorbed
+// channels and keeps the free lane), the dashboard half waits for webServer.
+// None is in the plugin's own `inject`, which stays `['llm']` — that is the
+// property this check exists to protect.
 check('it waits for services rather than running without them',
-  ctx.__waiting.map(fiber => [...fiber.names]), [['credentials', 'commands', 'llm'], ['webServer']])
+  ctx.__waiting.map(fiber => [...fiber.names]),
+  [['connection', 'connection.authentication'], ['credentials', 'commands', 'llm'], ['webServer']])
 
 // The web composition has the same problem in mirror image: `webServer` is not
 // provided yet while plugins load, so a one-shot read of it at apply time mounted
@@ -101,12 +105,16 @@ await until(() => ctx.__captured.serverRoutes.length >= 2, { what: 'the dashboar
 check('the settings API mounts when the service does', ctx.__captured.serverRoutes.map(route => route.path).sort(),
   ['/api/our-free-model', '/api/our-free-model/events'])
 
-await until(() => fs.existsSync(path.join(scratch, 'our-free-model', 'availability.json')), { what: 'the boot probe to land' })
-
-await until(() => ctx.__logs.some(line => line.includes('the sealed lane is not available in this composition')), { what: 'the sealed-lane gate refusal to be logged' })
+await until(() => ctx.__logs.some(line => line.includes('the sealed lane is not available in this composition')), { what: 'the boot listing and the sealed-lane gate refusal to be logged' })
 check('the host-gate refusal is logged, not silent', ctx.__logs.some(line => line.startsWith('warn our-free-model: the sealed lane is not available')), true)
 const persisted = JSON.parse(fs.readFileSync(path.join(scratch, 'our-free-model', 'catalog.json'), 'utf8'))
 check('and the refusal keeps the roster a desktop session persisted', persisted.sealIds, ['deepseek-ai/deepseek-v4.1-flash'])
+
+// Probing is manual now, so this headless composition drives the one round the
+// picker assertions below need instead of waiting for an automatic boot probe.
+const apiRoute = ctx.__captured.serverRoutes.find(route => route.kind === 'prefix')
+await callRoute(apiRoute.handler, 'POST', '/api/our-free-model/reprobe')
+await until(async () => (await adapter.listModels(ROUTE_MAIN)).length === 2, { what: 'the manual reprobe verdicts' })
 
 const models = await adapter.listModels(ROUTE_MAIN)
 check('the picker still gets its models', models.map(model => model.id).sort(), ['mimo-v2.6-flash-free', 'space-bunny-free'])
@@ -133,7 +141,7 @@ check('and lists the usable models with the real key', rows.data.map(row => row.
 const answered = await (await fetch(`http://127.0.0.1:${forwardPort}/v1/chat/completions`, {
   method: 'POST',
   headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-  body: JSON.stringify({ model: 'space-bunny-free', messages: [{ role: 'user', content: 'hi' }] }),
+  body: JSON.stringify({ model: 'mimo-v2.6-flash-free', messages: [{ role: 'user', content: 'hi' }] }),
 })).json()
 check('a non-streaming call answers', String(answered.choices?.[0]?.message?.content ?? ''), 'hello from the tui')
 check('usage comes back in the OpenAI spelling the caller reads', [answered.usage?.prompt_tokens, answered.usage?.completion_tokens], [11, 7])
@@ -154,7 +162,7 @@ await fetch(`http://127.0.0.1:${forwardPort}/v1/responses`, {
   method: 'POST',
   headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
   body: JSON.stringify({
-    model: 'space-bunny-free',
+    model: 'mimo-v2.6-flash-free',
     input: [
       { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'weather?' }] },
       { type: 'function_call', call_id: 'call_1', name: 'get_weather', arguments: '{"city":"Shanghai"}' },
@@ -199,7 +207,7 @@ check('the relay carries the API paths, not whatever else answers on loopback',
   (await fetch(`http://127.0.0.1:${lanPort}/health`, { headers: { authorization: `Bearer ${lanKey}` } })).status, 404)
 const lanAnswer = await fetch(`http://127.0.0.1:${lanPort}/v1/chat/completions`, {
   method: 'POST', headers: { authorization: `Bearer ${lanKey}`, 'content-type': 'application/json' },
-  body: JSON.stringify({ model: 'space-bunny-free', messages: [{ role: 'user', content: 'hi' }] }),
+  body: JSON.stringify({ model: 'mimo-v2.6-flash-free', messages: [{ role: 'user', content: 'hi' }] }),
 })
 await lanAnswer.json()
 await until(() => requestTraces().some(event => event.hop === 'relay' && event.stage === 'finished'), { what: 'relay diagnostics to reach the host logger' })
@@ -214,7 +222,7 @@ stub.api.refuseAll = true
 const refused = await fetch(`http://127.0.0.1:${forwardPort}/v1/chat/completions`, {
   method: 'POST',
   headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-  body: JSON.stringify({ model: 'space-bunny-free', messages: [{ role: 'user', content: 'hi' }] }),
+  body: JSON.stringify({ model: 'mimo-v2.6-flash-free', messages: [{ role: 'user', content: 'hi' }] }),
 })
 const refusedBody = await refused.json()
 check('a refused forward call preserves the upstream request status', refused.status, 400)

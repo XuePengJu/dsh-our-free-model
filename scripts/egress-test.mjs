@@ -427,6 +427,16 @@ async function main() {
     check(wrapperCalls === 0, 'signed relay hops never call the mutable global fetch')
   } finally { globalThis.fetch = originalFetch }
 
+  // 原生 Request 与 URL 调用一样保留请求体、路径和认证头。
+  const requestBody = '{ "request": true, "spacing": "preserved" }'
+  const request = new Request(`${base}/request`, {
+    method: 'POST', body: requestBody, headers: { authorization: 'Bearer fixture-request' },
+  })
+  const requestResponse = await egressFetch(request)
+  const requestJson = await requestResponse.json()
+  check(requestJson.body === requestBody && requestJson.url === '/request', 'native Request keeps its body and URL through the relay')
+  check(requestJson.headers.authorization === 'Bearer fixture-request', 'native Request retains its Authorization header')
+
   // 5 — 429 and its retry-after are responses, not errors.
   stage = 'socks5-auth 429'
   const limited = await egressFetch(`${base}/limited`)

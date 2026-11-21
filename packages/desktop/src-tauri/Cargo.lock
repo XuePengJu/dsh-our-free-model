@@ -2376,11 +2376,13 @@ dependencies = [
 
 [[package]]
 name = "ofm-desktop"
-version = "2.5.10"
+version = "2.8.9"
 dependencies = [
  "dirs 5.0.1",
+ "semver",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",

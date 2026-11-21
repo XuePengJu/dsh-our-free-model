@@ -33,12 +33,19 @@ interface ToolState {
   id: string
   name?: string
   arguments: string
+  /** 发给客户端的 `tool_calls[].index`：从 0 起连续（理由见 `consumeChunk`）。 */
+  openAiIndex: number
+  /** `id` / `function.name` 是否已随首帧发出过：这两个字段只能发一次。 */
+  idSent: boolean
+  nameSent: boolean
 }
 
 interface Accumulated {
   content: string
   reasoning: string
   tools: Map<number, ToolState>
+  /** 下一个待分配的 `openAiIndex`。 */
+  nextToolIndex: number
   usage?: TokenUsage
   finishReason?: string
 }
@@ -58,14 +65,6 @@ function finishReason(reason: FinishReason): string {
  *
  * ⚠️ 口径转换全部在 `usage.ts` 里（两个端点共用一份判断，见该文件头）。
  * 这里只负责**改字段名**：`inputTokens`（已含缓存）→ `prompt_tokens`。
- *
- * ⚠️ 两个**私有**字段保留是**有意的向后兼容**，不是冗余：
- * - `prompt_cache_hit_tokens` 是 DeepSeek 系的私有名，本仓库多个适配器
- *   （`buddy-adapter.ts` / `openai-compat.ts` / `llm-adapter.ts` 等）在**读**它；
- * - 顶层 `reasoning_tokens` 同理由旧版网关发出，删掉会让既有消费者读不到。
- * 官方字段（`prompt_tokens_details.cached_tokens` /
- * `completion_tokens_details.reasoning_tokens`）**必须同时给**：
- * Codex 等标准客户端只认官方形态。
  */
 function usageJson(usage: TokenUsage): Record<string, unknown> {
   const normalized = toOpenAiUsage(usage)
@@ -115,20 +114,38 @@ function consumeChunk(state: Accumulated, chunk: StreamChunk): Record<string, un
     case 'tool-call-delta': {
       let tool = state.tools.get(chunk.index)
       if (!tool) {
-        tool = { id: String(chunk.id), arguments: '' }
+        // ⚠️ 上游的 `chunk.index` 是 DSH 的块序号（推理块先占 0），不能直接当 OpenAI 的
+        // `tool_calls[].index`：按 index 建数组的客户端会拿到稀疏数组，或直接越界报错。
+        // 这里换成从 0 起的连续调用序号，与 `src/forward.js` 的 `indexOf()` 保持同一口径。
+        tool = {
+          id: String(chunk.id),
+          arguments: '',
+          openAiIndex: state.nextToolIndex,
+          idSent: false,
+          nameSent: false,
+        }
+        state.nextToolIndex += 1
         state.tools.set(chunk.index, tool)
       }
       tool.id = String(chunk.id || tool.id)
       if (chunk.name !== undefined) tool.name = chunk.name
       tool.arguments += chunk.argumentsDelta
+      // ⚠️ `id` 与 `function.name` 只在首帧发一次：官方客户端的流式累加器对这两个字段是
+      // **字符串拼接**（openai-python 的 `accumulate_delta` 会把每帧的 name 追加），每帧
+      // 重发会把工具名拼成 `readreadread`、id 也翻倍，客户端随后报「未找到指定的工具」。
+      // `arguments` 才是增量，必须每帧带。issue #20 记录的是同一机制的另一条通路。
+      const idField = tool.idSent ? {} : { id: tool.id }
+      tool.idSent = true
+      const nameField = tool.name === undefined || tool.nameSent ? {} : { name: tool.name }
+      if (tool.name !== undefined) tool.nameSent = true
       return {
         delta: {
           tool_calls: [{
-            index: chunk.index,
-            id: tool.id,
+            index: tool.openAiIndex,
             type: 'function',
+            ...idField,
             function: {
-              ...tool.name === undefined ? {} : { name: tool.name },
+              ...nameField,
               arguments: chunk.argumentsDelta,
             },
           }],
@@ -165,7 +182,7 @@ export async function* toOpenAiSse(
   model: string,
   suggest?: SuggestionHook,
 ): AsyncIterable<string> {
-  const state: Accumulated = { content: '', reasoning: '', tools: new Map() }
+  const state: Accumulated = { content: '', reasoning: '', tools: new Map(), nextToolIndex: 0 }
   try {
     for await (const chunk of chunks) {
       const event = consumeChunk(state, chunk)
@@ -177,7 +194,7 @@ export async function* toOpenAiSse(
         // 但它是确定性失败 —— 翻成 404 让客户端提示用户改配置。
         const normalized = normalizeUpstreamFailure({
           // 上游自带状态码（如 gemini 拒绝未知模型名时的 404）优先，否则才退化成 502。
-          // ⚠️ 门禁（400–599）不能省：codearts 会用 `{ status: 200 }` 表示业务失败，
+
           // 原样透出会让「额度用尽」在客户端眼里读成成功。另两处出口已有同一门禁。
           status: upstreamStatusOrFallback(error.status),
           type: typeof error.type === 'string' ? error.type : 'server_error',
@@ -228,7 +245,7 @@ export async function collectOpenAiCompletion(
   model: string,
   suggest?: SuggestionHook,
 ): Promise<Record<string, unknown>> {
-  const state: Accumulated = { content: '', reasoning: '', tools: new Map() }
+  const state: Accumulated = { content: '', reasoning: '', tools: new Map(), nextToolIndex: 0 }
   try {
     for await (const chunk of chunks) {
       const event = consumeChunk(state, chunk)

@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 1,
+  "name": "magpie",
+  "upstream": "https://github.com/yetone/magpie.git",
+  "revision": "eef99e4bbebaf363840847dce4a33ee72eb37945",
+  "version": "ofm-eef99e4bbeba",
+  "license": "MIT",
+  "build": {
+    "command": [
+      "go",
+      "build",
+      "-tags",
+      "nogui",
+      "-trimpath",
+      "-buildvcs=true",
+      "-ldflags",
+      "-s -w -X main.version=ofm-eef99e4bbeba",
+      "."
+    ],
+    "go": "go version go1.27.1 windows/amd64"
+  },
+  "patches": [
+    {
+      "name": "0001-agent-sync-skip-an-empty-catalog.patch",
+      "sha256": "50acab57addbd3821a6a293f2a6be4f496b4fb4a8e118b3cfd224f29e83747aa"
+    }
+  ],
+  "binaries": {
+    "win32-x64": {
+      "path": "bin/magpie-win32-x64.exe",
+      "sha256": "02876489caff4aaac2a50356cabff3fe708f17d07af052f6fd7b8433a4ba7446",
+      "compressed": {
+        "algorithm": "gzip",
+        "size": 28678010,
+        "sha256": "d95463d290d9137cd39cf1631f8f8f83a803d56d0228921e610cabaa8a15796f",
+        "outputSize": 72745472,
+        "parts": [
+          {
+            "path": "src/engine-parts/win32-x64.000.part",
+            "size": 4194304,
+            "sha256": "271153d125146ba96c31094e624fc82ee336bc3e71f1d56d5863d65b502139ff"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.001.part",
+            "size": 4194304,
+            "sha256": "9b1e05b21030112cd03751c4d629f58aeda6a069f6eb0abc893afa0fa29d9357"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.002.part",
+            "size": 4194304,
+            "sha256": "a68960865289e3c8d71bc95c7bb7160ff80495aa67e4f96c070af0a9014f8c5a"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.003.part",
+            "size": 4194304,
+            "sha256": "58875c04d968c05f11c05716304f700fbd8441dac4a4ac4cb7be84a7ad2a0334"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.004.part",
+            "size": 4194304,
+            "sha256": "116f4f9cf15d75ca00dca072eb8610de0f88f18cd2d4c4f08c1eb768cfb55da2"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.005.part",
+            "size": 4194304,
+            "sha256": "364374b4a62dac550fa25b498b0b064a7bae74a7496867ad7c1dda6e9cfeff8f"
+          },
+          {
+            "path": "src/engine-parts/win32-x64.006.part",
+            "size": 3512186,
+            "sha256": "f95bcd7723547caa0827e8efc4f5a4586154011f54c1a5eb85c393b905de2328"
+          }
+        ]
+      }
+    }
+  },
+  "modules": [
+    {
+      "path": "github.com/MoeForge/moejs",
+      "version": "v0.1.0-alpha.11",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/atotto/clipboard",
+      "version": "v0.1.4",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/aymanbagabas/go-osc52/v2",
+      "version": "v2.0.1",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/bubbles",
+      "version": "v0.21.1",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/bubbletea",
+      "version": "v1.3.10",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/colorprofile",
+      "version": "v0.4.1",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/lipgloss",
+      "version": "v1.1.1-0.20250404203927-76690c660834",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/x/ansi",
+      "version": "v0.11.5",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/x/cellbuf",
+      "version": "v0.0.15",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/charmbracelet/x/term",
+      "version": "v0.2.2",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/clipperhouse/displaywidth",
+      "version": "v0.9.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/clipperhouse/stringish",
+      "version": "v0.1.1",
+      "licenses": [
+        "LICENSE",
+        "utf8/LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/clipperhouse/uax29/v2",
+      "version": "v2.5.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/coder/websocket",
+      "version": "v1.8.14",
+      "licenses": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "path": "github.com/dustin/go-humanize",
+      "version": "v1.0.1",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/erikgeiser/coninput",
+      "version": "v0.0.0-20211004153227-1c3628e74d0f",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/fsnotify/fsnotify",
+      "version": "v1.9.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/gen2brain/h265",
+      "version": "v0.2.4",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/go-ole/go-ole",
+      "version": "v1.3.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/google/uuid",
+      "version": "v1.6.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/klauspost/compress",
+      "version": "v1.18.3",
+      "licenses": [
+        "LICENSE",
+        "gzhttp/LICENSE",
+        "internal/lz4ref/LICENSE",
+        "internal/snapref/LICENSE",
+        "s2/LICENSE",
+        "snappy/LICENSE",
+        "snappy/xerial/LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/lucasb-eyer/go-colorful",
+      "version": "v1.3.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/mattn/go-isatty",
+      "version": "v0.0.20",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/mattn/go-localereader",
+      "version": "v0.0.1",
+      "licenses": [
+        "README.md"
+      ]
+    },
+    {
+      "path": "github.com/mattn/go-runewidth",
+      "version": "v0.0.19",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/muesli/ansi",
+      "version": "v0.0.0-20230316100256-276c6243b2f6",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/muesli/cancelreader",
+      "version": "v0.2.2",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/muesli/termenv",
+      "version": "v0.16.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/ncruces/go-strftime",
+      "version": "v1.0.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/pelletier/go-toml/v2",
+      "version": "v2.2.4",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/remyoudompheng/bigfft",
+      "version": "v0.0.0-20230129092748-24d4a6f8daec",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/rivo/uniseg",
+      "version": "v0.4.7",
+      "licenses": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "path": "github.com/santhosh-tekuri/jsonschema/v6",
+      "version": "v6.0.3",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/tidwall/gjson",
+      "version": "v1.19.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/tidwall/jsonc",
+      "version": "v0.3.3",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/tidwall/match",
+      "version": "v1.1.1",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/tidwall/pretty",
+      "version": "v1.2.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "github.com/xo/terminfo",
+      "version": "v0.0.0-20220910002029-abceb7e1c41e",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/exp",
+      "version": "v0.0.0-20260410095643-746e56fc9e2f",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/image",
+      "version": "v0.43.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/net",
+      "version": "v0.56.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/sys",
+      "version": "v0.46.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/term",
+      "version": "v0.44.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "golang.org/x/text",
+      "version": "v0.39.0",
+      "licenses": [
+        "LICENSE"
+      ]
+    },
+    {
+      "path": "gopkg.in/yaml.v3",
+      "version": "v3.0.1",
+      "licenses": [
+        "LICENSE",
+        "NOTICE"
+      ]
+    },
+    {
+      "path": "modernc.org/libc",
+      "version": "v1.67.6",
+      "licenses": [
+        "LICENSE",
+        "LICENSE-3RD-PARTY.md"
+      ]
+    },
+    {
+      "path": "modernc.org/mathutil",
+      "version": "v1.7.1",
+      "licenses": [
+        "LICENSE",
+        "mersenne/LICENSE"
+      ]
+    },
+    {
+      "path": "modernc.org/memory",
+      "version": "v1.11.0",
+      "licenses": [
+        "LICENSE",
+        "LICENSE-GO",
+        "LICENSE-LOGO",
+        "LICENSE-MMAP-GO"
+      ]
+    },
+    {
+      "path": "modernc.org/sqlite",
+      "version": "v1.44.3",
+      "licenses": [
+        "LICENSE"
+      ]
+    }
+  ]
+}
