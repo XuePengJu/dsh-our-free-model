@@ -15,6 +15,15 @@ source = source.replace(api, "return '/api/management'")
 replaceOnce("api('/pool', { timeout: 25_000 })", "api('/eac/pool', { timeout: 25_000 })")
 // 原页面 POST 空 body；独立管理接口要求 JSON 对象。
 replaceOnce("...body === undefined ? {} : { body: JSON.stringify(body) },", "body: JSON.stringify(body ?? {}),")
+// Tauri 的 WKWebView 不实现原生 confirm（调用恒为 false 且不弹窗），共享卡片的
+// 「移除账号」会静默失效。改走宿主注册的页内确认弹层（channel-browser 挂
+// window.__ofmConfirm，Promise<boolean>）；宿主缺席时视为已确认，不拦操作。
+replaceOnce(
+  "if (typeof window !== 'undefined' && typeof window.confirm === 'function'\n" +
+  "          && !window.confirm(t('chan.confirm.delete').replace('{name}', entry?.nickname ?? accountId))) return",
+  "if (typeof window !== 'undefined' && typeof window.__ofmConfirm === 'function'\n" +
+  "          && !await window.__ofmConfirm(t('chan.confirm.delete').replace('{name}', entry?.nickname ?? accountId))) return",
+)
 replaceOnce("h(PageHero, { t, titleKey: 'dash.title', subKey: 'dash.sub' },",
   "h(PageHero, { title: t('dash.title'), sub: t('dash.sub') },")
 let record
