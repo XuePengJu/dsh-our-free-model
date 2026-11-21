@@ -169,6 +169,9 @@ const OS_TEMP_ANCESTORS = (() => {
   }
   try { walk(path.resolve(fs.realpathSync(os.tmpdir()))) } catch { /* 环境异常时按原语义全查 */ }
   try { walk(path.resolve(os.tmpdir())) } catch { /* 同上 */ }
+  // /tmp 在 macOS 上也是指向 /private/tmp 的系统符号链接（有些脚本直接用它）。
+  try { walk('/tmp') } catch { /* 同上 */ }
+  try { walk(fs.realpathSync('/tmp')) } catch { /* 同上 */ }
   return prefixes
 })()
 
