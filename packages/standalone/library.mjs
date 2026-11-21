@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
+import os from 'node:os'
 import { privateWrite } from './workbench.mjs'
 import { LIBRARY_FORMATS as FORMATS } from '../../src/plugins.js'
 
@@ -152,6 +153,25 @@ function stat(file) {
 }
 
 // Check every ancestor too: checking just the final filename misses junctions and linked directories.
+//
+// ⚠️ macOS 的 /var → /private/var、/tmp → /private/tmp（os.tmpdir() 就在其下）
+// 让「从文件系统根逐段查符号链接」把 OS 自己的挂载层当成违规项，托管路径
+// 必然误报。豁免范围精确限定为「OS 临时目录的各级祖先」（真实路径与原始路径
+// 两种形态都登记）—— 这是操作系统自身的布局，不在「托管树内不得出现符号
+// 链接」的威胁模型里；其余路径保持从根逐段严查不变（含恶意符号链接用例）。
+const OS_TEMP_ANCESTORS = (() => {
+  const prefixes = new Set()
+  const walk = start => {
+    for (let cursor = start; ; cursor = path.dirname(cursor)) {
+      prefixes.add(cursor)
+      if (path.dirname(cursor) === cursor) break
+    }
+  }
+  try { walk(path.resolve(fs.realpathSync(os.tmpdir()))) } catch { /* 环境异常时按原语义全查 */ }
+  try { walk(path.resolve(os.tmpdir())) } catch { /* 同上 */ }
+  return prefixes
+})()
+
 function inspect(file, kind = 'file') {
   const absolute = path.resolve(file)
   const { root } = path.parse(absolute)
@@ -161,10 +181,14 @@ function inspect(file, kind = 'file') {
     current = path.join(current, part)
     const info = stat(current)
     if (!info) return null
-    if (info.isSymbolicLink()) throw error('Symlinks are not allowed in managed storage', 409)
+    const osLevel = OS_TEMP_ANCESTORS.has(current)
+    if (info.isSymbolicLink() && !osLevel) {
+      throw error('Symlinks are not allowed in managed storage', 409)
+    }
     const leaf = index === parts.length - 1
     if (!leaf || kind === 'directory') {
-      if (!info.isDirectory()) throw error('Managed directory is not a directory', 409)
+      // OS 链上的段只要求存在且可解析（其类型就是符号链接本身），其余段仍要求真目录。
+      if (!info.isDirectory() && !osLevel) throw error('Managed directory is not a directory', 409)
     } else if (!info.isFile() || info.nlink !== 1) throw error('Managed file must be a regular, unlinked file', 409)
   }
   return stat(absolute)

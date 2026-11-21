@@ -423,6 +423,8 @@ export function buildRaccoonNickname(
  */
 export const PERMANENT_LOCK_PROVIDERS: ReadonlySet<string> = new Set([
   LOOMY.id,
+  CODEBUDDY.id,
+  WORKBUDDY.id,
 ])
 
 /**
@@ -1371,7 +1373,10 @@ function registerChannelPackEndpoints(
     const request = payload !== null && typeof payload === 'object'
       ? payload as Record<string, unknown> : undefined
     const account = typeof request?.accountId === 'string' ? pool.findAccount(request.accountId) : undefined
-    if ((request?.provider !== undefined && !isSupportedProvider(request.provider)) || (account !== undefined && !isSupportedProvider(account.provider))) {
+    // 只拦「字符串形式的已退役渠道」；非字符串 / 空串等畸形输入交给
+    // 各方法的自身校验回 bad-request（fork 的用例契约如此）。
+    if ((typeof request?.provider === 'string' && request.provider !== '' && !isSupportedProvider(request.provider))
+      || (account !== undefined && !isSupportedProvider(account.provider))) {
       return { ok: false, error: { code: 'provider-unsupported', message: '不支持此渠道。' } }
     }
     // 每个 RPC 独立绑定传输与取消信号，避免使用最后挂载上下文的默认出口。

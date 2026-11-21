@@ -17,10 +17,23 @@ const FILES = ['plan.json', 'console.ps1', 'supervisor.ps1', 'runner.mjs', 'go',
 const MAX_PLAN = 1024 * 1024
 
 function safeDirectory(directory, create = false) {
+  // macOS 的 /var → /private/var（os.tmpdir() 就在其下）会让「从文件系统根
+  // 逐段查符号链接」在 OS 层必然误报。因此先把「已存在的最深祖先」解析到真实
+  // 路径，再从那里逐段检查/创建剩余部分：已存在段在真实路径下按定义无符号
+  // 链接；新创建段 mkdir 后立即 lstat 复查 —— 终端存储不含符号链接的属性不变。
   const absolute = path.resolve(directory)
-  const root = path.parse(absolute).root
-  let current = root
-  for (const part of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
+  let anchor = absolute
+  while (true) {
+    try { fs.lstatSync(anchor); break } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+      const parent = path.dirname(anchor)
+      if (parent === anchor) break
+      anchor = parent
+    }
+  }
+  const base = fs.realpathSync(anchor)
+  let current = base
+  for (const part of path.relative(anchor, absolute).split(path.sep).filter(Boolean)) {
     current = path.join(current, part)
     let info
     try { info = fs.lstatSync(current) } catch (error) {

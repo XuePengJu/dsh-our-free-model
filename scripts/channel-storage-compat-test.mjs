@@ -30,12 +30,14 @@ export async function verifyChannelStorageCompatibility() {
     assert.deepEqual(locks.load(), { exists: true, locks: { loomy: true } })
     await locks.save(locks.load().locks)
     assert.equal(read('permanent-locks.json').schema, 'channel-pack/permanent-locks/v1')
+    // 本 fork 的自动签到是**逐渠道**文档（providers 表承载开关/时间），旧全局
+    // 文档迁移后 providers 为空、时间不保留（见 auto-checkin.ts 的迁移口径），
+    // schema 也沿用 fork 的 'dsh-codearts-auth/auto-checkin/v1'。
     write('auto-checkin.json', { schema: 'legacy-channel-pack/auto-checkin/v1', enabled: false, lastDate: '2026-01-01' })
     const checkin = createAutoCheckinStore(ctx)
-    assert.equal(checkin.load().enabled, false)
-    assert.equal(checkin.load().lastDate, '2026-01-01')
+    assert.deepEqual(Object.keys(checkin.load().providers ?? {}), [])
     await checkin.save(checkin.load())
-    assert.equal(read('auto-checkin.json').schema, 'channel-pack/auto-checkin/v1')
+    assert.equal(read('auto-checkin.json').schema, 'dsh-codearts-auth/auto-checkin/v1')
     const day = new Date().toISOString().slice(0, 10)
     write('token-ledger.json', { schema: 'legacy-channel-pack/token-ledger/v1', days: {
       [day]: { fixture: { requests: 2, inputTokens: 17, outputTokens: 9 } },

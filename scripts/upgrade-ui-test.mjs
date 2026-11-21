@@ -256,7 +256,7 @@ try {
   const module = await import(pathToFileURL(path.join(pkgDir, 'index.js')))
   const boot = async () => {
     const ctx = fakeContext({ inject: module.inject, mounted: ['llm', 'webServer'] })
-    ctx.loader = { internal: { loadCache: new Map([[pathToFileURL(path.join(pkgDir, 'index.js')).href, { source: 'host fixture cache' }]]) } }
+    ctx.loader = { internal: { loadCache: new Map([[pathToFileURL(fs.realpathSync(path.join(pkgDir, 'index.js'))).href, { source: 'host fixture cache' }]]) } }
     contexts.push(ctx)
     module.apply(ctx, {})
     await until(() => ctx.__captured.serverRoutes.some(route => route.kind === 'prefix'), { timeoutMs: 5000 })
@@ -283,7 +283,7 @@ try {
     ctx.fiber.runtime = { callback: module }
     ctx.registry = { get: () => ({ fibers: [ctx.fiber] }) }
     ctx.loader = {
-      internal: { loadCache: new Map([[pathToFileURL(path.join(pkgDir, 'index.js')).href, { source: 'host fixture cache' }]]) },
+      internal: { loadCache: new Map([[pathToFileURL(fs.realpathSync(path.join(pkgDir, 'index.js'))).href, { source: 'host fixture cache' }]]) },
       unwrapExports: value => value,
       import: async () => { throw new Error('controlled ordinary import failure') },
     }

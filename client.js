@@ -4104,7 +4104,7 @@ window.__ModuleLoader__.load({
       // 免费页与水位采用相同范围：匿名免费模型和 Kilo；其他付费来源留在各自页面。
       const roster = only === undefined ? summary.catalog
         : only === 'eac' ? summary.catalog.filter(m => m.channel === 'eac')
-          : summary.catalog.filter(isFreePoolModel)
+          : summary.catalog.filter(m => m.channel !== 'eac')
       // Featured rows lead their group: the pinned flag rides the catalog row, so
       // the order is the same on the EAC page and in the onboarding roster, and a
       // row that is not featured keeps its upstream order.

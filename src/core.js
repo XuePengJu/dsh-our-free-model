@@ -31,6 +31,7 @@ function publicModelRows(snapshot) {
 function createForwardCompletion({ adapter, state, signal }) {
   return async (request, onChunk) => {
     if (signal?.aborted) throw Object.assign(new Error("model runtime is stopped"), { statusCode: 503 });
+    const suppressTurn = request.__ofmComboMember === true;
     const snapshot = state();
     const entry = snapshot.catalog.find((candidate) => candidate.id === request.model);
     if (entry === void 0 || !routableModelIds(snapshot).has(entry.id)) {
@@ -58,7 +59,7 @@ function createForwardCompletion({ adapter, state, signal }) {
       sessionId: `forward:${String(openAi.user ?? openAi.conversation ?? request.sessionId ?? "shared")}`,
       signal: request.signal && signal ? AbortSignal.any([request.signal, signal]) : request.signal ?? signal
     };
-    for await (const chunk of adapter.stream(options, entry, snapshot)) {
+    for await (const chunk of adapter.stream(options, entry, snapshot, suppressTurn ? { recordTurn: false } : void 0)) {
       handler(chunk);
       foldForwardOutcome(outcome, chunk);
     }
@@ -193,6 +194,49 @@ import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntr
 import { buildAggregateCatalog, isAggregateEntry } from "./aggregate.js";
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from "./combos.js";
 import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from "./store.js";
+
+// src/core/attempts.js
+var ATTEMPT_LIMIT = 200;
+var OUTCOMES = /* @__PURE__ */ new Set(["hit", "skipped", "aborted"]);
+function normalizeAttempt(row) {
+  const source = row !== null && typeof row === "object" ? row : {};
+  const at = Number.isFinite(source.at) ? source.at : Date.now();
+  const turnAt = Number.isFinite(source.turnAt) ? source.turnAt : at;
+  const elapsedMs = Number.isFinite(source.elapsedMs) && source.elapsedMs >= 0 ? Math.round(source.elapsedMs) : 0;
+  const index = Number.isSafeInteger(source.index) && source.index >= 0 ? source.index : 0;
+  return {
+    turnAt,
+    at,
+    chainId: typeof source.chainId === "string" ? source.chainId : "",
+    chainName: typeof source.chainName === "string" ? source.chainName : "",
+    index,
+    candidateId: typeof source.candidateId === "string" ? source.candidateId : "",
+    outcome: OUTCOMES.has(source.outcome) ? source.outcome : "skipped",
+    reason: typeof source.reason === "string" ? source.reason : "",
+    elapsedMs
+  };
+}
+function pruneAttempts(value, limit = ATTEMPT_LIMIT) {
+  const max = Number.isSafeInteger(limit) && limit > 0 ? limit : ATTEMPT_LIMIT;
+  if (!Array.isArray(value)) return [];
+  return value.length > max ? value.slice(0, max) : value;
+}
+function recordAttempt(store, row, warn) {
+  try {
+    return store.edit((state) => {
+      const ring = Array.isArray(state.attempts) ? state.attempts : [];
+      return { ...state, attempts: pruneAttempts([normalizeAttempt(row), ...ring], ATTEMPT_LIMIT) };
+    });
+  } catch (error) {
+    try {
+      warn?.(`our-free-model: could not record a chain attempt (${error?.message ?? error})`);
+    } catch {
+    }
+    return void 0;
+  }
+}
+
+// src/core/runtime.js
 import { STATE, detectEgress, probeCatalog } from "./probe.js";
 import { CODE, UpstreamError, getJson } from "./http.js";
 import { runModelTest, modelAvailability } from "./model-test.js";
@@ -384,6 +428,12 @@ function createModelRuntime({
     },
     recordTurn: (record) => {
       if (!disposed) recordTurn(stats, record);
+    },
+    // 降级显示环与 recordTurn 共用同一个 stats store：harness（本文件）与
+    // forward（standalone service.mjs）两条路都写它，持久化与裁剪都是现成的。
+    // recordAttempt 内部已 try/catch，这里再套一层 warn 只是把失败说出来。
+    recordAttempt: (record) => {
+      if (!disposed) recordAttempt(stats, record, (message) => logger.warn?.(message));
     },
     warn: (message) => logger.warn?.(message) ?? logger.log?.(message),
     freeLaneGate: laneGate,
@@ -618,7 +668,15 @@ function createModelRuntime({
       const measured = await runModelTest((testSignal) => adapter.stream({
         provider: ROUTE_MAIN2,
         model: entry.id,
-        messages: [{ role: "user", content: "Reply with exactly: OK" }],
+        // WorkBuddy 国际版网关硬性要求：请求第一条消息必须是 system，否则返回
+        // 400 code 11128「first message is not system prompt」（并伪装成「安全
+        // 策略拦截」），导致模型测试恒失败。这里前置一条轻量 system，让连通性
+        // 测试能真实打到上游；对其他 OpenAI 兼容渠道无影响（标准客户端本就以
+        // system 开头）。
+        messages: [
+          { role: "system", content: "You are a connectivity test endpoint. Reply briefly with the requested word." },
+          { role: "user", content: "Reply with exactly: OK" }
+        ],
         reasoningEffort: selectedEffort,
         sessionId: "bench:" + entry.id + ":" + selectedEffort,
         signal: testSignal
@@ -717,8 +775,297 @@ function computeMembership(catalog, availabilitySnapshot, settings) {
   return membership;
 }
 
+// src/core/usage-periods.js
+import { MIN_DECODE_MS, dayKey } from "./store.js";
+var USAGE_PERIODS = ["day", "week", "month", "all"];
+var WEEKDAYS = ["\u5468\u65E5", "\u5468\u4E00", "\u5468\u4E8C", "\u5468\u4E09", "\u5468\u56DB", "\u5468\u4E94", "\u5468\u516D"];
+var weekdayOffset = (date) => (date.getDay() + 6) % 7;
+function localDayKey(at) {
+  return dayKey(at);
+}
+function periodBounds(period, now, stats = {}) {
+  const t = new Date(now);
+  t.setHours(12, 0, 0, 0);
+  const list = (from, to) => {
+    const out = [];
+    const cursor = new Date(from);
+    cursor.setHours(12, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(12, 0, 0, 0);
+    while (cursor <= end) {
+      out.push(localDayKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out;
+  };
+  if (period === "day") {
+    const key = localDayKey(t);
+    return { period, start: key, end: key, days: [key], ongoing: true, label: `\u4ECA\u65E5 \xB7 ${key}\uFF08${WEEKDAYS[t.getDay()]}\uFF09` };
+  }
+  if (period === "week") {
+    const mon = new Date(t);
+    mon.setDate(mon.getDate() - weekdayOffset(t));
+    const sun = new Date(mon);
+    sun.setDate(sun.getDate() + 6);
+    const start = localDayKey(mon);
+    const end = localDayKey(sun);
+    return { period, start, end, days: list(mon, sun), ongoing: true, label: `${start}\uFF08\u5468\u4E00\uFF09\u2013 ${end}\uFF08\u5468\u65E5\uFF09` };
+  }
+  if (period === "month") {
+    const first = new Date(t.getFullYear(), t.getMonth(), 1, 12);
+    const last = new Date(t.getFullYear(), t.getMonth() + 1, 0, 12);
+    return {
+      period,
+      start: localDayKey(first),
+      end: localDayKey(last),
+      days: list(first, last),
+      ongoing: true,
+      label: `${t.getFullYear()} \u5E74 ${t.getMonth() + 1} \u6708 \xB7 ${localDayKey(first)} \u2013 ${localDayKey(last)}`
+    };
+  }
+  const keys = Object.keys(stats?.days ?? {}).sort();
+  return {
+    period: "all",
+    start: keys[0] ?? "",
+    end: localDayKey(t),
+    days: keys,
+    ongoing: false,
+    label: keys.length ? `\u7D2F\u8BA1 \xB7 \u81EA ${keys[0]} \u8D77` : "\u7D2F\u8BA1"
+  };
+}
+function toModelRow(model, acc, catalog) {
+  const entry = Array.isArray(catalog) ? catalog.find((row) => row?.id === model) : void 0;
+  return {
+    model,
+    name: entry?.name ?? model,
+    turns: acc.turns ?? 0,
+    failedTurns: acc.failedTurns ?? 0,
+    recoveredTurns: acc.recoveredTurns ?? 0,
+    calls: acc.calls ?? 0,
+    failed: acc.failed ?? 0,
+    input: acc.input ?? 0,
+    output: acc.output ?? 0,
+    reasoning: acc.reasoning ?? 0,
+    cacheRead: acc.cacheRead ?? 0,
+    avgTtftMs: (acc.ttftSamples ?? 0) > 0 ? Math.round((acc.ttftMs ?? 0) / acc.ttftSamples) : null,
+    tps: (acc.decodeMs ?? 0) >= MIN_DECODE_MS ? Math.round((acc.decodeTokens ?? 0) / ((acc.decodeMs ?? 0) / 1e3)) : null
+  };
+}
+var zeroAcc = () => ({
+  input: 0,
+  output: 0,
+  reasoning: 0,
+  cacheRead: 0,
+  calls: 0,
+  failed: 0,
+  ttftMs: 0,
+  ttftSamples: 0,
+  decodeMs: 0,
+  decodeTokens: 0,
+  turns: 0,
+  failedTurns: 0,
+  recoveredTurns: 0
+});
+var dailySince = (stats) => {
+  const since = stats?.logicalDailySince;
+  return typeof since === "string" && since !== "" ? since : "";
+};
+function turnDataAvailable(stats, bounds) {
+  const since = dailySince(stats);
+  if (since === "") return true;
+  return bounds.end >= since;
+}
+function migrationNote(stats, bounds) {
+  const since = dailySince(stats);
+  if (since === "") return "";
+  if (bounds.end < since) return "";
+  if (bounds.start <= since) return `\u56DE\u5408\u6570\u636E\u81EA ${since} \u8D77`;
+  return "";
+}
+function retentionNote(bounds) {
+  if (!bounds.days.length) return "";
+  return `\u67F1\u56FE\u4E0E\u6027\u80FD\u5217\u4EC5\u8986\u76D6\u4FDD\u7559\u671F\u5185\u6700\u8FD1 120 \u4E2A\u81EA\u7136\u65E5\uFF08${bounds.start} \u8D77\uFF09\uFF1B\u9876\u90E8\u6307\u6807\u5361\u4E3A\u771F\u5B9E\u7D2F\u8BA1\uFF0C\u4E0D\u53D7\u4FDD\u7559\u671F\u9650\u5236\u3002`;
+}
+function lastNDays(count, now) {
+  const anchor = new Date(now);
+  anchor.setHours(12, 0, 0, 0);
+  const out = [];
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const day = new Date(anchor);
+    day.setDate(day.getDate() - index);
+    out.push(localDayKey(day));
+  }
+  return out;
+}
+function buildChart(byDay, period, bounds, now, total) {
+  if (period === "all") {
+    const months = /* @__PURE__ */ new Map();
+    for (const key of bounds.days) {
+      const month = key.slice(0, 7);
+      months.set(month, (months.get(month) ?? 0) + (byDay.get(key)?.total ?? 0));
+    }
+    const keys2 = [...months.keys()].sort();
+    const bars2 = keys2.map((key) => {
+      const value = months.get(key) ?? 0;
+      const partial = key === keys2[0] && !byDay.has(`${key}-01`);
+      const title = partial ? `${key}\uFF08\u542B\u90E8\u5206\u4FDD\u7559\u65E5\uFF09\xB7 ${value} Token` : `${key} \xB7 ${value} Token`;
+      return { key, label: key, total: value, ...partial ? { partial: true } : {}, title };
+    });
+    return { bars: bars2, total, note: retentionNote(bounds), granularity: "month" };
+  }
+  const todayKey = localDayKey(now);
+  const keys = period === "day" ? lastNDays(7, now) : bounds.days;
+  const bars = keys.map((key) => {
+    const value = byDay.get(key)?.total ?? 0;
+    const future = key > todayKey;
+    const title = future ? `${key}\uFF08\u672A\u5230\uFF09` : `${key} \xB7 ${value} Token`;
+    return {
+      key,
+      label: key.slice(5).replace("-", "/"),
+      total: value,
+      ...future ? { future: true } : {},
+      title
+    };
+  });
+  return { bars, total, note: "", granularity: "day" };
+}
+function lifetimeMetrics(stats, acc, dayTotals) {
+  const logical = stats.logical ?? {};
+  const logicalModels = logical.models ?? {};
+  const logicalReady = Number.isSafeInteger(logical.turns);
+  const lifetimeModels = stats.models ?? {};
+  const modelIds = /* @__PURE__ */ new Set([...acc.keys(), ...Object.keys(lifetimeModels), ...Object.keys(logicalModels)]);
+  let input = 0;
+  let output = 0;
+  let reasoning = 0;
+  let namedTurns = 0;
+  let namedFailedTurns = 0;
+  let namedRecoveredTurns = 0;
+  let namedFailed = 0;
+  for (const model of modelIds) {
+    const lifetime = lifetimeModels[model] ?? {};
+    const dayTotal = acc.get(model) ?? zeroAcc();
+    input += Number.isSafeInteger(lifetime.input) ? lifetime.input : dayTotal.input;
+    output += Number.isSafeInteger(lifetime.output) ? lifetime.output : dayTotal.output;
+    reasoning += Number.isSafeInteger(lifetime.reasoning) ? lifetime.reasoning : dayTotal.reasoning;
+    namedFailed += Number.isSafeInteger(lifetime.failed) ? lifetime.failed : dayTotal.failed;
+    namedTurns += logicalModels[model]?.turns ?? (logicalReady ? 0 : dayTotal.calls);
+    namedFailedTurns += logicalModels[model]?.failed ?? (logicalReady ? 0 : dayTotal.failed);
+    namedRecoveredTurns += logicalModels[model]?.recovered ?? 0;
+  }
+  const hasLifetimeFailures = Number.isSafeInteger(stats.failedRequests);
+  const skippedCandidates = Number.isSafeInteger(dayTotals?.skippedCandidates) ? dayTotals.skippedCandidates : 0;
+  return {
+    turns: logicalReady ? logical.turns : namedTurns,
+    failedTurns: Number.isSafeInteger(logical.failed) ? logical.failed : namedFailedTurns,
+    recoveredTurns: Number.isSafeInteger(logical.recovered) ? logical.recovered : namedRecoveredTurns,
+    // 「候选跳过」与「断流恢复」是两个口径：前者是组合链换了下一条候选，
+    // 后者是单模型中断后由恢复预算接上。逐模型没有这个数，模型行不输出它。
+    skippedCandidates: Number.isSafeInteger(logical.skippedCandidates) ? logical.skippedCandidates : skippedCandidates,
+    requests: stats.requests ?? 0,
+    failedRequests: hasLifetimeFailures ? stats.failedRequests : namedFailed,
+    input,
+    output,
+    reasoning
+  };
+}
+function aggregatePeriod(stats, period, catalog, now) {
+  const bounds = periodBounds(period, now, stats);
+  const byDay = new Map(Object.entries(stats.days ?? {}));
+  const acc = /* @__PURE__ */ new Map();
+  let turns = 0;
+  let failedTurns = 0;
+  let recoveredTurns = 0;
+  let skippedCandidates = 0;
+  for (const key of bounds.days) {
+    const bucket = byDay.get(key);
+    if (!bucket) continue;
+    turns += bucket.turns ?? 0;
+    failedTurns += bucket.failedTurns ?? 0;
+    recoveredTurns += bucket.recoveredTurns ?? 0;
+    skippedCandidates += bucket.skippedCandidates ?? 0;
+    for (const [model, row] of Object.entries(bucket.models ?? {})) {
+      const s = acc.get(model) ?? zeroAcc();
+      s.input += row.input ?? 0;
+      s.output += row.output ?? 0;
+      s.reasoning += row.reasoning ?? 0;
+      s.cacheRead += row.cacheRead ?? 0;
+      s.calls += row.calls ?? 0;
+      s.failed += row.failed ?? 0;
+      s.ttftMs += row.ttftMs ?? 0;
+      s.ttftSamples += row.ttftSamples ?? 0;
+      s.decodeMs += row.decodeMs ?? 0;
+      s.decodeTokens += row.decodeTokens ?? 0;
+      acc.set(model, s);
+    }
+    for (const [model, row] of Object.entries(bucket.modelsTurns ?? {})) {
+      const s = acc.get(model) ?? zeroAcc();
+      s.turns += row.turns ?? 0;
+      s.failedTurns += row.failed ?? 0;
+      s.recoveredTurns += row.recovered ?? 0;
+      acc.set(model, s);
+    }
+  }
+  let input = 0;
+  let output = 0;
+  let reasoning = 0;
+  let calls = 0;
+  let failed = 0;
+  let ttftMs = 0;
+  let ttftSamples = 0;
+  let decodeMs = 0;
+  let decodeTokens = 0;
+  for (const s of acc.values()) {
+    input += s.input;
+    output += s.output;
+    reasoning += s.reasoning;
+    calls += s.calls;
+    failed += s.failed;
+    ttftMs += s.ttftMs;
+    ttftSamples += s.ttftSamples;
+    decodeMs += s.decodeMs;
+    decodeTokens += s.decodeTokens;
+  }
+  const avgTtftMs = ttftSamples > 0 ? Math.round(ttftMs / ttftSamples) : null;
+  const tps = decodeMs >= MIN_DECODE_MS ? Math.round(decodeTokens / (decodeMs / 1e3)) : null;
+  const available = period === "all" ? true : turnDataAvailable(stats, bounds);
+  const metrics = period === "all" ? { ...lifetimeMetrics(stats, acc, { turns, failedTurns, recoveredTurns, skippedCandidates, calls, failed }), avgTtftMs, tps } : {
+    turns: available ? turns : null,
+    failedTurns: available ? failedTurns : null,
+    recoveredTurns: available ? recoveredTurns : null,
+    // 与 recoveredTurns 同款三元：没有回合数据的档位不能给 0，那会读成
+    // 「这段时间真的没人跳过候选」，而事实是「这段时间没有回合记录」。
+    skippedCandidates: available ? skippedCandidates : null,
+    requests: calls,
+    failedRequests: failed,
+    input,
+    output,
+    reasoning,
+    avgTtftMs,
+    tps
+  };
+  const models = period === "all" ? void 0 : [...acc.entries()].filter(([, s]) => s.turns > 0 || s.calls > 0).map(([model, s]) => toModelRow(model, s, catalog));
+  const chart = buildChart(byDay, period, bounds, now, metrics.input + metrics.output);
+  const migration = period === "all" ? "" : migrationNote(stats, bounds);
+  const retention = period === "all" ? retentionNote(bounds) : "";
+  return {
+    bounds: migration ? { ...bounds, note: migration } : bounds,
+    metrics,
+    ...models ? { models } : {},
+    chart,
+    turnsAvailable: available,
+    ...retention ? { note: retention } : {}
+  };
+}
+function buildUsagePeriods(stats, catalog, now = Date.now()) {
+  const periods = {};
+  for (const period of USAGE_PERIODS) {
+    periods[period] = aggregatePeriod(stats, period, catalog, now);
+  }
+  return periods;
+}
+
 // src/core/stats.js
-import { MIN_DECODE_MS } from "./store.js";
 import { describeSavingsTotal, emptySavings, savingsPercent } from "./token-saver.js";
 function buildStats(stats, catalog) {
   const days = stats.days ?? {};
@@ -775,25 +1122,21 @@ function buildStats(stats, catalog) {
   const named = [...modelIds].map((model) => {
     const row = totals[model] ?? empty(model);
     const lifetime = lifetimeModels[model] ?? {};
-    const physical = {
-      ...row,
+    return toModelRow(model, {
       input: Number.isSafeInteger(lifetime.input) ? lifetime.input : row.input,
       output: Number.isSafeInteger(lifetime.output) ? lifetime.output : row.output,
       reasoning: Number.isSafeInteger(lifetime.reasoning) ? lifetime.reasoning : row.reasoning,
-      cacheRead: Number.isSafeInteger(lifetime.cacheRead) ? lifetime.cacheRead : row.cacheRead,
+      cacheRead: Number.isSafeInteger(lifetime.cacheRead) ? lifetime.cacheRead : row.cacheRead ?? 0,
       calls: Number.isSafeInteger(lifetime.calls) ? lifetime.calls : row.calls,
-      failed: Number.isSafeInteger(lifetime.failed) ? lifetime.failed : row.failed
-    };
-    return {
-      ...physical,
+      failed: Number.isSafeInteger(lifetime.failed) ? lifetime.failed : row.failed,
+      ttftMs: row.ttftMs ?? 0,
+      ttftSamples: row.ttftSamples ?? 0,
+      decodeMs: row.decodeMs ?? 0,
+      decodeTokens: row.decodeTokens ?? 0,
       turns: logicalModels[model]?.turns ?? (logicalReady ? 0 : row.calls),
       failedTurns: logicalModels[model]?.failed ?? (logicalReady ? 0 : row.failed),
-      recoveredTurns: logicalModels[model]?.recovered ?? 0,
-      name: catalog.find((entry) => entry.id === model)?.name ?? model,
-      // A rate over too few measurable calls is a rounding error with a unit on it.
-      tps: row.decodeMs >= MIN_DECODE_MS ? Math.round(row.decodeTokens / (row.decodeMs / 1e3)) : null,
-      avgTtftMs: row.ttftSamples > 0 ? Math.round(row.ttftMs / row.ttftSamples) : null
-    };
+      recoveredTurns: logicalModels[model]?.recovered ?? 0
+    }, catalog);
   });
   const physicalFailed = named.reduce((sum, row) => sum + row.failed, 0);
   const turns = logicalReady ? logical.turns : named.reduce((sum, row) => sum + row.turns, 0);
@@ -801,6 +1144,8 @@ function buildStats(stats, catalog) {
   const recoveredTurns = Number.isSafeInteger(logical.recovered) ? logical.recovered : named.reduce((sum, row) => sum + row.recoveredTurns, 0);
   const hasLifetimeFailures = Number.isSafeInteger(stats.failedRequests);
   const savings = { ...emptySavings(), ...stats.savings ?? {} };
+  const daysOut = series.map(({ day, total }) => ({ day, total }));
+  const periods = buildUsagePeriods(stats, catalog, Date.now());
   return {
     requests: stats.requests ?? 0,
     requestFailures: hasLifetimeFailures ? stats.failedRequests : physicalFailed,
@@ -809,7 +1154,7 @@ function buildStats(stats, catalog) {
     turns,
     failedTurns,
     recoveredTurns,
-    days: series,
+    days: daysOut,
     models: named,
     samples: (stats.samples ?? []).slice(-200),
     // What the token savers measured. The percentage is computed here, from the
@@ -825,7 +1170,8 @@ function buildStats(stats, catalog) {
       turns,
       failedTurns,
       recoveredTurns
-    }
+    },
+    periods
   };
 }
 export {
