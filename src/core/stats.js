@@ -1,6 +1,5 @@
 import { buildUsagePeriods, toModelRow } from './usage-periods.js'
-import { describeSavingsTotal, emptySavings, savingsPercent } from '../token-saver/index.js'
-
+import { describeSavingsTotal, emptySavings, savingsPercent } from '../token-saver.js'
 export function buildStats(stats, catalog) {
   const days = stats.days ?? {}
   // ① 先构建完整 series（保留 models 明细）→ 由它算出 totals → named → grand。

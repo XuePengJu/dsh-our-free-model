@@ -16,6 +16,14 @@ import {
   writeWorkbuddyModel,
 } from './workbuddy-sync.mjs'
 import { publicModelVisibility, validateModelVisibility, isModelHidden } from '../../src/store.js'
+import { createWorkbench } from './workbench.mjs'
+import { createProviderManagement } from './providers.mjs'
+import { createWorkbenchLibrary } from './library.mjs'
+import { createRoutingManagement } from './routing.mjs'
+import { createDesktopUpdater } from './desktop-update.mjs'
+import { createFeedback } from './feedback.mjs'
+import { DISCLAIMER, DISCLAIMER_VERSION, disclaimerAcknowledged } from '../../src/disclaimer.js'
+import { pageBridgeSource } from '../../src/plugins.js'
 
 const PREFIX = '/api/management'
 const BOOTSTRAP_MS = 10 * 60_000
@@ -85,7 +93,7 @@ async function readBody(req, limit = MAX_BODY_BYTES) {
 
 function validateSettings(patch) {
   const visibility = validateModelVisibility(patch)
-  const booleans = new Set(['enabled', 'exposeRegionModels', 'streamRecovery', 'standaloneProbe', 'standaloneLanEnabled'])
+  const booleans = new Set(['enabled', 'exposeRegionModels', 'streamRecovery', 'standaloneProbe', 'standaloneLanEnabled', 'developerPlugins', 'autoUpdateExtensions'])
   const numbers = { probeIntervalMinutes: [1, 1440], defaultMaxTokens: [512, 131072], standaloneLanPort: [0, 65535] }
   const result = {}
   for (const [key, value] of Object.entries(patch)) {
@@ -134,13 +142,21 @@ export function managementSettings(value) {
     defaultMaxTokens: value.defaultMaxTokens ?? 32768,
     /** `/v1/models` 对外用哪套名字：alias（默认）/ both / id。见 src/aliases.js。 */
     aliasMode: normalizeAliasSettings(value.aliases).mode,
+
+    developerPlugins: value.developerPlugins === true,
+    autoUpdateExtensions: value.autoUpdateExtensions === true,
   }
 }
 
 /** 管理读写要求鉴权；登录恢复仅允许同源页面触发固定本机动作。 */
-export function createManagement({ stores, runtime, channels, eac, info, onSettingsChanged, loginTerminal = openLoginTerminal, log = () => {} }) {
+export function createManagement({ stores, runtime, channels, eac, subscriptions, workbenchOptions, magpieEngine, magpieModels, extensions, onEngineStarted, onSubscriptionsChanged, info, onSettingsChanged, loginTerminal = openLoginTerminal, desktopPlatform = process.platform, desktopArch = process.arch, log = () => {} }) {
+  // `desktopPlatform`/`desktopArch` are threaded from the caller instead of read
+  // from `process` so the Windows-only update flow stays exercisable on a test
+  // runner that is neither (`desktop-update.mjs` already takes them this way).
+  const desktopUpdate = createDesktopUpdater({ dataDir: info().dataDir, version: process.env.OFM_DESKTOP_VERSION, platform: desktopPlatform, arch: desktopArch })
   let bootstrap = { token: crypto.randomBytes(32).toString('base64url'), until: Date.now() + BOOTSTRAP_MS }
   const sessions = new Map()
+  const privilegedSessions = new Set()
   let cookieName
   let closed = false
   let terminalOpening = false
@@ -171,13 +187,43 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
   }
   const clearCookie = () => `${cookieName}=; Path=${PREFIX}; HttpOnly; SameSite=Strict; Max-Age=0`
   const pruneSessions = () => {
-    for (const [id, until] of sessions) if (until <= Date.now()) sessions.delete(id)
+    for (const [id, until] of sessions) if (until <= Date.now()) {
+      sessions.delete(id)
+      privilegedSessions.delete(id)
+    }
+  }
+  /**
+   * Sliding renewal: an active console session never expires mid-use.
+   *
+   * A fixed 8h deadline killed the page while the user was looking at it
+   * (issue #557) — the cookie outlived the server-side record, so the next
+   * request 401'd with no way to recover but a manual re-login. Touching the
+   * record on each authenticated request keeps an idle console expiring on
+   * schedule while a busy one stays alive. The cookie's `Max-Age` is not
+   * rewritten here, so a closed tab still drops the session within 8h.
+   */
+  const touchSession = id => {
+    if (typeof id !== 'string' || id === '') return
+    const until = sessions.get(id)
+    if (until === undefined) return
+    const renewed = Date.now() + SESSION_MS
+    // Only write when the extension is meaningful, so a busy console does not
+    // rewrite the map on every request.
+    if (renewed - until > 60_000) sessions.set(id, renewed)
   }
   const authenticated = req => {
     const bearer = /^Bearer (.+)$/i.exec(String(req.headers.authorization ?? ''))?.[1]
     if (matches(bearer, stores.settings.get().forwardKey)) return true
     pruneSessions()
-    return sessions.has(cookie(req))
+    const id = cookie(req)
+    touchSession(id)
+    return sessions.has(id)
+  }
+  const sessionAuthenticated = req => {
+    pruneSessions()
+    const id = cookie(req)
+    touchSession(id)
+    return sessions.has(id) && privilegedSessions.has(id)
   }
   const persist = patch => {
     const previous = stores.settings.get()
@@ -206,6 +252,20 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     }))
     stores.availability.flush()
   }
+
+
+  const workbench = runtime && typeof info().dataDir === 'string' ? createWorkbench({
+    dataDir: info().dataDir,
+    info: () => ({ ...info(), enabled: stores.settings.get().enabled !== false }),
+    key: () => stores.settings.get().forwardKey,
+    modelRows: () => runtime.publicModelRows(),
+    ...workbenchOptions,
+  }) : undefined
+  const providerManagement = runtime ? createProviderManagement({ stores, runtime, persist }) : undefined
+  const routingManagement = runtime ? createRoutingManagement({ stores, runtime, persist }) : undefined
+  const library = workbench ? createWorkbenchLibrary({ dataDir: info().dataDir, workbench }) : undefined
+  const feedback = createFeedback({ settings: () => stores.settings.get(), persist })
+  workbench?.setLibrary(library)
   const summary = () => {
     const state = runtime.state()
     const available = stores.availability.get()
@@ -222,6 +282,14 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       settings: managementSettings(stores.settings.get()),
       catalogSyncedAt: stores.settings.get().catalogSyncedAt ?? 0,
       probedAt: available.at ?? 0,
+      lane: available.lane ?? null,
+      extensions: extensions !== undefined ? { installed: extensions.listInstalled() } : null,
+      plugins: extensions !== undefined ? {
+        installedCount: extensions.listInstalled().filter(record => record.builtin !== true).length,
+        builtinCount: extensions.listInstalled().filter(record => record.builtin === true).length,
+        pages: extensions.pages(),
+        developerPlugins: stores.settings.get().developerPlugins === true,
+      } : null,
       catalog: state.catalog.map(entry => {
         // 渠道行是本服务**真实探测**的车道（probeChannelModels 把判定写进 results），
         // 不能像 EAC / Kilo / 聚合车道那样当「只信清单、不做探测」的 listing 车道
@@ -280,8 +348,64 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     return { mode: settings.mode, rows }
   }
 
+  const PLUGIN_ASSET_RE = /^\/api\/management\/plugins\/assets\/([a-f0-9]{32})\/(.+)$/
+  const pluginAssetPath = pathname => PLUGIN_ASSET_RE.test(pathname)
+
+  /** The one host script a page plugin may load. It is static, has no secrets,
+   *  and only opens the postMessage channel back to this console. */
+  function injectPluginBridge(html, source) {
+    const tag = `<script src="${source}"></script>`
+    const text = String(html)
+    if (/<\/head\s*>/i.test(text)) return text.replace(/<\/head\s*>/i, `${tag}</head>`)
+    return `${tag}${text}`
+  }
+
+  /**
+   * Serve one page asset. The URL token is the capability: the iframe has an
+   * opaque origin and no session, so authorization is "this file was declared
+   * by the plugin this boot minted the token for". Everything else is 404.
+   */
+  function servePluginAsset(req, res, pathname) {
+    const match = PLUGIN_ASSET_RE.exec(pathname)
+    if (match === null) { res.writeHead(404); res.end(); return }
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return }
+    const token = match[1]
+    let relative
+    try { relative = decodeURIComponent(match[2]) } catch { res.writeHead(400); res.end(); return }
+    if (relative === '' || relative.includes('..') || relative.includes('\\') || relative.includes('\0')) {
+      res.writeHead(404); res.end(); return
+    }
+    const origin = (() => {
+      try { return new URL(info().baseUrl).origin } catch { return `http://${req.headers.host}` }
+    })()
+    const headers = {
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'cross-origin-resource-policy': 'cross-origin',
+      'access-control-allow-origin': '*',
+      'content-security-policy': `default-src 'none'; script-src ${origin}; style-src 'unsafe-inline' ${origin}; img-src data: blob: ${origin}; font-src ${origin}; connect-src 'none'; frame-ancestors ${origin}; base-uri 'none'; form-action 'none'`,
+    }
+    if (relative === '__bridge.js') {
+      const body = Buffer.from(pageBridgeSource())
+      res.writeHead(200, { ...headers, 'content-type': 'text/javascript; charset=utf-8', 'content-length': body.length })
+      res.end(req.method === 'HEAD' ? undefined : body)
+      return
+    }
+    const asset = extensions?.pageAsset(token, relative)
+    if (asset === undefined || asset === null) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('not found'); return }
+    let body = asset.bytes
+    if (asset.type.startsWith('text/html')) {
+      body = Buffer.from(injectPluginBridge(body.toString('utf8'), `/api/management/plugins/assets/${token}/__bridge.js`))
+    }
+    res.writeHead(200, { ...headers, 'content-type': asset.type, 'content-length': body.length })
+    res.end(req.method === 'HEAD' ? undefined : body)
+  }
+
   async function route(req, res, pathname) {
+
     const method = req.method ?? 'GET'
+    const reply = (statusCode, payload, headers) => json(res, statusCode, payload, headers)
     if (method === 'POST' && pathname === `${PREFIX}/login/terminal`) {
       // 此入口发生在登录前，必须有浏览器的同源 Origin，拒绝跨站和无来源调用。
       if (req.headers.origin !== new URL(`http://${req.headers.host}`).origin ||
@@ -304,12 +428,19 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     if (method === 'POST' && pathname === `${PREFIX}/session`) {
       const body = await readBody(req)
       const validBootstrap = bootstrap !== null && bootstrap.until > Date.now() && matches(body.bootstrapToken, bootstrap.token)
-      if (!validBootstrap && !matches(body.key, stores.settings.get().forwardKey)) throw fail(401, '登录链接已失效或 API Key 不正确')
+      const validManagementKey = matches(body.key, stores.settings.get().managementKey)
+      if (!validBootstrap && !validManagementKey && !matches(body.key, stores.settings.get().forwardKey)) throw fail(401, '登录链接已失效或登录令牌不正确')
       pruneSessions()
       if (sessions.size >= 64) throw fail(429, '管理会话过多，请稍后重试')
+      // The bootstrap link is deliberately single-use (a test pins that: a
+      // replayable one-time link is a replayable credential). What #557 asked
+      // for is the *session* surviving normal use, which `touchSession` now
+      // handles — a live console is renewed on every authenticated request
+      // instead of dying at a fixed 8h mark.
       if (validBootstrap) bootstrap = null
       const id = crypto.randomBytes(32).toString('base64url')
       sessions.set(id, Date.now() + SESSION_MS)
+      if (validBootstrap || validManagementKey) privilegedSessions.add(id)
       json(res, 200, { ok: true }, {
         'set-cookie': `${cookieName}=${id}; Path=${PREFIX}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}`,
       })
@@ -341,11 +472,177 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       json(res, 200, { key: stores.settings.get().forwardKey })
       return
     }
-    if (!authenticated(req)) throw fail(401, '请先登录管理页面')
+
+    const privilegedManagementRoute =
+      pathname === `${PREFIX}/desktop-update` || pathname.startsWith(`${PREFIX}/desktop-update/`)
+      ||
+      pathname === `${PREFIX}/workbench` || pathname.startsWith(`${PREFIX}/workbench/`)
+      || pathname === `${PREFIX}/library` || pathname.startsWith(`${PREFIX}/library/`)
+      || pathname === `${PREFIX}/providers` || pathname.startsWith(`${PREFIX}/providers/`)
+      || pathname === `${PREFIX}/subscriptions` || pathname.startsWith(`${PREFIX}/subscriptions/`)
+      || pathname === `${PREFIX}/routing` || pathname.startsWith(`${PREFIX}/routing/`)
+      || pathname === `${PREFIX}/engine` || pathname.startsWith(`${PREFIX}/engine/`)
+      || pathname === `${PREFIX}/extensions` || pathname.startsWith(`${PREFIX}/extensions/`)
+      || pathname === `${PREFIX}/plugins` || pathname.startsWith(`${PREFIX}/plugins/`)
+      || pathname === `${PREFIX}/feedback` || pathname.startsWith(`${PREFIX}/feedback/`)
+    // A sandboxed plugin page inside the workspace carries a per-run HMAC
+    // capability in its own path; it has an opaque origin and cannot send this
+    // console's session. The engine validates the capability and serves only
+    // that plugin's files, exactly as it does for the plugin build. This has to
+    // be decided before the session check for the same reason.
+    const enginePluginAsset = ['GET', 'HEAD'].includes(req.method)
+      && /^\/api\/management\/engine\/ui\/_magpie\/plugin\/[a-f0-9]{32}\/[^?]+$/.test(pathname)
+    const pluginPageAsset = ['GET', 'HEAD'].includes(req.method) && pluginAssetPath(pathname)
+    if (!authenticated(req) && !enginePluginAsset && !pluginPageAsset) throw fail(401, '请先登录管理页面')
+    if (privilegedManagementRoute && !sessionAuthenticated(req) && !enginePluginAsset && !pluginPageAsset) {
+      throw fail(403, '此管理操作需要已登录的本地管理会话')
+    }
+    // ── the plugin center (behind the same session fence) ────────────────────
+    // `/plugins` is the current surface; `/extensions` stays as an alias so an
+    // older console and the DSH-side marketplace keep working unchanged.
+    const pluginBase = pathname === `${PREFIX}/plugins` || pathname.startsWith(`${PREFIX}/plugins/`)
+      ? `${PREFIX}/plugins`
+      : pathname === `${PREFIX}/extensions` || pathname.startsWith(`${PREFIX}/extensions/`)
+        ? `${PREFIX}/extensions`
+        : null
+    if (pluginBase !== null) {
+      // A composition that mounted no plugin runtime answers "unavailable",
+      // never a TypeError.
+      if (extensions === undefined) return reply(503, { error: 'the plugin platform is unavailable' })
+      const suffix = pathname.slice(pluginBase.length)
+      const readJsonBody = () => readBody(req)
+      if (method === 'GET' && suffix === '') {
+        // A first paint waits briefly for the boot warm-up and hears why a read
+        // failed, rather than being told the index is unreadable when it is
+        // simply still downloading.
+        const status = await extensions.registryStatusSoon()
+        return reply(200, {
+          installed: extensions.listInstalled(),
+          registry: status.registry,
+          registryError: status.error,
+          pages: extensions.pages(),
+          audit: extensions.auditTail(100),
+          updates: extensions.updatesAvailable(),
+          registryMeta: extensions.registryMeta(),
+          settings: {
+            developerPlugins: stores.settings.get().developerPlugins === true,
+            autoUpdateExtensions: stores.settings.get().autoUpdateExtensions === true,
+          },
+        })
+      }
+      if (method === 'GET' && suffix === '/pages') return reply(200, { pages: extensions.pages() })
+      if (method === 'GET' && suffix === '/audit') return reply(200, { entries: extensions.auditTail(100) })
+      if (method === 'GET' && suffix === '/cover') {
+        const id = new URL(req.url ?? '/', 'http://localhost').searchParams.get('id') ?? ''
+        const image = await extensions.coverImage(id)
+        if (image === null) return reply(404, { error: 'cover not found' })
+        res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': image.contentType, 'content-length': image.bytes.length })
+        res.end(image.bytes)
+        return
+      }
+      if (method === 'POST' && suffix === '/registry/refresh') {
+        try {
+          await extensions.refreshRegistry({ force: true })
+          return reply(200, { ok: true, installed: extensions.listInstalled(), registry: extensions.registryView() })
+        } catch (error) {
+          return reply(502, { error: String(error?.message ?? error), installed: extensions.listInstalled() })
+        }
+      }
+      if (method === 'POST' && suffix === '/install') {
+        try {
+          const body = await readJsonBody()
+          const record = await extensions.install(String(body?.id ?? ''), { version: typeof body?.version === 'string' ? body.version : undefined })
+          return reply(200, { ok: true, record, installed: extensions.listInstalled(), pages: extensions.pages() })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/install-local') {
+        try {
+          if (stores.settings.get().developerPlugins !== true) throw fail(403, '请先在插件中心开启开发者模式')
+          const body = await readJsonBody()
+          const record = await extensions.installLocal({
+            path: String(body?.path ?? ''),
+            acknowledgeUnsigned: body?.acknowledgeUnsigned === true,
+          })
+          return reply(200, { ok: true, record, installed: extensions.listInstalled(), pages: extensions.pages() })
+        } catch (error) {
+          return reply(error.statusCode ?? 400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/uninstall') {
+        try {
+          const body = await readJsonBody()
+          await extensions.uninstall(String(body?.id ?? ''))
+          return reply(200, { ok: true, installed: extensions.listInstalled(), pages: extensions.pages() })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/toggle') {
+        try {
+          const body = await readJsonBody()
+          const record = await extensions.setEnabled(String(body?.id ?? ''), body?.enabled === true)
+          return reply(200, { ok: true, record, installed: extensions.listInstalled(), pages: extensions.pages() })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/config') {
+        try {
+          const body = await readJsonBody()
+          const record = await extensions.saveConfig(String(body?.id ?? ''), body?.values ?? {})
+          // `installed` rides along so a saved config field is reflected by the
+          // card that rendered it.
+          return reply(200, { ok: true, record, installed: extensions.listInstalled() })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/secret') {
+        try {
+          const body = await readJsonBody()
+          const record = await extensions.saveSecret(String(body?.id ?? ''), String(body?.key ?? ''), body?.value)
+          return reply(200, { ok: true, record, installed: extensions.listInstalled() })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/self-test') {
+        try {
+          const body = await readJsonBody()
+          return reply(200, await extensions.runSelfTest(String(body?.id ?? '')))
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      if (method === 'POST' && suffix === '/page-rpc') {
+        try {
+          const body = await readBody(req, 96 * 1024)
+          const result = await extensions.pageRpc(
+            String(body?.pluginId ?? ''), String(body?.pageId ?? ''), String(body?.method ?? ''), body?.params ?? {},
+          )
+          return reply(200, { ok: true, result })
+        } catch (error) {
+          return reply(400, { error: String(error?.message ?? error) })
+        }
+      }
+      return reply(404, { error: '插件接口不存在' })
+    }
+
     if (method === 'POST' && pathname === `${PREFIX}/logout`) {
       await readBody(req)
       sessions.delete(cookie(req))
+      privilegedSessions.delete(cookie(req))
       json(res, 200, { ok: true }, { 'set-cookie': clearCookie() })
+    } else if (pathname === `${PREFIX}/desktop-update` && method === 'GET') {
+      json(res, 200, desktopUpdate.status())
+    } else if (pathname === `${PREFIX}/desktop-update/check` && method === 'POST') {
+      await readBody(req)
+      json(res, 200, desktopUpdate.check())
+    } else if (pathname === `${PREFIX}/desktop-update/download` && method === 'POST') {
+      await readBody(req)
+      json(res, 200, desktopUpdate.download())
     } else if (method === 'GET' && pathname === `${PREFIX}/summary`) {
       json(res, 200, summary())
     } else if (method === 'GET' && pathname === `${PREFIX}/stats`) {
@@ -419,6 +716,115 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         total,
         generatedAt: Date.now(),
       })
+
+
+    } else if (method === 'GET' && pathname === `${PREFIX}/engine/status`) {
+      json(res, 200, magpieEngine?.status() ?? { state: 'unavailable', available: false })
+    } else if (method === 'POST' && pathname === `${PREFIX}/engine/start`) {
+      await readBody(req)
+      if (!magpieEngine) throw fail(503, '模型工作台不可用')
+      await magpieEngine.start()
+      await magpieModels?.refresh()
+      onEngineStarted?.()
+      json(res, 200, magpieEngine.status())
+    } else if (method === 'POST' && pathname === `${PREFIX}/engine/refresh`) {
+      await readBody(req)
+      if (!magpieEngine) throw fail(503, '模型工作台不可用')
+      await magpieModels?.refresh()
+      json(res, 200, { ok: true })
+    } else if (pathname === `${PREFIX}/engine/ui` || pathname.startsWith(`${PREFIX}/engine/ui/`)) {
+      if (!magpieEngine) throw fail(503, '模型工作台不可用')
+      if (magpieEngine.status().state !== 'ready') throw fail(503, '模型工作台尚未启动')
+      if (pathname === `${PREFIX}/engine/ui` && !req.url.endsWith('/')) {
+        res.writeHead(302, { location: `${PREFIX}/engine/ui/` })
+        return res.end()
+      }
+      // The embedded page is same-origin HTML that the engine rewrites for this
+      // mount; a POST from it is how the workspace reports a change, and the
+      // published catalog has to follow.
+      res.once('finish', () => {
+        if (req.method === 'POST') void magpieModels?.refresh().catch(() => {})
+      })
+      const upstream = req.url.slice(PREFIX.length + '/engine/ui'.length) || '/'
+      // The engine derives its visible mount from the plugin build's own path
+      // (`/api/our-free-model/engine/ui/`). This console mounts the same UI at a
+      // different prefix, so both the mount it should treat as its own and the
+      // prefix it should emit are passed explicitly instead of guessed.
+      const mount = `${PREFIX}/engine/ui/`
+      await magpieEngine.proxy(req, res, upstream, { prefix: mount, mount })
+      return
+    } else if (pathname === `${PREFIX}/workbench` && method === 'GET' && workbench) {
+      json(res, 200, { clients: workbench.clients(), accounts: subscriptions?.list() ?? [] })
+    } else if (pathname.startsWith(`${PREFIX}/workbench/clients/`) && method === 'POST' && workbench) {
+      const body = await readBody(req)
+      const action = pathname.slice(`${PREFIX}/workbench/clients/`.length)
+      if (action === 'save') json(res, 200, workbench.save(body))
+      else if (action === 'launch') json(res, 200, await workbench.launch(body))
+      else if (action === 'stop') json(res, 200, await workbench.stop(body))
+      else throw fail(404, '客户端操作不存在')
+    } else if (pathname === `${PREFIX}/library` && method === 'GET' && library) {
+      json(res, 200, library.list())
+    } else if (pathname === `${PREFIX}/routing` && method === 'GET' && routingManagement) {
+      json(res, 200, routingManagement.list())
+    } else if (pathname.startsWith(`${PREFIX}/routing/`) && method === 'POST' && routingManagement) {
+      const action = pathname.slice(`${PREFIX}/routing/`.length)
+      if (!['save', 'remove', 'preview'].includes(action)) throw fail(404, '路由组操作不存在')
+      json(res, 200, routingManagement[action](await readBody(req, 128 * 1024)))
+    } else if (pathname.startsWith(`${PREFIX}/library/`) && method === 'POST' && library) {
+      const action = pathname.slice(`${PREFIX}/library/`.length)
+      const actions = {
+        'profiles/save': 'saveProfile', 'profiles/apply': 'applyProfile', 'profiles/remove': 'removeProfile',
+        'resources/save': 'saveResource', 'resources/remove': 'removeResource',
+      }
+      const body = await readBody(req, 1024 * 1024 + 8192)
+      if (!Object.hasOwn(actions, action)) throw fail(404, '资源操作不存在')
+      json(res, 200, library[actions[action]](body))
+    } else if (pathname === `${PREFIX}/providers` && method === 'GET' && providerManagement) {
+      json(res, 200, providerManagement.list())
+    } else if (pathname.startsWith(`${PREFIX}/providers/`) && method === 'POST' && providerManagement) {
+      const action = pathname.slice(`${PREFIX}/providers/`.length)
+      const body = await readBody(req, 128 * 1024)
+      if (!['save', 'remove', 'test', 'discover'].includes(action)) throw fail(404, '供应商操作不存在')
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      res.once('close', abort)
+      try { json(res, 200, await providerManagement[action](body, controller.signal)) }
+      finally { res.removeListener('close', abort) }
+    } else if (pathname === `${PREFIX}/subscriptions` && method === 'GET' && subscriptions) {
+      json(res, 200, { accounts: subscriptions.list() })
+    } else if (pathname === `${PREFIX}/subscriptions/discover` && method === 'GET' && subscriptions) {
+      const discovered = await subscriptions.discover()
+      json(res, 200, { candidates: [
+        { provider: 'codex', label: 'Codex / ChatGPT' },
+        { provider: 'claude', label: 'Claude Code' },
+        { provider: 'gemini', label: 'Gemini CLI' },
+      ].map(row => ({ ...row, available: discovered.some(candidate => candidate.provider === row.provider) })) })
+    } else if (pathname.startsWith(`${PREFIX}/subscriptions/`) && method === 'POST' && subscriptions) {
+      const action = pathname.slice(`${PREFIX}/subscriptions/`.length)
+      const body = await readBody(req, 1024 * 1024)
+      if (action === 'import') await subscriptions.import(body)
+      else if (action === 'import-local') await subscriptions.importLocal(body)
+      else if (action === 'enabled') await subscriptions.setEnabled(body)
+      else if (action === 'remove') await subscriptions.remove(body)
+      else if (action === 'quota') {
+        const controller = new AbortController()
+        const abort = () => controller.abort()
+        res.once('close', abort)
+        try { await subscriptions.refreshQuota({ ...body, signal: controller.signal }) }
+        finally { res.removeListener('close', abort) }
+      } else throw fail(404, '订阅操作不存在')
+      runtime.syncAggregateCatalog()
+      json(res, 200, { accounts: subscriptions.list() })
+    } else if (method === 'GET' && pathname === `${PREFIX}/feedback`) {
+      json(res, 200, feedback.status())
+    } else if (method === 'POST' && pathname.startsWith(`${PREFIX}/feedback/`)) {
+      const action = pathname.slice(`${PREFIX}/feedback/`.length)
+      const body = await readBody(req, 32 * 1024)
+      if (action === 'start') json(res, 200, await feedback.start())
+      else if (action === 'poll') json(res, 200, await feedback.poll(body))
+      else if (action === 'signout') json(res, 200, feedback.signOut())
+      else if (action === 'submit') json(res, 200, await feedback.submit(body))
+      else throw fail(404, '反馈操作不存在')
     } else if (method === 'POST' && pathname === `${PREFIX}/channels/rpc` && channels) {
       // 渠道备份导入包含多账号凭据，仍限制总大小，但不能套设置表单的 16KB。
       const body = await readBody(req, 8 * 1024 * 1024)
@@ -459,6 +865,11 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       if (result.error) throw fail(502, result.error)
       if (result.ok === false) throw fail(500, '无法移除本地授权')
       json(res, 200, result)
+    } else if (method === 'GET' && pathname === `${PREFIX}/disclaimer`) {
+      json(res, 200, { ...DISCLAIMER, acknowledged: disclaimerAcknowledged(stores.settings.get()) })
+    } else if (method === 'POST' && pathname === `${PREFIX}/disclaimer/ack`) {
+      persist({ disclaimerAck: DISCLAIMER_VERSION })
+      json(res, 200, { ok: true, acknowledged: true })
     } else if (method === 'POST' && pathname === `${PREFIX}/settings`) {
       const patch = validateSettings(await readBody(req))
       persist(patch)
@@ -480,8 +891,11 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       persist({ forwardKey: generateKey() })
       // 仅当前管理会话保留；旧密钥与其他会话立即失效。
       const until = sessions.get(id)
+      const privileged = privilegedSessions.has(id)
       sessions.clear()
+      privilegedSessions.clear()
       if (until) sessions.set(id, until)
+      if (until && privileged) privilegedSessions.add(id)
       bootstrap = null
       json(res, 200, { key: stores.settings.get().forwardKey })
     } else if (method === 'GET' && pathname === `${PREFIX}/combos`) {
@@ -612,8 +1026,11 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     } else if (method === 'POST' && pathname === `${PREFIX}/models/refresh`) {
       const body = await readBody(req)
       if (body.probe !== undefined && typeof body.probe !== 'boolean') throw fail(400, 'probe 必须是布尔值')
-      await runtime.refreshCatalog({ probe: body.probe === true, force: body.probe === true })
-      json(res, 200, summary())
+      const { sources } = await runtime.refreshCatalog({ probe: body.probe === true, force: body.probe === true, report: true })
+      json(res, 200, { ...summary(), sources })
+
+
+
     } else if (method === 'GET' && pathname === `${PREFIX}/models/probe`) {
       // 探测进度快照：只读内存状态，不触发任何上游请求。前端在「探测可用性」等待
       // 期间短轮询这个接口画进度条——POST /models/refresh 本身要等整轮跑完才返回。
@@ -654,6 +1071,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       const pathname = new URL(req.url ?? '/', 'http://localhost').pathname
       const asset = assets.get(pathname)
       const isApi = pathname === PREFIX || pathname.startsWith(`${PREFIX}/`)
+      const pageAsset = ['GET', 'HEAD'].includes(req.method) && pluginAssetPath(pathname)
       if (!asset && !isApi) return false
       // 不接受插件专用 dsh-app Referer；独立管理只允许本页面的 HTTP 来源。
       const referer = req.headers.referer
@@ -662,6 +1080,10 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         typeof value !== 'string' || !value.startsWith('http://')
       ))
       if (closed || !cookieName) json(res, 503, { error: '服务正在停止或启动' })
+      // A page asset is a capability URL: the sandboxed iframe has an opaque
+      // origin and sends no session. It must be decided before both the
+      // same-site source fence and the session check.
+      else if (pageAsset) servePluginAsset(req, res, pathname)
       else if (malformedSource || structuralRejection(req) !== undefined) json(res, 403, { error: '管理接口仅允许本机同源访问' })
       else if (asset) {
         if (req.method !== 'GET' && req.method !== 'HEAD') json(res, 405, { error: '资源仅支持 GET 或 HEAD' })
@@ -683,6 +1105,6 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       }
       return true
     },
-    dispose() { closed = true; bootstrap = null; sessions.clear() },
+    dispose() { desktopUpdate.close(); closed = true; bootstrap = null; sessions.clear(); privilegedSessions.clear(); return workbench?.dispose() },
   }
 }

@@ -1,3 +1,4 @@
+import { throwIfModelQueued } from './model-queue.js'
 /**
  * MiniMax **Anthropic Messages** 协议层：请求体构造 + SSE 消费。
  *
@@ -208,7 +209,7 @@ export function serializeMinimaxMessages(
   //
   // ⚠️ 入参签名保持 `readonly Message[]`（对外纯函数 API 不变），但归一化层吃的
   // 是**宽松**的 `{role; content?}[]` —— `Message` 没有索引签名，直接传会报 TS2352。
-  // 既有五个适配器（llm-adapter / openai-compat / buddy / lobsterai / trae）把
+
   // 入参声明成宽松结构来规避；本函数是对外导出的纯函数，改签名会波及调用方，
   // 故在此做一次**单向放宽**（内容原样透传，归一化不改数据）。
   const normalized = normalizeHarnessMessages(
@@ -510,6 +511,7 @@ export async function* consumeMinimaxSse(
       return
     }
     if (typeof parsed !== 'object' || parsed === null) return
+    throwIfModelQueued(parsed)
     const frame = parsed as Record<string, unknown>
     // ⚠️ 帧自带 `type`，优先用它（`event:` 行可能缺失或被代理吞掉）。
     const type = typeof frame.type === 'string' ? frame.type : eventName
@@ -630,11 +632,12 @@ export async function* consumeMinimaxSse(
       for (const rawLine of lines) yield* processLine(rawLine)
     }
   } finally {
+    await reader.cancel().catch(() => {})
     reader.releaseLock?.()
   }
 
   // ⚠️ 空响应必须报错：静默结束会让 harness 认为「模型正常回答但没内容」，
-  // **不会重试**（与 Qoder/CodeArts 的既有约定一致）。
+
   if (!sawAnyChunk) {
     throw new Error('minimax: 模型未返回任何内容块')
   }

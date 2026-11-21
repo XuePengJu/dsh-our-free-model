@@ -38,7 +38,8 @@
 
 import type { BuddyCredential } from './buddy.js'
 import type { BuddyProduct } from './product.js'
-import { fetchCreditBalance, type CreditBalance } from './credits.js'
+import { type CreditBalance } from './credits.js'
+import { fetchCreditBalance } from './buddy-credits.js'
 import {
   buddyExpiringWindowDays,
   buddyBalanceTier,

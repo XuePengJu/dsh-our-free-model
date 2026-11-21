@@ -35,10 +35,12 @@ import dns from 'node:dns'
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { baseModelId, FINGERPRINT_TOOLS } from './upstream.js'
+import { flattenResponsesTools, restoreResponsesToolName } from './messages.js'
 import { anthropicFrames, anthropicMessage, countTokens, foldAnthropicOutcome, fromAnthropicRequest } from './anthropic.js'
 import { toMessagesResponse, tryOptimizations } from './local-optimize.js'
 import { carryFailure, forwardFailure } from './failure.js'
 import { deferStreamResponse } from './deferred-response.js'
+import { geminiEndpoint, geminiError, geminiRoute } from './gemini.js'
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 const REQUEST_ID_HEADER = 'x-ofm-request-id'
@@ -104,9 +106,9 @@ export function generateKey() {
 /** Constant-time comparison of a bearer token against the issued key. */
 export function keyMatches(presented, expected) {
   if (typeof presented !== 'string' || typeof expected !== 'string') return false
-  const a = Buffer.from(presented)
-  const b = Buffer.from(expected)
-  return a.byteLength === b.byteLength && crypto.timingSafeEqual(a, b)
+  const a = crypto.createHash('sha256').update(presented).digest()
+  const b = crypto.createHash('sha256').update(expected).digest()
+  return crypto.timingSafeEqual(a, b)
 }
 
 function bearerOf(req) {
@@ -342,8 +344,12 @@ export async function startForwardServer({ config, complete, modelRows, log = ()
     if (handleRequest && await handleRequest(req, res)) return
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname.replace(/\/+$/, '') || '/'
+    let gemini
+    try { gemini = geminiRoute(path) }
+    catch { geminiError(res, 400, 'invalid Gemini model path'); return }
     const settings = config()
     if (!settings.enabled) {
+      if (gemini) { geminiError(res, 503, 'the forward listener is switched off'); return }
       openAiError(res, 503, 'service_unavailable', 'the forward listener is switched off in Our Free Model settings')
       return
     }
@@ -360,8 +366,16 @@ export async function startForwardServer({ config, complete, modelRows, log = ()
       json(res, 200, health())
       return
     }
-    if (!authorized(req, settings.key)) {
+    const googleKey = req.headers['x-goog-api-key'] ?? url.searchParams.get('key')
+    const googleAuthorized = gemini && typeof settings.key === 'string' && settings.key !== ''
+      && keyMatches(googleKey, settings.key)
+    if (!authorized(req, settings.key) && !googleAuthorized) {
+      if (gemini) { geminiError(res, 401, 'missing or invalid API key'); return }
       openAiError(res, 401, 'invalid_request_error', 'missing or invalid API key')
+      return
+    }
+    if (gemini) {
+      await serveCompletion(req, res, complete, geminiEndpoint({ readBody, json, modelRows, route: gemini, url }), heartbeatMs, trace)
       return
     }
     if (req.method === 'GET' && (path === '/v1/models' || path === '/models')) {
@@ -684,7 +698,7 @@ function authorized(req, key) {
 function corsHeaders() {
   return {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'authorization, content-type, x-api-key',
+    'access-control-allow-headers': 'authorization, content-type, x-api-key, x-goog-api-key, x-goog-api-client',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-max-age': '600',
   }
@@ -747,9 +761,8 @@ function createToolWire(body) {
   // call to a decoy the model should never have dialed — it is suppressed on
   // the wire instead of handed over as a tool the caller cannot run.
   const declared = new Set()
-  for (const tool of Array.isArray(body?.tools) ? body.tools : []) {
-    const name = tool?.function?.name ?? tool?.name
-    if (typeof name === 'string' && name !== '') declared.add(name)
+  for (const tool of flattenResponsesTools(body?.tools).tools) {
+    declared.add(tool.name)
   }
   const slots = new Map()
   let nextIndex = 0
@@ -797,6 +810,39 @@ function createToolWire(body) {
       if (chunk.argumentsDelta) parked.args.push(chunk.argumentsDelta)
       held.set(blockIndex, parked)
       return { kind: 'drop' }
+    },
+    /**
+     * Route a completed tool block.
+     *
+     * Some adapters never emit `tool-call-delta`: they only close the block, so
+     * the whole call arrives here (issue #829, measured on the `minimax/*`
+     * channel — a stream that finished with `finish_reason: tool_calls` while
+     * carrying zero tool frames, so the client had nothing to run and the turn
+     * ended after a sentence of preamble). The non-streaming path already read
+     * these blocks through `foldForwardOutcome`; the streaming path only ever
+     * looked at deltas, and the two consumers then disagreed about the same
+     * turn.
+     *
+     * @returns {{kind:'drop'} | {kind:'forward', openAiIndex:number, first:boolean, id?:string, name:string, args:string}}
+     */
+    admitBlockEnd(block, blockIndex) {
+      if (classified.get(blockIndex) === false) return { kind: 'drop' }
+      const name = typeof block?.name === 'string' ? block.name : ''
+      if (name === '') return { kind: 'drop' }
+      if (!this.executable(name)) { classified.set(blockIndex, false); return { kind: 'drop' } }
+      classified.set(blockIndex, true)
+      const parked = held.get(blockIndex)
+      held.delete(blockIndex)
+      // Deltas already forwarded for this slot own its arguments; the block only
+      // fills in what they could not know (identity, and arguments when the
+      // adapter streamed none).
+      const streamed = parked !== undefined && parked.args.length > 0
+      const args = streamed ? parked.args.join('') : typeof block.arguments === 'string' ? block.arguments : ''
+      return {
+        kind: 'forward', openAiIndex: this.indexOf(blockIndex), first: !streamed,
+        id: typeof block.id === 'string' && block.id !== '' ? block.id : parked?.id,
+        name, args: streamed ? '' : args,
+      }
     },
   }
 }
@@ -857,6 +903,53 @@ async function chatCompletions(req, res, complete, options = {}) {
 
   openStreamHeaders(res, options.heartbeatMs)
   sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] })
+  // OpenAI's delta protocol puts `id` and `function.name` on the opening frame
+  // only, and every later frame is still a *function* delta. The shape this
+  // used to emit for a non-opening frame was a bare `{"index":N}` — no
+  // `function` at all — which a client that validates
+  // `delta.tool_calls[0].function` as an object rejects on the spot, and which
+  // carries nothing an accumulator could use anyway (#452). A frame with
+  // neither the opening fields nor argument bytes is not sent at all.
+  // `type: 'function'` goes on the opening frame because the non-streaming
+  // branch already spells it and the official chunk shape carries it.
+  const emitToolFrame = action => {
+    if (action.kind === 'drop') return
+    if (action.first) {
+      sendSse(res, {
+        id, object: 'chat.completion.chunk', created, model,
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: action.openAiIndex,
+              id: action.id,
+              type: 'function',
+              function: { name: action.name ?? '', arguments: '' },
+            }],
+          },
+          finish_reason: null,
+        }],
+      })
+    }
+    if (action.args) {
+      sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { tool_calls: [{ index: action.openAiIndex, function: { arguments: action.args } }] }, finish_reason: null }] })
+    }
+  }
+  // Which slots have had an opening frame written. An adapter that only closes
+  // blocks still needs one synthesized frame per call, and a slot whose deltas
+  // were all dropped as decoys must not be re-opened by its block-end.
+  const opened = new Set()
+  const emitAction = action => {
+    if (action.kind === 'drop') return
+    const key = action.openAiIndex
+    if (opened.has(key)) {
+      // The identity frame is already on the wire; only arguments remain.
+      if (action.args) emitToolFrame({ ...action, first: false })
+      return
+    }
+    opened.add(key)
+    emitToolFrame(action)
+  }
   let outcome
   try {
     outcome = await complete({ model, openAi: body }, (chunk) => {
@@ -870,24 +963,21 @@ async function chatCompletions(req, res, complete, options = {}) {
         return
       }
       if (chunk.type === 'tool-call-delta') {
-        const action = tools.admit(chunk)
-        if (action.kind === 'drop') return
-        sendSse(res, {
-          id, object: 'chat.completion.chunk', created, model,
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [{
-                index: action.openAiIndex,
-                ...(action.first ? { id: action.id, function: { name: action.name ?? '', arguments: '' } } : {}),
-              }],
-            },
-            finish_reason: null,
-          }],
-        })
-        if (action.args) {
-          sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { tool_calls: [{ index: action.openAiIndex, function: { arguments: action.args } }] }, finish_reason: null }] })
-        }
+        emitAction(tools.admit(chunk))
+        return
+      }
+      // Some adapters close a tool block without ever streaming a delta for it
+      // (issue #829). `foldForwardOutcome` has always read these blocks, so the
+      // non-streaming path and `finish_reason` both knew about the call while
+      // the stream carried no frame for it — the client saw `tool_calls` with
+      // nothing to run. Emit the block through the same gate as a delta.
+      if (chunk.type === 'block-end' && chunk.block?.type === 'tool-call') {
+        const action = tools.admitBlockEnd(chunk.block, chunk.index)
+        // The slot's deltas already put its identity and arguments on the wire;
+        // the block-end only repeats them. Sending them again would double the
+        // arguments the client reassembles.
+        if (action.kind === 'forward' && opened.has(action.openAiIndex)) return
+        emitAction(action)
         return
       }
       if (chunk.type === 'usage') {
@@ -931,6 +1021,18 @@ async function chatCompletions(req, res, complete, options = {}) {
     res.write('data: [DONE]\n\n')
     res.end()
     return
+  }
+  // Last-resort consistency: `finish_reason` is derived from the outcome, so a
+  // turn that reports `tool_calls` must carry the frames for them. If every
+  // delta was dropped as a decoy but the outcome still holds runnable calls,
+  // synthesize one frame each rather than announcing a call the client cannot
+  // see. This is the guard #829 asked for; the block-end branch above is the
+  // normal path.
+  if (calls.length > 0 && opened.size === 0) {
+    for (const [i, call] of calls.entries()) {
+      opened.add(i)
+      emitToolFrame({ kind: 'forward', openAiIndex: i, first: true, id: call.id, name: call.name, args: call.arguments })
+    }
   }
   sendSse(res, {
     id, object: 'chat.completion.chunk', created, model,
@@ -1018,16 +1120,54 @@ async function responsesEndpoint(req, res, complete, options = {}) {
   }
 
   const tools = createToolWire(openAi)
+  const { nsMap } = flattenResponsesTools(body.tools)
+  const restoreCall = name => restoreResponsesToolName(name, nsMap)
   const status = outcome => outcome.truncated === true ? 'incomplete' : 'completed'
   const incompleteDetails = outcome => outcome.truncated === true ? { reason: 'max_output_tokens' } : undefined
-  const outputRows = outcome => [
-    ...(outcome.text ? [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: outcome.text }] }] : []),
-    ...executableCalls(outcome, tools).map(call => ({ type: 'function_call', call_id: call.id, name: call.name, arguments: call.arguments })),
-  ]
+  const outputRows = outcome => {
+    const calls = executableCalls(outcome, tools)
+    const suffix = id.slice('resp-'.length)
+    let outputIndex = 0
+    const rows = []
+    if (outcome.reasoning) {
+      rows.push({
+        id: `rs_${suffix}_${outputIndex++}`, type: 'reasoning', status: status(outcome),
+        summary: [{ type: 'summary_text', text: outcome.reasoning }],
+      })
+    }
+    if (outcome.text) {
+      rows.push({
+        id: `msg_${suffix}_${outputIndex++}`, type: 'message', status: status(outcome), role: 'assistant',
+        // Codex uses this to separate mid-turn progress from the terminal
+        // answer. A response that still calls tools is by definition not final.
+        phase: calls.length > 0 ? 'commentary' : 'final_answer',
+        content: [{ type: 'output_text', text: outcome.text }],
+      })
+    }
+    for (const call of calls) {
+      const restored = restoreCall(call.name)
+      rows.push({
+        id: `fc_${suffix}_${outputIndex++}`, type: 'function_call', status: status(outcome),
+        call_id: call.id, name: restored.name,
+        ...(restored.namespace === undefined ? {} : { namespace: restored.namespace }),
+        arguments: call.arguments,
+      })
+    }
+    return rows
+  }
 
   if (body.stream === true) {
     openStreamHeaders(res, options.heartbeatMs)
-    const say = (type, payload) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`)
+    // `sequence_number` is a required field on every Responses stream event and
+    // has to increase strictly within one response. An accumulator that checks
+    // it (the documented one does: `Number.isInteger(event.sequence_number) &&
+    // event.sequence_number > lastSequence`) throws "Non-increasing event
+    // sequence" on the very first frame when the field is absent, which makes
+    // the whole streaming surface unusable for those clients (#548). Stamping
+    // it in the writer keeps every event covered, including the failure and
+    // suppressed-stream frames that leave by a different branch.
+    let sequence = 0
+    const say = (type, payload) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload, sequence_number: sequence++ })}\n\n`)
     const response = (over = {}) => ({
       id, object: 'response', created_at: created, model, status: 'in_progress',
       output: [], usage: undefined, ...over,
@@ -1040,22 +1180,56 @@ async function responsesEndpoint(req, res, complete, options = {}) {
     // matched its position in the completed output. The final array below
     // replays the announcement order, so a client accumulating by index sees
     // exactly what the completed response lists.
+    // Item ids are client-thread identities, not positions within this one
+    // response. The old positional `msg_0` / `fc_1` spelling made every tool
+    // round reuse the ids from the previous round; Codex then treated later
+    // commentary as an update to the earlier card. Prefixing the response id
+    // keeps added/delta/done stable while guaranteeing uniqueness across turns.
     let nextOutputIndex = 0
     let messageIndex
+    let reasoningIndex
+    let reasoningText = ''
     const callIndexes = new Map()
+    const itemIndexes = new Map()
     const order = []
+    const responseSuffix = id.slice('resp-'.length)
+    const itemId = kind => `${kind}_${responseSuffix}_${nextOutputIndex - 1}`
     const announceMessage = () => {
       if (messageIndex !== undefined) return
       messageIndex = nextOutputIndex++
+      const item = { id: itemId('msg'), type: 'message', status: 'in_progress', role: 'assistant', content: [] }
       order.push('message')
-      say('response.output_item.added', { output_index: messageIndex, item: { type: 'message', role: 'assistant', item_id: `msg_${messageIndex}`, content: [] } })
+      itemIndexes.set('message', item)
+      say('response.output_item.added', { output_index: messageIndex, item })
+      say('response.content_part.added', { item_id: item.id, output_index: messageIndex, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } })
+    }
+    // Responses represents visible thinking as a first-class `reasoning` item.
+    // This path used to discard `reasoning-delta`, leaving Codex no item to
+    // fold as "Worked for …" while usage still reported reasoning tokens.
+    const announceReasoning = () => {
+      if (reasoningIndex !== undefined) return
+      reasoningIndex = nextOutputIndex++
+      const item = { id: itemId('rs'), type: 'reasoning', summary: [] }
+      order.push('reasoning')
+      itemIndexes.set('reasoning', item)
+      say('response.output_item.added', { output_index: reasoningIndex, item })
+      say('response.reasoning_summary_part.added', { item_id: item.id, output_index: reasoningIndex, summary_index: 0, part: { type: 'summary_text', text: '' } })
     }
     const announceCall = (openAiIndex, name) => {
       if (callIndexes.has(openAiIndex)) return
       const index = nextOutputIndex++
+      const restored = restoreCall(name)
+      const item = {
+        id: itemId('fc'), type: 'function_call', status: 'in_progress', call_id: '',
+        name: restored.name,
+        ...(restored.namespace === undefined ? {} : { namespace: restored.namespace }),
+        arguments: '',
+      }
+      item.call_id = item.id
       callIndexes.set(openAiIndex, index)
+      itemIndexes.set(openAiIndex, item)
       order.push(openAiIndex)
-      say('response.output_item.added', { output_index: index, item: { type: 'function_call', item_id: `fc_${index}`, call_id: `fc_${index}`, name, arguments: '' } })
+      say('response.output_item.added', { output_index: index, item })
     }
     let usage
     let outcome
@@ -1064,14 +1238,20 @@ async function responsesEndpoint(req, res, complete, options = {}) {
         if (res.destroyed) return
         if (chunk.type === 'text-delta') {
           announceMessage()
-          say('response.output_text.delta', { item_id: `msg_${messageIndex}`, output_index: messageIndex, delta: chunk.text })
+          say('response.output_text.delta', { item_id: itemIndexes.get('message').id, output_index: messageIndex, content_index: 0, delta: chunk.text })
+          return
+        }
+        if (chunk.type === 'reasoning-delta') {
+          reasoningText += chunk.text
+          announceReasoning()
+          say('response.reasoning_summary_text.delta', { item_id: itemIndexes.get('reasoning').id, output_index: reasoningIndex, summary_index: 0, delta: chunk.text })
           return
         }
         if (chunk.type === 'tool-call-delta') {
           const action = tools.admit(chunk)
           if (action.kind === 'drop') return
           announceCall(action.openAiIndex, action.name ?? '')
-          say('response.function_call_arguments.delta', { item_id: `fc_${callIndexes.get(action.openAiIndex)}`, output_index: callIndexes.get(action.openAiIndex), delta: action.args })
+          say('response.function_call_arguments.delta', { item_id: itemIndexes.get(action.openAiIndex).id, output_index: callIndexes.get(action.openAiIndex), delta: action.args })
           return
         }
         if (chunk.type === 'usage') {
@@ -1111,13 +1291,65 @@ async function responsesEndpoint(req, res, complete, options = {}) {
     // the lane's fold order, which is the announcement order for every shape
     // the free lane emits; a call the ceiling cut mid-JSON simply drops out).
     const finalCalls = executableCalls(outcome, tools)
-    const messageRow = outcome.text ? { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: outcome.text }] } : undefined
+    if (messageIndex === undefined && outcome.text) {
+      announceMessage()
+      say('response.output_text.delta', { item_id: itemIndexes.get('message').id, output_index: messageIndex, content_index: 0, delta: outcome.text })
+    }
+    const announcedCalls = order.filter(entry => entry !== 'message' && entry !== 'reasoning').length
+    for (let position = announcedCalls; position < finalCalls.length; position++) {
+      const row = finalCalls[position]
+      const openAiIndex = `outcome:${position}`
+      announceCall(openAiIndex, row.name)
+      say('response.function_call_arguments.delta', { item_id: itemIndexes.get(openAiIndex).id, output_index: callIndexes.get(openAiIndex), delta: row.arguments })
+    }
+    const messageRow = outcome.text ? {
+      ...itemIndexes.get('message'), status: status(outcome),
+      // Tool-bearing assistant text is progress narration; the terminal text
+      // is what Codex shows before its "Worked for …" completion footer.
+      phase: finalCalls.length > 0 ? 'commentary' : 'final_answer',
+      content: [{ type: 'output_text', text: outcome.text, annotations: [] }],
+    } : undefined
+    const reasoningRow = reasoningText ? { ...itemIndexes.get('reasoning'), summary: [{ type: 'summary_text', text: reasoningText }] } : undefined
     const output = []
     let callPos = 0
     for (const entry of order) {
-      if (entry === 'message') { if (messageRow !== undefined) output.push(messageRow); continue }
+      if (entry === 'message') {
+        if (messageRow !== undefined) {
+          output.push(messageRow)
+          say('response.output_text.done', { item_id: messageRow.id, output_index: messageIndex, content_index: 0, text: outcome.text })
+          say('response.content_part.done', { item_id: messageRow.id, output_index: messageIndex, content_index: 0, part: messageRow.content[0] })
+          say('response.output_item.done', { output_index: messageIndex, item: messageRow })
+        }
+        continue
+      }
+      if (entry === 'reasoning') {
+        if (reasoningRow !== undefined) {
+          output.push(reasoningRow)
+          say('response.reasoning_summary_text.done', { item_id: reasoningRow.id, output_index: reasoningIndex, summary_index: 0, text: reasoningText })
+          say('response.reasoning_summary_part.done', { item_id: reasoningRow.id, output_index: reasoningIndex, summary_index: 0, part: reasoningRow.summary[0] })
+          say('response.output_item.done', { output_index: reasoningIndex, item: reasoningRow })
+        }
+        continue
+      }
       const row = finalCalls[callPos++]
-      if (row !== undefined) output.push({ type: 'function_call', call_id: row.id, name: row.name, arguments: row.arguments })
+      if (row !== undefined) {
+        const index = callIndexes.get(entry)
+        const restored = restoreCall(row.name)
+        const item = {
+          ...itemIndexes.get(entry), status: 'completed',
+          name: restored.name,
+          ...(restored.namespace === undefined ? {} : { namespace: restored.namespace }),
+          arguments: row.arguments,
+        }
+        output.push(item)
+        say('response.function_call_arguments.done', {
+          item_id: item.id, output_index: index,
+          name: restored.name,
+          ...(restored.namespace === undefined ? {} : { namespace: restored.namespace }),
+          arguments: row.arguments,
+        })
+        say('response.output_item.done', { output_index: index, item })
+      }
     }
     const final = response({
       status: status(outcome),
@@ -1225,6 +1457,7 @@ async function messagesEndpoint(req, res, complete, options = {}) {
     model,
     messages,
     tools: parsed.tools,
+    ...parsed.toolChoice === undefined ? {} : { toolChoice: parsed.toolChoice },
     ...parsed.maxTokens === undefined ? {} : { maxTokens: parsed.maxTokens },
     ...parsed.temperature === undefined ? {} : { temperature: parsed.temperature },
     ...parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort },

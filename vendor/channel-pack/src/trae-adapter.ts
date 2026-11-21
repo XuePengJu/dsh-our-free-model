@@ -1,17 +1,9 @@
+import { withQueueAccountRotation } from './queue-rotation.js'
+import { checkQueuedResponse } from './model-queue.js'
 /**
  * TRAE（字节跳动 TRAE IDE）LLM 适配器。
  *
- * 骨架取自 `src/lobsterai-adapter.ts` / `src/buddy-adapter.ts`，但**载荷转换与 SSE 解析全部重写**。
- *
  * ## 与现有适配器的关键差异
- *
- * | 项 | TRAE | Buddy / LobsterAI |
- * |---|---|---|
- * | 请求体 | OpenAI → SOLO 转换（function/config_name/tools 归一化） | 透传 OpenAI 格式 |
- * | SSE 格式 | SOLO 自定义事件（output/token_usage/done/error）→ 转 OpenAI | 标准 OpenAI SSE |
- * | 请求头 | `Cloud-IDE-JWT <token>` + X-* 系列 | Bearer / X-LobsterAI-Client-* |
- * | 图片 | 不支持 | Buddy / LobsterAI 支持 |
- * | prompt_cache_key | 不发 | Buddy 发（腾讯前缀缓存） |
  *
  * 复用的是 `src/sse.ts` 的三个工具函数（`readWithIdleTimeout` / `resolveToolPairing` /
  * `normalizeToolArguments` / `isTruncatedArguments`）——它们处理的是 OpenAI 协议层的通用陷阱。
@@ -230,7 +222,7 @@ export interface TraeAdapterOptions {
    */
   resolveCredential: (modelId?: string) => Promise<TraeCredential | undefined>
   /** 静默续期凭据。 */
-  refresh: () => Promise<void>
+  refresh: (accountId?: string, reason?: 'auth') => Promise<void>
   /** 动态拉取远端模型列表；失败时回退到 `product.fallbackModels`。 */
   fetchRemoteModels?: () => Promise<TraeRemoteModel[]>
   fetchImpl?: typeof fetch
@@ -264,7 +256,6 @@ function contentToText(content: unknown): string {
     .join('')
 }
 
-/** 工具结果内嵌图片的载体文本（与 buddy / lobsterai 适配器同名同义）。 */
 const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 
 /**
@@ -366,11 +357,6 @@ function collectImages(content: readonly unknown[], refs: Map<string, unknown>):
  *    工具返回值**，于是反复请求同一个工具，或凭空编造结果；
  * 3. `reasoning` 块被当作正文喂回，污染上下文。
  *
- * 三个兄弟适配器（`llm-adapter.ts` / `buddy-adapter.ts` /
- * `lobsterai-adapter.ts`）**都有**这一步 `serializeMessages`，只有 TRAE
- * 漏了 —— 本文件顶部甚至 already `import` 了 `resolveToolPairing` 却从未使用，
- * 说明当初就是打算写、但没接上。
- *
  * 序列化后的形状与 Go 端（`payload.go:PrepareBody`）的输入**完全一致**：
  * assistant 带 `tool_calls`（`function` 形态），工具结果展开为独立
  * `{role:'tool', tool_call_id}` 消息。随后 `transformToSOLOBody` 再按 SOLO
@@ -399,7 +385,7 @@ function serializeTraeMessages(
 
   // 工具结果内嵌图片（`read_image` 等）不能并入 `role:'tool'` 消息：该角色的
   // content 只能是字符串，且必须紧跟其 assistant tool_call，中间插消息会 400。
-  // 故挂起到其后的独立 user 消息统一发出（与 buddy / lobsterai 同款处理）。
+
   let pendingToolImages: Array<Record<string, unknown>> = []
   const flushToolImages = (): void => {
     if (pendingToolImages.length === 0) return
@@ -567,6 +553,27 @@ function isTransportError(error: unknown): boolean {
   if (message.includes('fetch failed')) return true
   if (message.includes('econnreset') || message.includes('epipe') || message.includes('socket hang up')) return true
   return false
+}
+
+/**
+ * Trae 用量帧里的缓存命中量（#213）。
+ *
+ * 上游实测（见 issue 的原始报文）发的是 Anthropic 口径的
+ * `cache_read_input_tokens`（写入量在 `cache_creation_input_tokens`），
+ * 不是 openai-compat.ts 读的 OpenAI 口径。三处来源按优先级取首个有值的：
+ * 兼容其它 Trae 端点沿用 OpenAI 拼写的可能。
+ */
+function traeCacheReadTokens(usage: Record<string, unknown>): number {
+  const anthropic = usage.cache_read_input_tokens
+  if (typeof anthropic === 'number' && anthropic > 0) return anthropic
+  const details = usage.prompt_tokens_details
+  if (details != null && typeof details === 'object') {
+    const cached = (details as { cached_tokens?: unknown }).cached_tokens
+    if (typeof cached === 'number' && cached > 0) return cached
+  }
+  const openai = usage.prompt_cache_hit_tokens
+  if (typeof openai === 'number' && openai > 0) return openai
+  return 0
 }
 
 /**
@@ -1064,7 +1071,7 @@ export class TraeAdapter extends LlmAdapter {
     // 4. 发送请求（401/403 时刷新一次凭据后重试）
     let response = await this.send(credential, body, options)
     if (!response.ok && (response.status === 401 || response.status === 403)) {
-      await this.options.refresh()
+      await this.options.refresh(undefined, 'auth')
       // 与主路径一致：按本模型选号（跳过正在限流的账号）。
       const refreshed = await this.options.resolveCredential(options.model)
       if (refreshed === undefined || refreshed.access_token.length === 0) {
@@ -1220,7 +1227,7 @@ export class TraeAdapter extends LlmAdapter {
         headers,
         body,
         signal: options.signal,
-      })
+      }).then(checkQueuedResponse)
     } catch (error) {
       if (options.signal?.aborted) throw error
       if (isTransportError(error)) {
@@ -1274,10 +1281,6 @@ export class TraeAdapter extends LlmAdapter {
     /**
      * 思考死循环检测（见 `createReasoningLoopDetector`）。命中后丢弃后续
      * reasoning 增量，收尾时发截断后的 block，并让 finish 报 max-tokens。
-     *
-     * 与 buddy 同因：`reasoning_tokens` **计入** `completion_tokens`，思考陷入
-     * 病态重复就把输出额度烧光、正文零产出，而 `finish` 若是 `stop`，UI 上
-     * 完全看不出错误。
      */
     const loopGuard = isReasoningLoopGuardEnabled() ? createReasoningLoopDetector() : undefined
     let loopDetected = false
@@ -1472,7 +1475,7 @@ export class TraeAdapter extends LlmAdapter {
                         const fragment = fn !== undefined && typeof fn.arguments === 'string' ? fn.arguments : ''
                         block.text += fragment
                         // ⚠️ **名称为空前不发射任何 chunk**（与 `openai-compat.ts` /
-                        // `buddy-adapter.ts` 同因同修）。只跳过收尾的 `block-end`
+
                         // 不够 —— `BlockAssembler` 会把没有 block-end 的 partial
                         // 也组装成 `name:''`，污染会话后让下游端点以 400 拒绝请求。
                         if (!block.announced) {
@@ -1506,11 +1509,17 @@ export class TraeAdapter extends LlmAdapter {
                     const promptTokens = typeof ev.usage.prompt_tokens === 'number' ? ev.usage.prompt_tokens : 0
                     const completionTokens = typeof ev.usage.completion_tokens === 'number' ? ev.usage.completion_tokens : 0
                     const reasoningTokens = typeof ev.usage.reasoning_tokens === 'number' ? ev.usage.reasoning_tokens : undefined
+                    // prompt_tokens 是**含缓存**的总量（#213 实测：prompt_tokens 4233
+                    // 里已含 cache_read_input_tokens 4224），所以 inputTokens 只计
+                    // 未命中部分，命中量单列 cacheReadTokens —— 与 openai-compat.ts
+                    // 的 DSH 口径一致，否则缓存命中率恒为 0、账本全按 cacheMiss 计价。
+                    const cachedTokens = traeCacheReadTokens(ev.usage)
                     yield {
                       type: 'usage',
                       usage: {
-                        inputTokens: promptTokens,
+                        inputTokens: cachedTokens > 0 ? promptTokens - cachedTokens : promptTokens,
                         outputTokens: completionTokens,
+                        ...cachedTokens > 0 ? { cacheReadTokens: cachedTokens } : {},
                         ...reasoningTokens !== undefined && reasoningTokens > 0 ? { reasoningTokens } : {},
                       },
                     }
@@ -1585,6 +1594,7 @@ export class TraeAdapter extends LlmAdapter {
         }
       }
     } finally {
+      await reader.cancel().catch(() => {})
       reader.releaseLock()
     }
 
@@ -1733,11 +1743,6 @@ export class TraeAdapter extends LlmAdapter {
       && isProseTruncatedByStopString(emittedProse)
     /**
      * 思考死循环是否**是唯一的产出**（无正文、无工具调用）。
-     *
-     * ⚠️ 与 `buddy-adapter.ts` / `openai-compat.ts` 同因同修（Gitee !IKIZNK）：
-     * 只有该步没有可见产出时才报 `error` —— `error` 路径**不落
-     * `assistant/message`**（实测 219 会话里 222 例），有正文/工具调用时报它会把
-     * 用户可见内容整块丢掉。实测守卫命中的 25 例全部只有思考。
      */
     const reasoningLoopIsSoleOutput = loopDetected
       && emittedProse === ''
@@ -1848,7 +1853,7 @@ export class TraeAdapter extends LlmAdapter {
  */
 export function registerTraeLlm(ctx: Context, options: TraeAdapterOptions): TraeAdapter {
   const product = options.product ?? TRAE
-  const adapter = new TraeAdapter(options)
+  const adapter = withQueueAccountRotation(product.id, options, scoped => new TraeAdapter(scoped))
   registerAdapterIdempotent(ctx.llm, [product.id], adapter)
   // 返回实例：Channel Pack 的「显示列表」需要它的 `listAllModels()`（不受用户黑名单
   // 影响的全量目录，带最终展示名/倍率）。DSH 的 `ctx.llm` 不透传自定义方法，

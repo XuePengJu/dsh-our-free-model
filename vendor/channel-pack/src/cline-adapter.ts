@@ -1,3 +1,5 @@
+import { withQueueAccountRotation } from './queue-rotation.js'
+import { checkQueuedResponse } from './model-queue.js'
 /**
  * Cline LLM 适配器。
  *
@@ -22,9 +24,6 @@
  * composer 的模型切换菜单只渲染 `name`（`dsh-client-ui-model-selection` 的
  * ModelSelect 里只有 `title: model.name` 与 `children: model.name`）。
  * 这是被用户报障纠正过的结论。
- *
- * ⚠️ 免费资格是**服务端动态下发**的（`recommended-models` 的 `free` 数组），
- * 故本适配器**不硬编码任何免费模型名** —— 与 CodeArts benefit 集合同约定。
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -74,7 +73,6 @@ import {
 /** 本适配器注册的 provider 路由名（等价于 `CLINE.id`）。 */
 export const PROVIDER = 'cline'
 
-/** 换号次数上限（对齐 buddy / lobsterai / trae 的 `MaxRotate = 3`）。 */
 const CLINE_MAX_ROTATE = 3
 
 /**
@@ -162,7 +160,7 @@ export interface ClineAdapterOptions {
   /** 从凭据存储解析凭据。 */
   resolveCredential: (modelId?: string) => Promise<ClineCredential | undefined>
   /** 静默续期凭据。 */
-  refresh: () => Promise<void>
+  refresh: (accountId?: string, reason?: 'auth') => Promise<void>
   /** 多账号池（用于限流时切换账号与模型黑名单）。 */
   accountPool?: AccountPool
   /**
@@ -189,10 +187,6 @@ export interface ClineAdapterOptions {
    *
    * ⚠️ 与 {@link readImage} 的错误契约**相反**：不可用时必须返回 `undefined`
    * 而不是抛错。判据与回退都在共享的 `projectRequestImage` 里。
-   *
-   * 背景（issue !IKITT9）：Cline 撞的是**请求体体积**（实测 24 张原图全过、
-   * 32 张 ≈122 MiB 才 `TRANSPORT`），不是腾讯那道图片 token 预算 ——
-   * 但解法同样是缩放，且阈值余量最小，所以配一个宽松的字节目标。
    */
   readImageRequest?: (
     attachment: unknown,
@@ -477,7 +471,7 @@ export class ClineAdapter extends LlmAdapter {
     if (entry?.contextWindow !== undefined) resolved.context = { contextWindow: entry.contextWindow }
     // 单次输出上限：必须声明为 `defaultMaxTokens`，否则 DSH 只在调用方显式
     // 给值时才下发 `max_tokens`，上限永久退回网关默认值
-    //（这正是 buddy 那条「回答在 32000 token 处被截断」的根因）。
+
     const maxTokens = clampClineMaxTokens(entry?.maxTokens)
     if (maxTokens !== undefined) resolved.defaultMaxTokens = maxTokens
     // 思考档位：对**所有**模型统一声明（远端不下发档位，见产品配置注释）。
@@ -493,13 +487,6 @@ export class ClineAdapter extends LlmAdapter {
     return resolved
   }
 
-  /**
-   * 兼容 0.1.1-rc.2：新版 `LlmRuntime.prepareCall()` 会调用
-   * `registration.adapter.prepareCall(...)`，而本仓库链接的 dsh-llm 副本
-   * 基类尚未提供该方法，缺少时会在每轮请求开始时抛
-   * `registration.adapter.prepareCall is not a function`。
-   * 与 `BuddyAdapter` / `QoderAdapter` 同款 shim。
-   */
   async prepareCall(
     provider: string,
     model: string,
@@ -626,7 +613,7 @@ export class ClineAdapter extends LlmAdapter {
           { status: response.status },
         )
       }
-      await this.options.refresh()
+      await this.options.refresh(undefined, 'auth')
       const refreshed = await this.options.resolveCredential(options.model)
       if (refreshed === undefined || refreshed.access_token.length === 0) {
         throw new LlmError('cline: credential expired and refresh failed', 'AUTH', { status: response.status })
@@ -637,7 +624,7 @@ export class ClineAdapter extends LlmAdapter {
 
     // 4. 非 2xx：限流时换号重试，其余如实报错。
     //
-    // ⚠️ 与 buddy / lobsterai 一致：只有**限流**才换号。Cline 的账号额度是
+
     // 账户级余额（`/balance`），余额耗尽属于 `hard-credit` 语义，
     // 也值得换号 —— 两者都用状态码 429 / 402 + 文案判定。
     if (!response.ok) {
@@ -892,7 +879,7 @@ export class ClineAdapter extends LlmAdapter {
         },
         body,
         signal: options.signal,
-      })
+      }).then(checkQueuedResponse)
     } catch (error) {
       if (options.signal?.aborted === true) throw error
       if (isTransportError(error)) {
@@ -909,10 +896,6 @@ export class ClineAdapter extends LlmAdapter {
 
 /**
  * 该失败是否值得**换号重试**。
- *
- * 判据与 buddy 系一致：429（频率限制）与 402（额度耗尽）。
- * 其余错误（400 请求格式错、5xx 服务端故障）换号也无用 ——
- * 5xx 是所有账号共用的服务端问题，400 是请求本身的问题。
  *
  * ⚠️ 限流标记该写多长、以及给用户什么建议，都在 `src/cline-rate-limit.ts`
  * （那里有 Cline 专属的等待时长解析：它把时长写在**英文句子**里，
@@ -986,7 +969,7 @@ const CLINE_REGION_FORBIDDEN_MARKERS: readonly string[] = [
  */
 export function registerClineLlm(ctx: Context, options: ClineAdapterOptions): ClineAdapter {
   const product = options.product ?? CLINE
-  const adapter = new ClineAdapter(options)
+  const adapter = withQueueAccountRotation(product.id, options, scoped => new ClineAdapter(scoped))
   registerAdapterIdempotent(ctx.llm, [product.id], adapter)
   // 返回实例：Channel Pack「显示列表」需要 `listAllModels()`（不受黑名单影响、
   // 带最终展示名）。`ctx.llm` 不透传自定义方法，须由调用方持有引用。

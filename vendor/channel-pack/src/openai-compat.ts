@@ -3,35 +3,9 @@
  *
  * ## 为什么单独成模块
  *
- * `src/buddy-adapter.ts` 与 `src/lobsterai-adapter.ts` 各自内联了一套**完全同源**
- * 的逻辑（消息序列化约 200 行、SSE 消费约 230 行），差异只在 URL、请求头与
- * 少数厂商特有字段上。第三个 OpenAI 兼容 provider（qoder）若再复制一份，
- * 这三份实现会在后续修 bug 时逐渐分叉 —— 而它们处理的都是
- * **OpenAI 协议层的通用陷阱**（工具配对、null 字段、分片合并），与厂商无关。
- *
  * 因此本模块把这部分抽出来给 **qoder 适配器**使用。
  *
- * ⚠️ **既有适配器（buddy / lobsterai）刻意不改用它**：那两份实现已被大量
- * 单测与线上流量验证过，重构它们属于与本任务无关的高风险改动。若将来要
- * 统一，应作为独立任务并配以逐条对拍测试。
- *
  * ## 本模块承载的实测教训（逐条都有真实缺陷背景）
- *
- * - **`typeof x === 'string'` 而非 `!== undefined`**：真实 SSE 里一个模型要么走
- *   `content`、要么走 `reasoning_content`，**另一侧恒为 `null`**。只判 undefined
- *   会让 `.length` 在 null 上崩溃（表现为每轮对话第一帧就报
- *   `Cannot read properties of null`）。
- * - **思考字段有两个名字**：`reasoning_content`（Qoder / buddy）与
- *   `reasoning`（**Cline**，实测形如
- *   `{"delta":{"reasoning":"The","reasoning_details":[…]}}`）。只认前者会让
- *   Cline 的思考内容被静默丢弃（表现为「模型不思考」）。两者语义相同，
- *   由同一分支经 `??` 合并处理。
- * - **工具配对剔除**：孤儿 tool_call / tool_result 会让后端 400，且坏历史被每次
- *   请求原样重放 —— 会话彻底报废。发出前剔除可让会话自愈。
- * - **`function.name` 只允许非空覆盖**：后续分片带空串 `""` 会清空已解析出的
- *   工具名 → `unknown tool ""`。
- * - **残缺参数不补 `{}`**：那会伪造出合法外观，让 harness 报 schema 错误而非
- *   重试；正确做法是判 `max-tokens` 让 dsh 重试。
  */
 
 import { LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -54,7 +28,7 @@ import {
   stripCourseLeakIfEnabled,
 } from './sse.js'
 import { normalizeHarnessMessages } from './message-shape.js'
-import { isBillingBusinessCode, looksLikeBillingError, parseQueueError, queueDelayMs } from './model-queue.js'
+import { hasPricingHint, isBillingBusinessCode, looksLikeBillingError, parseQueueError, queueDelayMs, ModelQueuedError, throwIfModelQueued } from './model-queue.js'
 
 /** 将消息内容载荷展平为纯文本字符串。 */
 export function contentToText(content: unknown): string {
@@ -67,7 +41,6 @@ export function contentToText(content: unknown): string {
     .join('')
 }
 
-/** 工具结果内嵌图片的载体文本（与 buddy / lobsterai 适配器同名同义）。 */
 export const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 
 /**
@@ -329,22 +302,7 @@ export function httpErrorCode(status: number): string {
  * `DEFAULT_RETRYABLE_CODES` 不含 `QUEUE`，这样万一没人捕获，它会**直接失败**
  * 并把「排队」这一语义暴露给用户，而不是被 harness 当作 `SERVER` 静默快重试。
  */
-export class ModelQueuedError extends LlmError {
-  /** 解析出的排队信息（`isQueued` / `serviceAvailable` / `waitTime` 等）。 */
-  readonly queueInfo: Readonly<Record<string, unknown>>
-  /** 服务端要求的等待时长（毫秒）；无法解析时为 undefined。 */
-  readonly retryAfterMs: number | undefined
-
-  constructor(
-    message: string,
-    options: { queueInfo: Readonly<Record<string, unknown>>; retryAfterMs?: number },
-  ) {
-    super(message, 'QUEUE')
-    this.name = 'ModelQueuedError'
-    this.queueInfo = options.queueInfo
-    this.retryAfterMs = options.retryAfterMs
-  }
-}
+export { ModelQueuedError } from './model-queue.js'
 
 /**
  * 判断是否为传输级错误（可重试的 TRANSPORT）。
@@ -434,11 +392,6 @@ export async function* consumeOpenAiSse(
    * **正文**死循环检测（**独立实例**，见 `createReasoningLoopDetector`）。
    *
    * ## 真实缺陷（用户报障，2026-09-25）
-   *
-   * 唯一活动 session（`lilishop-go` / `workbuddy/hy4-preview-f`）出现**正文**循环。
-   * 旧实现只在 reasoning 分支调 `observe`，正文分支从不调用 → 正文循环**完全
-   * 看不见**。用真实检测器回放该会话正文，三段全部命中（去重率 0.0412 /
-   * 0.0938 / 0.1745，阈值 < 0.35）—— **不是循环不够长，是通道没接**。
    *
    * ## ⚠️ 为什么必须与 `loopGuard` **分成两个实例**
    *
@@ -588,13 +541,6 @@ export async function* consumeOpenAiSse(
               reasoning_content?: string | null
               /**
                * 思考增量的**另一种字段名**（Cline 用这个）。
-               *
-               * ⚠️ Cline 的实测 SSE 是
-               * `{"delta":{"reasoning":"The","reasoning_details":[…]}}`，
-               * **不是** `reasoning_content`（后者是 Qoder / buddy 的形态）。
-               * 只认 `reasoning_content` 会让 Cline 的思考内容被静默丢弃
-               * （表现为「模型不思考」，且 reasoning 档位看似无效）。
-               * 两者由下方同一分支处理（同一帧只会出现其中一个）。
                */
               reasoning?: string | null
               tool_calls?: Array<{
@@ -620,6 +566,7 @@ export async function* consumeOpenAiSse(
         } catch {
           continue
         }
+        throwIfModelQueued(data)
         // 旁路观测（如 Cline 的网关路由元数据）：失败绝不影响这次推理。
         if (config.onFrame !== undefined) {
           try {
@@ -629,6 +576,13 @@ export async function* consumeOpenAiSse(
           }
         }
         if (data.choices === undefined && config.isQuotaError?.(data)) {
+          throw new LlmError(`${label}: ${errorDetail(payload)}`, 'QUOTA_EXCEEDED')
+        }
+        // Qoder CN 的「去购买」引导页形态：`{ error: { message, pricingUrl } }`
+        // —— 没有业务码也没有 billing 文案，只认下面两个分支时会被归成
+        // `SERVER`，死号永远不被标记（issue #721）。`pricingUrl` 在正常响应
+        // 里从不出现，所以它本身够判。
+        if (data.choices === undefined && hasPricingHint(data)) {
           throw new LlmError(`${label}: ${errorDetail(payload)}`, 'QUOTA_EXCEEDED')
         }
         if (data.error !== undefined) {
@@ -678,7 +632,10 @@ export async function* consumeOpenAiSse(
           // 客户端权威映射（obf 产物）：`billing_error` → `permission`（不重试），
           // 与 `rate_limit` → `rate_limited`（可重试）**明确分开**。
           // 故这里抛 `QUOTA_EXCEEDED`（harness 不将其列入可重试集合）。
-          if (isBillingBusinessCode(data.code) || looksLikeBillingError(data.message)) {
+          // 判据有三种形态（#721 补齐后两种）：业务码 `110`/`112`、明确的
+          // billing 文案、或错误体里带 `pricingUrl`（Qoder CN 的「去购买」
+          // 引导页 —— 没有码也没有文案，只认前两者时死号永远不被标记）。
+          if (isBillingBusinessCode(data.code) || looksLikeBillingError(data.message) || hasPricingHint(data)) {
             throw new LlmError(
               `${label}: ${data.message}`,
               'QUOTA_EXCEEDED',
@@ -793,7 +750,7 @@ export async function* consumeOpenAiSse(
         }
         // 同样必须用 `typeof === 'string'`：reasoning_content 也会显式返回 null。
         //
-        // ⚠️ **两个字段名都要认**：Qoder / buddy 用 `reasoning_content`，
+
         // **Cline 用 `reasoning`**（实测 SSE 形如
         // `{"delta":{"reasoning":"The","reasoning_details":[…]}}`）。
         // 只认前者会让 Cline 的思考内容被静默丢弃 —— 用户看到「模型不思考」，
@@ -860,7 +817,7 @@ export async function* consumeOpenAiSse(
           // （实测 seq=693：`{index:2, id:'call_25e9…', args:[""]}`）——
           // 于是 `BlockAssembler` 为它建了一个 partial，收尾时组装出
           // `{type:'tool-call', name:''}`。这条空名字块被 harness 执行成
-          // `unknown tool ""`、**持久化进会话**，之后切到 workbuddy 时被每次
+
           // 请求原样重放 → **HTTP 400 code 11133**，整条会话报废。
           //
           // 注意：**只跳过收尾的 `block-end` 是不够的** —— 上游
@@ -930,6 +887,8 @@ export async function* consumeOpenAiSse(
       }
     }
   } finally {
+    // releaseLock 不会终止上游，必须先取消响应再允许换号重发。
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 
@@ -1096,6 +1055,7 @@ export async function* consumeOpenAiSse(
   if (!sawDataFrame) {
     let data: unknown
     try { data = JSON.parse(rawJson) } catch {}
+    throwIfModelQueued(data)
     if (typeof data === 'object' && data !== null && !Array.isArray(data)
       && config.isQuotaError?.(data as Record<string, unknown>)) {
       throw new LlmError(`${label}: ${errorDetail(rawJson)}`, 'QUOTA_EXCEEDED')

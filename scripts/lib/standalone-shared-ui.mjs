@@ -15,10 +15,17 @@ source = source.replace(api, "return '/api/management'")
 replaceOnce("api('/pool', { timeout: 25_000 })", "api('/eac/pool', { timeout: 25_000 })")
 // 原页面 POST 空 body；独立管理接口要求 JSON 对象。
 replaceOnce("...body === undefined ? {} : { body: JSON.stringify(body) },", "body: JSON.stringify(body ?? {}),")
+// Tauri 的 WKWebView 不实现原生 confirm（调用恒为 false 且不弹窗），共享卡片的
+// 「移除账号」会静默失效。改走宿主注册的页内确认弹层（channel-browser 挂
+// window.__ofmConfirm，Promise<boolean>）；宿主缺席时视为已确认，不拦操作。
+replaceOnce(
+  "if (typeof window !== 'undefined' && typeof window.confirm === 'function'\n" +
+  "          && !window.confirm(t('chan.confirm.delete').replace('{name}', entry?.nickname ?? accountId))) return",
+  "if (typeof window !== 'undefined' && typeof window.__ofmConfirm === 'function'\n" +
+  "          && !await window.__ofmConfirm(t('chan.confirm.delete').replace('{name}', entry?.nickname ?? accountId))) return",
+)
 replaceOnce("h(PageHero, { t, titleKey: 'dash.title', subKey: 'dash.sub' },",
   "h(PageHero, { title: t('dash.title'), sub: t('dash.sub') },")
-replaceOnce("'chan.sub': '把各家的免费额度接进来：登录一次，模型就出现在对话框的模型选择器里。凭据只写入本机凭据库，页面永远拿不到明文。',",
-  "'chan.sub': '登录各家的账号后，通过同一个 API 地址接入免费额度。凭据保存在本机；账号管理页面不显示明文，导出备份包含凭据。',")
 let record
 vm.runInNewContext(source, { window: { __ModuleLoader__: { load: value => { record = value } } } })
 const shared = record.factory(() => ({})).standalone

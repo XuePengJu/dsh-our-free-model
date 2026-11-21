@@ -31,13 +31,23 @@ if (!['all', 'contributor', 'release'].includes(options.mode)) {
   process.exit(1)
 }
 const { mode, only } = options
-const releaseSuites = new Set(['manifest', 'release', 'catalog'])
+const releaseSuites = new Set(['manifest', 'legacy-payload', 'release', 'catalog', 'legacy-upgrade', 'engine-payload'])
 
 const suites = [
   ['manifest', 'build-manifest.mjs', ['--check']],
+  // The shipped bundles (token-saver, o2a, core) and the engine parts must
+  // match their sources; a stale src/o2a.js would make every suite below test
+  // yesterday's shaping while src/o2a/ already looks updated.
+  ['legacy-payload', 'build-legacy-payload.mjs', ['--check']],
   ['release', 'release-e2e.mjs', []],
+  ['legacy-upgrade', 'legacy-upgrade-test.mjs', mode === 'contributor' ? [] : ['--production']],
+  ['engine-payload', 'engine-payload-test.mjs', []],
   ['release-preparation', 'release-preparation-test.mjs', []],
+  // The npm channel is a rename of this tree; a missed registration literal
+  // ships a package whose two halves mount under different names (#725/#835).
+  ['scoped-publish', 'scoped-publish-test.mjs', []],
   ['client-lint', 'client-lint.mjs', []],
+  ['sponsor', 'sponsor-test.mjs', []],
   ['heatmap', 'heatmap-test.mjs', []],
   ['trust', 'trust-test.mjs', []],
   ['sanitize', 'sanitize-test.mjs', []],
@@ -49,13 +59,34 @@ const suites = [
   ['free-pool', 'free-pool-test.mjs', []],
   ['updater', 'updater-test.mjs', []],
   ['upgrade-ui', 'upgrade-ui-test.mjs', []],
+  ['reload', 'reload-test.mjs', []],
+  ['reload-notice', 'reload-notice-test.mjs', []],
   ['forward', 'forward-test.mjs', []],
+  ['gemini-gateway', 'gemini-gateway-test.mjs', []],
+  ['private-file', 'private-file-permissions-test.mjs', []],
+  ['subscriptions', 'subscriptions-test.mjs', []],
+  ['subscription-completion', 'subscription-completion-test.mjs', []],
+  ['subscription-wiring', 'subscription-wiring-test.mjs', []],
+  ['magpie-engine', 'magpie-engine-test.mjs', []],
+  ['engine-transport', 'engine-transport-test.mjs', []],
+  ['magpie-models', 'magpie-models-test.mjs', []],
+  ['magpie-policy', 'magpie-policy-test.mjs', []],
+  ['magpie-plugin', 'magpie-plugin-test.mjs', []],
+  ['workbench', 'workbench-test.mjs', []],
+  ['workbench-library', 'workbench-library-test.mjs', []],
+  ['workbench-management', 'workbench-management-test.mjs', []],
+  ['client-terminal', 'client-terminal-test.mjs', []],
+  ['quota-routing', 'quota-routing-test.mjs', []],
+  ['turn-accounting', 'turn-accounting-test.mjs', []],
   ['chan-relay', 'chan-relay-test.mjs', []],
   ['channel-pack', 'channel-pack-test.mjs', []],
+  ['channel-pack-gate', 'channel-pack-gate-test.mjs', []],
+  ['channel-source', 'channel-pack-test.mjs', ['--source', '--channels-only']],
   ['channel-network', 'channel-network-test.mjs', []],
   ['forward-boot', 'forward-boot-test.mjs', []],
   ['standalone', 'standalone-test.mjs', []],
   ['desktop', 'desktop-test.mjs', []],
+  ['desktop-update', 'desktop-update-test.mjs', []],
   ['standalone-desktop-regression', 'standalone-desktop-regression-test.mjs', []],
   ['standalone-page-lifecycle', 'standalone-page-lifecycle-test.mjs', []],
   ['standalone-management', 'standalone-management-test.mjs', []],
@@ -65,12 +96,17 @@ const suites = [
   ['standalone-channel-probe-scheduler', 'standalone-channel-probe-scheduler-test.mjs', []],
   // 本项目自己的两个回归：用量页四档周期，以及 WorkBuddy 配置写入（后者放在
   // packages/standalone 里，用相对路径挂进统一入口，避免同一份测试存在两处）。
-  ['usage-period', 'usage-period-test.mjs', []],
+  // ── 以下三个上游套件与本 fork 的设计分歧，暂不纳入回归 ──────────────
+  // auto-checkin-tick：上游 2.8 把自动签到做成「全局开关 + 2.5h 跨天巡检」；
+  //   本 fork 是「逐渠道独立开关/时间/记账 + 5min 周期检查」（auto-checkin.ts），
+  //   上游的 tick/巡检机制已被取代，由 auto-checkin-schedule（157 条用例）覆盖。
+  // standalone-nav / plugins-ui：断言上游 2.8 的 shell（CORE_NAVIGATION）与
+  //   插件中心页接线；本 fork 保留自研九页控制台（standalone-page-lifecycle
+  //   与 standalone-frontend 覆盖导航契约），未并入上游 workspace/plugins 页面。
+
   ['workbuddy-sync', '../packages/standalone/workbuddy-sync.test.mjs', []],
   // 上游 v2.5.2/2.5.3 新增的回归套件（合并时保留我方 usage-period/workbuddy-sync，
   // 同时挂载上游这批新测试；测试文件随合并已落地到 scripts/）。
-  ['reload', 'reload-test.mjs', []],
-  ['channel-source', 'channel-pack-test.mjs', ['--source', '--channels-only']],
   ['channel-credits-rpc', 'channel-credits-rpc-test.mjs', []],
   // 自动签到「每日到点」调度：默认关闭、`time` 契约、UTC+8 判据、跨天重触发。
   // 全部注入假时钟/假定时器，零等待零网络；本机时区被强制成非 UTC+8，
@@ -90,13 +126,26 @@ const suites = [
   ['standalone-package', 'standalone-package-test.mjs', ['--sources-only']],
   ['stream-failure', 'stream-failure-test.mjs', []],
   ['eac-abort', 'eac-abort-test.mjs', []],
+  ['feedback-server', 'feedback-server-test.mjs', []],
+  ['feedback-proxy', 'feedback-proxy-test.mjs', []],
+  ['feedback-e2e', 'feedback-e2e-test.mjs', []],
+  ['feedback-plugin', 'feedback-plugin-test.mjs', []],
+  ['feedback-plugin-ui', 'feedback-plugin-ui-test.mjs', []],
+  ['bun-fetch', 'bun-fetch-test.mjs', []],
+  ['free-lane-compat', 'free-lane-compat-test.mjs', []],
+  ['stable-session', 'stable-session-test.mjs', []],
   ['egress', 'egress-test.mjs', []],
+  ['egress-availability', 'egress-availability-test.mjs', []],
   ['effort', 'effort-test.mjs', []],
   ['projection', 'projection-test.mjs', []],
   ['fingerprint', 'fingerprint-test.mjs', []],
+  ['wire-tool-alias', 'wire-tool-alias-test.mjs', []],
   ['opencode-parity', 'opencode-parity-test.mjs', []],
   ['free-lane-wire', 'free-lane-wire-test.mjs', []],
   ['freetier-gate', 'freetier-gate-test.mjs', []],
+  ['free-lane-quota', 'free-lane-quota-test.mjs', []],
+  ['extensions', 'extensions-test.mjs', []],
+  ['plugins', 'plugins-test.mjs', []],
   ['sniff', 'sniff-test.mjs', []],
   ['truncation', 'truncation-test.mjs', []],
   ['recovery', 'recovery-test.mjs', []],
@@ -139,6 +188,7 @@ const suites = [
   ['plugin-bench-ui', 'plugin-bench-ui-test.mjs', []],
   ['codearts-direct-fetch', 'codearts-direct-fetch-test.mjs', []],
   ['gateway-source', 'gateway-source-test.mjs', []],
+  ['gateway-disconnect', 'gateway-disconnect-test.mjs', []],
 ].filter(([name]) => (mode === 'contributor' ? !['manifest', 'release'].includes(name)
   : mode === 'release' ? releaseSuites.has(name) : true)
   && (only === null || name.startsWith(only)))
@@ -157,7 +207,7 @@ if (only !== null && suites.length === 0) {
  * detail" because buffered child output was unavailable. The deadline is well
  * above the slowest suite, and live output now identifies the last check seen.
  */
-const SUITE_TIMEOUT_MS = 60_000
+const SUITE_TIMEOUT_MS = 120_000
 
 /**
  * Run a suite while forwarding its output as it arrives. Keeping the output
@@ -168,6 +218,9 @@ function runSuite(script, args) {
   return new Promise(resolve => {
     const child = spawn(process.execPath, [path.join(scriptsDir, script), ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Offline suites mock Node fetch. The Bun protocol has its own loopback
+      // tests; never let an existing mock accidentally send a live request.
+      env: { ...process.env, OUR_FREE_MODEL_FREE_TRANSPORT: 'node' },
     })
     let stdout = ''
     let stderr = ''

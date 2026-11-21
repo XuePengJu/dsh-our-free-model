@@ -1,14 +1,9 @@
+import { withQueueAccountRotation } from './queue-rotation.js'
+import { checkQueuedResponse } from './model-queue.js'
 /**
  * Loomy LLM 适配器。
  *
  * ## 协议
- *
- * 实测（2026-09-26）`POST {apiBase}/chat/completions` 是**标准 OpenAI 兼容
- * + 标准 SSE**：`data:` 帧 + 空 `data:` 终止帧，思考在 `delta.reasoning_content`，
- * **无加密、无信封、无格式转换**。与 qoder 同形，故消息序列化与 SSE 消费
- * 直接复用 `src/openai-compat.ts` —— 那是为这种形态抽的共享层，
- * **新增** provider 用它正是其设计意图（AGENTS.md 只禁止拿它去重构
- * buddy/lobsterai 的既有实现）。
  *
  * ⚠️ **认证头与业务端点不同**：chat 端点**只认** `Authorization: Bearer`，
  * 而 `/models`、`/points/*` 只认 `token`。故 `stream()` 用
@@ -212,7 +207,7 @@ export interface LoomyAdapterOptions {
    * ⚠️ Loomy **没有 refresh 端点**，故实现只做**有效性探测**并在失效时抛错，
    * 不会（也无法）续期。
    */
-  refresh: (accountId?: string) => Promise<LoomyCredential | void>
+  refresh: (accountId?: string, reason?: 'auth') => Promise<LoomyCredential | void>
   nextAccount?: (
     modelId: string,
     tried: ReadonlySet<string>,
@@ -375,13 +370,6 @@ export class LoomyAdapter extends LlmAdapter {
     }
   }
 
-  /**
-   * 兼容 0.1.1-rc.2：新版 `LlmRuntime.prepareCall()` 会调用
-   * `registration.adapter.prepareCall(...)`，而本仓库链接的 dsh-llm 副本
-   * 基类尚未提供该方法，缺少时会在每轮请求开始时抛
-   * `registration.adapter.prepareCall is not a function`。
-   * 与 `BuddyAdapter` / `QoderAdapter` 同款 shim。
-   */
   async prepareCall(
     provider: string,
     model: string,
@@ -451,10 +439,6 @@ export class LoomyAdapter extends LlmAdapter {
     /**
      * 思考档位：仅当**该模型确实声明了它**时才下发。
      *
-     * ⚠️ 字段名是 `reasoning_effort`（与远端声明的 `reasoning_efforts` /
-     * `default_reasoning_effort` 同源，也与 OpenAI 标准一致）。
-     * 本插件其余适配器同样用它（如 `buddy-adapter.ts`）。
-     *
      * ⚠️ **必须校验档位在该模型的 `efforts` 内**：DSH 会把用户选的档位直接透传，
      * 给一个远端不认的值比不给更糟。校验不过时**静默不下发**（退回服务端默认档），
      * 而不是发一个可能被拒的值。
@@ -504,7 +488,7 @@ export class LoomyAdapter extends LlmAdapter {
           headers: loomyChatHeaders(token),
           body: buildBody(),
           signal: options.signal,
-        })
+        }).then(checkQueuedResponse)
       } catch (error) {
         if (options.signal?.aborted) throw error
         if (isTransportError(error)) {
@@ -526,7 +510,7 @@ export class LoomyAdapter extends LlmAdapter {
         let response = await send(credential.access_token)
         if (response.status === 401 || response.status === 403) {
           await response.body?.cancel()
-          credential = await this.options.refresh(accountId || undefined)
+          credential = await this.options.refresh(accountId || undefined, 'auth')
             ?? await this.options.resolveCredential(options.model)
           if (credential === undefined || credential.access_token.length === 0) {
             throw new LlmError('loomy: credential expired and refresh failed', 'AUTH', { status: response.status })
@@ -599,7 +583,7 @@ function resolveChunkTimeoutMs(): number {
  */
 export function registerLoomyLlm(ctx: Context, options: LoomyAdapterOptions): LoomyAdapter {
   const product = options.product ?? LOOMY
-  const adapter = new LoomyAdapter(options)
+  const adapter = withQueueAccountRotation(product.id, options, scoped => new LoomyAdapter(scoped))
   registerAdapterIdempotent(ctx.llm, [product.id], adapter)
   return adapter
 }

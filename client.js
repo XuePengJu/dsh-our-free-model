@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
     const DICT = {
       zh: {
         'meta.title': 'Our Free Model',
-        'meta.description': '在 DeepSeek Harness 内直连免密免费模型：清单随上游更新、地区可用性自动探测、思考强度真实生效，并附 Token 看板与 OpenAI 兼容转发端口。',
+        'meta.description': '在 DeepSeek Harness 内直连免密免费模型：清单随上游更新、地区可用性按需探测、思考强度真实生效，并附 Token 看板与 OpenAI 兼容转发端口。',
         'ann.pitch': '你只需在 dsh 里装上这个插件，无需登录、注册、填 API Key 或任何其它操作，就能用上包括 Muse Spark 1.3、MiMo V2.6 在内的前沿模型——完全免费，不限量。',
         nav: 'Our Free Model',
         title: 'Our Free Model',
@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
         loading: '正在加载…',
         loadFailed: '无法连接插件后端',
         retry: '重试',
+        'effects.enabled': '视觉特效',
+        'effects.hint': '控制背景光晕、毛玻璃和装饰动画；鱼缸和模型功能始终保留。',
         'state.available': '可用',
         'state.region-blocked': '地区受限',
         'state.unavailable': '暂不可用',
@@ -68,6 +70,19 @@ window.__ModuleLoader__.load({
         'tag.rungTitle': '各档位实际发出的输出上限：{ladder}。档位是思考与回答共用的额度，且不会超过上面的最长输出与设置里的单次上限。',
         'tag.levels': '思考档',
         'tag.levelsTitle': '该模型自己声明的思考档位，选中后按原值下发到上游的 reasoning_effort 字段；档位之外的取值会被上游拒绝。',
+        'tag.longContext': '长文本',
+        'tag.longContextTitle': '上下文窗口 ≥ 200K：能装下整个仓库或一本书。',
+        'tag.longOutput': '长输出',
+        'tag.longOutputTitle': '单次最长输出 ≥ 64K：适合整文件重写与长文生成。',
+        'tag.thinkingLevels': '多档思考',
+        'tag.thinkingLevelsTitle': '声明了 4 档以上思考强度，可以在延迟与深度之间按请求切换。',
+        'tag.fast': '快',
+        'tag.fastTitle': '实测首字与吞吐明显优于同类。',
+        'tag.eac': 'EAC',
+        'tag.eacTitle': '走 EAC 协付车道。',
+        'tag.capabilities': '擅长',
+        'tag.visionTitle': '支持图片输入。',
+        'tag.thinkingTitle': '可以开关或调节思考强度。',
         'effort.off': '关闭',
         'effort.minimal': '最小',
         'effort.low': '低',
@@ -78,6 +93,20 @@ window.__ModuleLoader__.load({
         'tag.context': '上下文',
         'tag.output': '最长输出',
         'tag.latency': '首字',
+        'perf.more': '详情',
+        'perf.less': '收起',
+        'perf.rate': '状态',
+        'perf.rateTitle': '成功率排除业务拒绝，统计包含当前尚未结束的小时。',
+        'perf.barsTitle': '近期成功率采样；灰色条表示暂无数据。',
+        'perf.latency': '延迟',
+        'perf.speed': '吞吐',
+        'perf.windowNote': '最近 {h} 小时的性能指标，来自本站统计。',
+        'perf.latencyTrend': '延迟趋势（最近 24 小时）',
+        'perf.latencySub': '平均 Token 延迟',
+        'perf.rateTrend': '可用率（最近 24 小时）',
+        'perf.rateSub': '成功率排除业务拒绝，统计包含当前尚未结束的小时。',
+        'perf.loading': '正在读取性能数据…',
+        'perf.noSeries': '本站暂无该模型的逐小时数据。',
         'tag.eacChannel': 'EAC 渠道 · 协付',
         'tag.new': 'NEW',
         'tag.newTitle': '新上线的模型，经 EAC 渠道转发自 OpenCode 免费车道。',
@@ -243,7 +272,7 @@ window.__ModuleLoader__.load({
         'visibility.hint': '隐藏仅影响模型选择器和网关清单，不影响历史会话；仍可在这里恢复显示。',
         'routing.capacity': '链路能力交集',
         'routing.capacityUnavailable': '暂时无法读取链路能力交集，请重试。',
-        'pref.interval': '自动探测间隔（分钟）',
+        'pref.interval': '自动刷新间隔（分钟）',
         'pref.maxTokens': '单次输出上限（token）',
         'pref.egress': '当前出口',
         'pref.probedAt': '最近探测',
@@ -260,6 +289,9 @@ window.__ModuleLoader__.load({
         'ann.later': '稍后再说',
         'ann.page': '第 {n} / {total} 页',
         'ann.openSettings': '打开设置页',
+        'disclaimer.version': '免责声明版本 v{n}',
+        'disclaimer.saving': '保存中…',
+        'disclaimer.reopen': '使用须知与免责声明',
         'ann.p1': '免密：安装即可用，不需要注册、不需要填任何 API Key。',
         'ann.p2': '清单跟随上游：模型集合、上下文长度与能力每次刷新都重新拉取。',
         'ann.p3': '诚实的能力声明：探测不出来的能力不会显示，思考强度档位是真实生效的输出上限。',
@@ -300,6 +332,7 @@ window.__ModuleLoader__.load({
         'news.osDenied': '浏览器拒绝了通知权限；需要在系统/浏览器设置里手动恢复。',
         'news.link': '查看详情',
         'news.urgentTitle': '重要公告',
+        'news.holdHint': '为确保读完，{s} 秒后可关闭',
         'news.gotIt': '知道了',
         'news.lastFetch': '最近拉取',
         'news.fetchFailed': '公告源暂不可达（显示的是缓存）',
@@ -310,6 +343,7 @@ window.__ModuleLoader__.load({
         'upgrade.current': '运行版本',
         'upgrade.installed': '磁盘版本',
         'upgrade.mismatch': '运行版本与磁盘版本不一致，请先确认安装状态，再重载或重启。',
+        'upgrade.restartHint': '当前宿主不能安全地热重载插件。升级文件会先安全安装，之后需要重启宿主应用才能生效。',
         'upgrade.recovery': '上次升级未完整恢复。请关闭应用，使用保留的备份恢复安装目录，重新启动后检查更新。',
         'upgrade.backup': '恢复备份',
         'upgrade.latest': '最新版本',
@@ -327,6 +361,7 @@ window.__ModuleLoader__.load({
         'upgrade.phase.reload': '正在热重载…',
         'upgrade.done': '已升级到 {version}，插件已热重载生效。',
         'upgrade.doneRefresh': '已升级到 {version}。点击刷新页面加载新界面。',
+        'upgrade.restart': '已升级到 {version}。文件已安全安装，请重启宿主应用后生效。',
         'upgrade.failed': '升级失败：{message}',
         'upgrade.history': '最近一次升级',
         'upgrade.from': '由 {from} 升级',
@@ -343,13 +378,43 @@ window.__ModuleLoader__.load({
         'toast.updateBody': '发现新版本 {latest}（当前 {current}），可到设置页升级。',
         'nav.tab.free': '免费模型',
         'nav.tab.eac': 'EAC 模型',
-        'nav.tab.channels': '白嫖模型接入',
+        'nav.tab.channels': 'EAC router',
         'nav.tab.picks': '推荐项目',
         'star.cta': '点个 Star',
         'star.title': '在 GitHub 上给本仓库点 Star',
         'picks.title': '推荐项目',
         'picks.sub': '同一作者的一组开源项目：把 Agent 装进原生桌面、让上百个插件和谐共存、把视频和设计留在这台机器上。用得上，就顺手点个 Star。',
         'picks.foot': 'Star 是开源项目唯一的「工资条」——它决定作者还能投入多少时间。这里的项目都免费、开源、无广告，点一下就是最实在的支持。',
+        // ── 反馈与许愿 ────────────────────────────────────────────────────────
+        'nav.tab.feedback': '反馈与许愿',
+        'fb.title': '反馈与许愿',
+        'fb.sub': '报告一个问题，或告诉我们你想要什么功能',
+        'fb.signIn': '使用 GitHub 登录',
+        'fb.signOut': '退出 {login}',
+        'fb.gateTitle': '先登录再提交',
+        'fb.gateBody': '登录只用来确认这条反馈来自谁，方便我们在修好后回来找你。只索取 GitHub 的公开身份，不请求任何仓库权限，也不会发布到公开的 issue 列表。',
+        'fb.code': '在 GitHub 页面输入这串验证码',
+        'fb.openVerify': '打开 github.com/login/device',
+        'fb.waiting': '正在等待授权完成…',
+        'fb.opened': '已打开 GitHub 授权页。输入上面的验证码后回到这里。',
+        'fb.signedIn': '已登录 GitHub，可以提交反馈了。',
+        'fb.signedOut': '已退出反馈登录。',
+        'fb.kind.bug': '报告问题',
+        'fb.kind.wish': '功能许愿',
+        'fb.titleField': '标题',
+        'fb.titlePlaceholderBug': '一句话说明出了什么问题',
+        'fb.titlePlaceholderWish': '一句话说明你希望有什么',
+        'fb.detailField': '详细描述',
+        'fb.detailPlaceholderBug': '复现步骤、你期望的结果、实际发生了什么。有报错原文请一并贴上。',
+        'fb.detailPlaceholderWish': '你现在的做法是什么、卡在哪里、希望这个功能怎么用。',
+        'fb.submit': '提交反馈',
+        'fb.sent': '已提交，单号 {id}',
+        'fb.submitted': '反馈已提交，谢谢。',
+        'fb.expired': '验证码已过期，请重新发起登录。',
+        'fb.denied': 'GitHub 授权未完成。',
+        'fb.stale': '反馈登录已失效，请重新用 GitHub 登录后再次提交（正文已保留）。',
+        'fb.version': '版本',
+        'fb.note': '提交的内容会带上你的插件版本与操作系统，方便定位问题。除此之外不会读取本机的任何数据。',
         'picks.stars': 'Stars',
         'picks.forks': 'Forks',
         'picks.fork': 'Fork',
@@ -385,6 +450,103 @@ window.__ModuleLoader__.load({
         'picks.design.tag4': '真实文件导出',
         'free.title': '免费模型',
         'free.sub': '匿名免费与 Kilo 模型统一展示：水位表示可选比例，实测状态单独显示。',
+        'nav.tab.extensions': 'OFM 渠道扩展',
+        'ext.search': '搜索扩展',
+        'ext.all': '全部',
+        'ext.title': 'OFM 渠道扩展',
+        'ext.bunMissing': 'Bun 未安装',
+        'ext.changelog': '更新内容',
+        'ext.viewSource': '查看源码',
+        'ext.indexFresh': '签名索引生成于 {at}',
+        'ext.bunHint': 'OpenCode 免费车道推理需要本机 Bun：安装 Bun（bun.sh 或 npm i -g bun）后重启，或把可执行文件路径写入 OUR_FREE_MODEL_BUN。',
+        'ext.sub': '渠道与增强模块的市场：签名索引、沙箱运行、与本体解耦；装一个渠道，模型立即出现在免费页。',
+        'ext.tabDiscover': '发现',
+        'ext.tabInstalled': '已安装',
+        'ext.tabSecurity': '安全',
+        'ext.install': '安装',
+        'ext.installing': '安装中…',
+        'ext.installed': '已安装',
+        'ext.update': '更新',
+        'ext.updateAvailable': '有更新',
+        'ext.enable': '启用',
+        'ext.disable': '停用',
+        'ext.uninstall': '卸载',
+        'ext.channel': '渠道',
+        'ext.enhancement': '增强',
+        'ext.verified': '已签名',
+        'ext.verifiedTitle': '该扩展来自 Ed25519 签名的官方索引',
+        'ext.refresh': '刷新索引',
+        'ext.empty': '扩展索引不可达',
+        'ext.indexHint': '索引可能仍在预热或被网络拦截；点右上角「刷新索引」重试。',
+        'ext.failed': '操作失败',
+        'ext.security': '安全模型',
+        'ext.securityBody': '扩展是可执行代码——只安装这份签名索引里的扩展。安装时会校验 Ed25519 签名与 SHA-256 摘要，做静态扫描（拒绝 node:*、process、eval、动态 import 与压缩产物）；运行在独立 Worker 的 VM 沙箱里，唯一的 import 是受控的 ofm:sdk；网络只能访问 manifest 里声明过的域名，密钥只进不出，每个 hook 都有超时熔断。',
+        'ext.securityBody2': '这套防御针对的是意外与草率，不是蓄意作者——真正的门是签名、人工审核与这份索引的提交历史。发现可疑扩展请通过 ofm-extensions 仓库的 SECURITY.md 举报。',
+        'ext.openRepo': '打开 ofm-extensions 仓库',
+        'ext.detail': '详情',
+        'ext.confirmRemove': '卸载 {name}？它的配置与密钥会一并删除。',
+        'ext.notRunning': '未运行',
+        'ext.count': '索引 {n} 个扩展',
+        'ext.discoverEmpty': '没有匹配的扩展。',
+        'ext.installedEmpty': '还没有安装任何扩展。去「发现」页挑一个。',
+        'ext.permissions': '权限',
+        'ext.permNetwork': '网络：可访问 {n} 个已声明的域名',
+        'ext.permSecrets': '密钥：{n} 项（只写不读回）',
+        'ext.openHomepage': '打开主页',
+        'ext.secretPlaceholder': '输入后保存，仅显示尾 4 位',
+        'ext.close': '关闭',
+        'ext.countByType': '渠道 {c} · 增强 {e}',
+        'ext.sort': '排序',
+        'ext.sortCurated': '默认',
+        'ext.sortNewest': '最新',
+        'ext.sortName': '名称',
+        'ext.searchHint': '按 / 聚焦',
+        'ext.clearSearch': '清除筛选',
+        'ext.updateAll': '全部更新',
+        'ext.updateProgress': '更新中 {i}/{n}',
+        'ext.updateCount': '{n} 个可更新',
+        'ext.modelCount': '模型 {n}',
+        'ext.requiresHost': '需宿主 ≥ {v}',
+        'ext.selfTest': '自检',
+        'ext.selfTestOk': '自检通过',
+        'ext.selfTestFail': '自检失败',
+        'ext.replaces': '接管内置 {name} 渠道',
+        'ext.filterTag': '标签',
+        'ext.hooks': '钩子',
+        'ext.type': '类型',
+        'ext.license': '许可证',
+        'ext.published': '发布于',
+        'ext.models': '模型',
+        'ext.repository': '仓库',
+        'ext.openRepository': '打开仓库',
+        'ext.storage': '本地存储',
+        'ext.storageOn': '可读写本地存储文件',
+        'ext.storageOff': '不读写本地文件',
+        'ext.originEmpty': '无网络访问',
+        'ext.notInstalledHint': '尚未安装，详情仅供参考。',
+        'ext.autoUpdate': '自动更新',
+        'ext.autoUpdateHint': '索引刷新时，自动安装已过观察窗口且处于启用状态的扩展更新；新版本先沉淀 {h} 小时再自动安装，防供应链投毒。',
+        'ext.source': '索引来源',
+        'ext.sourceBundled': '内置快照',
+        'ext.soakReady': '已过观察窗口，可立即更新',
+        'ext.soakWaiting': '观察窗口约剩 {h} 小时（新版本先沉淀再自动装，防供应链投毒）；也可手动立即更新',
+        'ext.auditTitle': '最近操作',
+        'ext.auditEmpty': '暂无记录。',
+        'ext.auditInstall': '安装',
+        'ext.auditInstallLocal': '本地安装',
+        'ext.auditUninstall': '卸载',
+        'ext.auditEnabled': '启停',
+        'ext.auditConfig': '配置',
+        'ext.auditSecret': '密钥',
+        'ext.auditAutoUpdate': '自动更新',
+        'ext.auditRegistry': '刷新市场',
+        'ext.exportShelf': '导出清单',
+        'ext.importShelf': '导入清单',
+        'ext.exportDone': '扩展清单已导出（JSON，不含密钥）',
+        'ext.importDone': '已恢复 {ok} 个扩展{fail}',
+        'ext.importFail': '，{n} 个失败（可能已下架或不兼容）',
+        'ext.importInvalid': '清单文件不是有效的 JSON，或没有可安装的扩展',
+        'ext.shelfTitle': '迁移助手：清单只含 id、版本、启停与配置，密钥永不导出',
         'sponsor.bannerTag': '中转站',
         'sponsor.bannerTitle': '北辰 API 中转站',
         'sponsor.bannerDescription': 'OFM 官方合作中转站，为用户提供稳定、开放、高性价比的大模型 API 接入服务。支持 Claude、ChatGPT、Grok、Gemini、智谱 GLM、Kimi、DeepSeek 等主流模型，适合在 Codex、Gemini CLI、Claude Code 及其他开发工具中统一配置使用。邀请可获百分之十的返现。',
@@ -397,8 +559,17 @@ window.__ModuleLoader__.load({
         'eac.title': 'EAC 模型',
         'eac.sub': '桌面端协付渠道：GitHub 登录并 star 本仓库后解锁，与免费车道互不影响。',
         'eac.tankLabel': '协付池压力',
-        'chan.title': '白嫖模型接入',
-        'chan.sub': '把各家的免费额度接进来：登录一次，模型就出现在对话框的模型选择器里。凭据只写入本机凭据库，页面永远拿不到明文。',
+        'chan.title': 'EAC router',
+        'chan.sub': '账号渠道',
+        'chan.search': '搜索渠道、厂商或 ID',
+        'chan.filterStatus': '连接状态',
+        'chan.filterAll': '全部',
+        'chan.filterEmpty': '没有符合筛选条件的渠道。',
+        'chan.showing': '{shown} / {total} 个渠道',
+        'chan.connect': '连接',
+        'chan.manage': '管理',
+        'chan.collapse': '收起',
+        'chan.state.loading': '读取中',
         'chan.pack.failed': '渠道包未挂载：{reason}（免费车道与 EAC 不受影响）',
         'chan.pack.hint': '渠道包由本插件内置（vendor/channel-pack），随插件一起升级。',
         'chan.state.on': '已接入',
@@ -578,10 +749,67 @@ window.__ModuleLoader__.load({
         'chan.auto.timeFailed': '签到时间保存失败：{reason}',
         'chan.auto.timeInvalid': '请填写 24 小时制时间，如 10:05',
         'nav.tab.aggregate': '聚合渠道',
+        'nav.tab.workspace': '模型工作台（magpie）',
+        'engine.start': '打开工作台',
+        'engine.starting': '正在启动工作台…',
+        'engine.failed': '工作台启动失败',
+        'engine.title': '模型工作台（magpie）',
+        'engine.refresh': '刷新模型',
+        'engine.expand': '展开工作台',
+        'engine.close': '收起工作台',
+        'engine.tools': '工作台',
+        'engine.settings': '工作台设置',
+        'sub.title': '订阅账号',
+        'sub.add': '导入账号',
+        'sub.discover': '查找本机账号',
+        'sub.candidates': '本机登录记录',
+        'sub.noCandidates': '没有找到可导入的本机登录记录。',
+        'sub.review': '选择导入',
+        'sub.empty': '尚未导入订阅账号。',
+        'sub.provider': '服务商',
+        'sub.label': '账号名称',
+        'sub.models': '模型 ID',
+        'sub.credentials': '凭据 JSON',
+        'sub.file': '凭据文件',
+        'sub.paste': '粘贴 JSON',
+        'sub.upload': '选择文件',
+        'sub.key': 'API Key',
+        'sub.baseUrl': 'Base URL',
+        'sub.format': '接口协议',
+        'sub.import': '确认导入',
+        'sub.cancel': '取消',
+        'sub.working': '处理中…',
+        'sub.invalidJson': '凭据必须是有效的 JSON 对象。',
+        'sub.fileTooLarge': '凭据文件不能超过 1 MB。',
+        'sub.fileFailed': '无法读取凭据文件。',
+        'sub.invalidEndpoint': '请输入 HTTP(S) 地址，不含登录信息、查询参数或片段。',
+        'sub.keyRequired': '请输入 API Key。',
+        'sub.invalidModels': '请输入有效的模型 ID，以逗号或换行分隔。',
+        'sub.loadFailed': '无法读取订阅账号',
+        'sub.operationFailed': '操作未完成，请重试。',
+        'sub.enabled': '启用账号',
+        'sub.refreshQuota': '刷新额度',
+        'sub.remove': '移除',
+        'sub.confirmRemove': '确认移除',
+        'sub.removeQuestion': '移除此账号及保存的凭据？',
+        'sub.unknown': '未知',
+        'sub.quotaFailed': '额度查询失败',
+        'sub.fiveHour': '5 小时',
+        'sub.weekly': '每周',
+        'sub.used': '已用 {n}%',
+        'sub.remaining': '剩余 {n}%',
+        'sub.resets': '重置时间',
+        'sub.checked': '查询时间',
+        'sub.plan': '订阅方案',
+        'sub.balance': '余额',
+        'sub.credits': '积分',
+        'sub.unlimited': '不限量',
+        'sub.noModels': '未指定模型',
+        'sub.accounts': '{n} 个账号',
         'nav.tab.saver': '省 Token',
         'nav.tab.routing': '路由',
         'agg.title': '聚合渠道',
-        'agg.sub': '把第三方 OpenAI 兼容端点接进同一条模型清单：写入本机的 Key 只以指纹回显，保存后清单与模型选择器一起更新。',
+        'agg.sub': '第三方提供商',
         'agg.registryCount': '注册表 {n} 家',
         'agg.configuredCount': '已配置 {n} 家',
         'agg.addProvider': '添加提供商',
@@ -599,11 +827,15 @@ window.__ModuleLoader__.load({
         'agg.credential': '获取 Key',
         'agg.modelCount': '{n} 个模型',
         'agg.select': '配置',
-        'agg.configuredTitle': '已配置的提供商',
+        'agg.configuredTitle': '提供商目录',
         'agg.configuredHint': '保存后立即生效：清单与模型选择器一起更新。',
+        'agg.configured': '已配置',
+        'agg.unconfigured': '未连接',
+        'agg.connect': '连接',
+        'agg.manage': '管理',
         'agg.empty': '还没有接入任何聚合提供商',
         'agg.emptyHint': '这一页把第三方端点接进模型清单：聚合站、免费额度池、本机推理服务都行。填入 Key 与可选的 Base URL，它们的模型就会出现在模型选择器里，也能成为降级链的一环。',
-        'agg.filterEmpty': '没有符合筛选条件的已配置提供商。',
+        'agg.filterEmpty': '没有符合筛选条件的提供商。',
         'agg.contributes': '当前贡献 {n} 个模型',
         'agg.contributesNone': '当前未贡献任何模型',
         'agg.hasKey': '已存 Key {hint}',
@@ -717,6 +949,9 @@ window.__ModuleLoader__.load({
         'routing.strategy': '策略',
         'routing.strategy.fallback': '顺序降级',
         'routing.strategy.roundRobin': '轮询',
+        'routing.strategy.smart': '额度优先',
+        'routing.strategy.usage': '最少使用',
+        'routing.strategy.pace': '每周额度节奏',
         'routing.stickyLimit': '轮询粘滞次数',
         'routing.stickyHint': '轮询时同一个模型连续用多少次再换下一个。',
         'routing.members': '成员（按顺序）',
@@ -758,7 +993,7 @@ window.__ModuleLoader__.load({
       },
       en: {
         'meta.title': 'Our Free Model',
-        'meta.description': 'Free no-key models inside DeepSeek Harness: a roster that follows upstream, live regional availability, genuinely enforced thinking levels, a token dashboard and an OpenAI-compatible local forward port.',
+        'meta.description': 'Free no-key models inside DeepSeek Harness: a roster that follows upstream, on-demand regional availability, genuinely enforced thinking levels, a token dashboard and an OpenAI-compatible local forward port.',
         'ann.pitch': 'All you do is install this plugin in dsh — no login, no sign-up, no API key, no other step of any kind. The frontier models are simply there, Muse Spark 1.3 and MiMo V2.6 among them. Completely free, with no usage cap.',
         nav: 'Our Free Model',
         title: 'Our Free Model',
@@ -768,6 +1003,8 @@ window.__ModuleLoader__.load({
         loading: 'Loading…',
         loadFailed: 'Cannot reach the plugin backend',
         retry: 'Retry',
+        'effects.enabled': 'Visual effects',
+        'effects.hint': 'Toggle background glow, glass blur and decorative motion. The aquarium and model features stay available.',
         'state.available': 'Available',
         'state.region-blocked': 'Region-limited',
         'state.unavailable': 'Unavailable',
@@ -788,6 +1025,19 @@ window.__ModuleLoader__.load({
         'tag.rungTitle': 'What each rung actually sends: {ladder}. A rung is one ceiling shared by thinking and the answer, and it never exceeds the max output above or the per-call ceiling in settings.',
         'tag.levels': 'Thinking levels',
         'tag.levelsTitle': 'The levels this model declares itself; the selected one is sent as-is in the upstream reasoning_effort field, and a value outside the set is rejected upstream.',
+        'tag.longContext': 'Long context',
+        'tag.longContextTitle': 'A context window of 200K or more: fits a whole repository or a book.',
+        'tag.longOutput': 'Long output',
+        'tag.longOutputTitle': 'A per-call output ceiling of 64K or more: suits whole-file rewrites and long-form generation.',
+        'tag.thinkingLevels': 'Multi-level thinking',
+        'tag.thinkingLevelsTitle': 'Declares four or more thinking levels, so a request can trade latency for depth.',
+        'tag.fast': 'Fast',
+        'tag.fastTitle': 'Measured time-to-first-token and throughput are clearly better than its peers.',
+        'tag.eac': 'EAC',
+        'tag.eacTitle': 'Served through the EAC co-paid lane.',
+        'tag.capabilities': 'Good at',
+        'tag.visionTitle': 'Accepts image input.',
+        'tag.thinkingTitle': 'Thinking can be toggled or tuned.',
         'effort.off': 'Off',
         'effort.minimal': 'Minimal',
         'effort.low': 'Low',
@@ -798,6 +1048,20 @@ window.__ModuleLoader__.load({
         'tag.context': 'Context',
         'tag.output': 'Max output',
         'tag.latency': 'First token',
+        'perf.more': 'Details',
+        'perf.less': 'Hide',
+        'perf.rate': 'Status',
+        'perf.rateTitle': 'Success rate excludes business rejections; the current unfinished hour is included.',
+        'perf.barsTitle': 'Recent success-rate samples; a grey tick means no data.',
+        'perf.latency': 'Latency',
+        'perf.speed': 'Throughput',
+        'perf.windowNote': 'Performance over the last {h} hours, from this site\u2019s own metrics.',
+        'perf.latencyTrend': 'Latency trend (last 24h)',
+        'perf.latencySub': 'Average token latency',
+        'perf.rateTrend': 'Availability (last 24h)',
+        'perf.rateSub': 'Success rate excludes business rejections; the current unfinished hour is included.',
+        'perf.loading': 'Reading performance data\u2026',
+        'perf.noSeries': 'This site has no hourly data for this model.',
         'tag.eacChannel': 'EAC lane · co-paid',
         'tag.new': 'NEW',
         'tag.newTitle': 'Just added: relayed to the EAC lane from OpenCode’s free tier.',
@@ -963,7 +1227,7 @@ window.__ModuleLoader__.load({
         'visibility.hint': 'Hiding affects the model picker and gateway listing only. Existing sessions keep working; restore visibility here.',
         'routing.capacity': 'Chain capability intersection',
         'routing.capacityUnavailable': 'Cannot load chain capacities right now. Please retry.',
-        'pref.interval': 'Auto-probe interval (minutes)',
+        'pref.interval': 'Auto-refresh interval (minutes)',
         'pref.maxTokens': 'Output ceiling per call (tokens)',
         'pref.egress': 'Current egress',
         'pref.probedAt': 'Last probe',
@@ -980,6 +1244,9 @@ window.__ModuleLoader__.load({
         'ann.later': 'Later',
         'ann.page': 'Page {n} of {total}',
         'ann.openSettings': 'Open settings',
+        'disclaimer.version': 'Disclaimer v{n}',
+        'disclaimer.saving': 'Saving…',
+        'disclaimer.reopen': 'Terms & disclaimer',
         'ann.p1': 'No credentials: install and use it — no sign-up, no API key to paste.',
         'ann.p2': 'The roster follows upstream: models, context lengths and capabilities are re-fetched on every refresh.',
         'ann.p3': 'Honest capability claims: anything a probe cannot confirm stays hidden, and each effort level is a real output budget.',
@@ -1020,6 +1287,7 @@ window.__ModuleLoader__.load({
         'news.osDenied': 'Notification permission was denied; restore it in your system or browser settings.',
         'news.link': 'Read more',
         'news.urgentTitle': 'Important announcement',
+        'news.holdHint': 'Read on — this dialog can close in {s}s',
         'news.gotIt': 'Got it',
         'news.lastFetch': 'Last fetch',
         'news.fetchFailed': 'Feed unreachable right now (showing the cached copy)',
@@ -1030,6 +1298,8 @@ window.__ModuleLoader__.load({
         'upgrade.current': 'Running',
         'upgrade.installed': 'On disk',
         'upgrade.mismatch': 'The running and on-disk versions differ. Check the installation before reloading or restarting.',
+        'upgrade.restartHint': 'This host cannot safely hot-reload the plugin. Updates are installed safely and take effect after restarting the host application.',
+        'upgrade.restart': 'Upgraded to {version}. The files are installed safely; restart the host application to activate them.',
         'upgrade.recovery': 'The last upgrade was not fully restored. Close the app, restore the installation from the retained backup, restart, then check for updates.',
         'upgrade.backup': 'Recovery backup',
         'upgrade.latest': 'Latest',
@@ -1063,13 +1333,42 @@ window.__ModuleLoader__.load({
         'toast.updateBody': 'Version {latest} is out (installed {current}). Upgrade from the settings page.',
         'nav.tab.free': 'Free models',
         'nav.tab.eac': 'EAC models',
-        'nav.tab.channels': 'Free channels',
+        'nav.tab.channels': 'EAC router',
         'nav.tab.picks': 'Picks',
         'star.cta': 'Star',
         'star.title': 'Star this repository on GitHub',
         'picks.title': 'Recommended projects',
         'picks.sub': 'A set of open-source projects by the same author: bringing the agent to a native desktop, keeping hundreds of plugins working together, and keeping video and design work on this machine. If they are useful, a star is the thanks they understand.',
         'picks.foot': 'A star is the only payslip an open-source project gets — it decides how much more time the author can spend. Every project here is free, open source and ad-free; one click is the most concrete support there is.',
+        'nav.tab.feedback': 'Feedback',
+        'fb.title': 'Feedback & wishes',
+        'fb.sub': 'Report a problem, or tell us what you want to see',
+        'fb.signIn': 'Sign in with GitHub',
+        'fb.signOut': 'Sign out {login}',
+        'fb.gateTitle': 'Sign in to submit',
+        'fb.gateBody': 'Signing in only tells us who a report came from, so we can come back to you once it is fixed. It asks for your public GitHub identity only — no repository permissions, and nothing is posted to a public issue list.',
+        'fb.code': 'Enter this code on the GitHub page',
+        'fb.openVerify': 'Open github.com/login/device',
+        'fb.waiting': 'Waiting for authorization…',
+        'fb.opened': 'The GitHub page is open. Enter the code above, then come back here.',
+        'fb.signedIn': 'Signed in to GitHub — you can submit now.',
+        'fb.signedOut': 'Signed out of feedback.',
+        'fb.kind.bug': 'Report a problem',
+        'fb.kind.wish': 'Feature wish',
+        'fb.titleField': 'Title',
+        'fb.titlePlaceholderBug': 'One line on what went wrong',
+        'fb.titlePlaceholderWish': 'One line on what you would like to have',
+        'fb.detailField': 'Details',
+        'fb.detailPlaceholderBug': 'Steps to reproduce, what you expected, what actually happened. Paste the error text if you have it.',
+        'fb.detailPlaceholderWish': 'What you do today, where it breaks down, and how you would like this to work.',
+        'fb.submit': 'Submit',
+        'fb.sent': 'Submitted, reference {id}',
+        'fb.submitted': 'Feedback submitted — thank you.',
+        'fb.expired': 'The code expired. Please start the sign-in again.',
+        'fb.denied': 'GitHub authorization was not completed.',
+        'fb.stale': 'Your feedback sign-in has lapsed. Sign in with GitHub again to resubmit — your text is still here.',
+        'fb.version': 'Version',
+        'fb.note': 'A submission carries your plugin version and operating system so the report can be placed. Nothing else is read from this machine.',
         'picks.stars': 'Stars',
         'picks.forks': 'Forks',
         'picks.fork': 'Fork',
@@ -1105,6 +1404,103 @@ window.__ModuleLoader__.load({
         'picks.design.tag4': 'Real file export',
         'free.title': 'Free models',
         'free.sub': 'Anonymous free and Kilo models share this pool. Water shows the selectable share; measured availability is shown separately.',
+        'nav.tab.extensions': 'OFM channel extensions',
+        'ext.search': 'Search extensions',
+        'ext.all': 'All',
+        'ext.title': 'OFM channel extensions',
+        'ext.bunMissing': 'Bun not installed',
+        'ext.changelog': "What's new",
+        'ext.viewSource': 'View source',
+        'ext.indexFresh': 'Signed index generated {at}',
+        'ext.bunHint': 'OpenCode free-lane inference needs a local Bun. Install Bun (bun.sh or npm i -g bun) and restart, or point OUR_FREE_MODEL_BUN at its executable.',
+        'ext.sub': 'A marketplace for channel and enhancement modules: signed index, sandboxed runs, decoupled from the core — install a channel and its models appear on the free page.',
+        'ext.tabDiscover': 'Discover',
+        'ext.tabInstalled': 'Installed',
+        'ext.tabSecurity': 'Safety',
+        'ext.install': 'Install',
+        'ext.installing': 'Installing…',
+        'ext.installed': 'Installed',
+        'ext.update': 'Update',
+        'ext.updateAvailable': 'Update ready',
+        'ext.enable': 'Enable',
+        'ext.disable': 'Disable',
+        'ext.uninstall': 'Uninstall',
+        'ext.channel': 'Channel',
+        'ext.enhancement': 'Enhancement',
+        'ext.verified': 'Signed',
+        'ext.verifiedTitle': 'This extension comes from the Ed25519-signed index',
+        'ext.refresh': 'Refresh index',
+        'ext.empty': 'The extension registry is unreachable',
+        'ext.indexHint': 'The index may still be warming up or blocked by the network; use “Refresh index” to retry.',
+        'ext.failed': 'The action failed',
+        'ext.security': 'The safety model',
+        'ext.securityBody': 'Extensions are executable code — install only what this signed index carries. An install verifies the Ed25519 signature and the SHA-256 digest and runs a static scan (node:*, process, eval, dynamic import and minified bundles are refused); the code runs inside a Worker VM sandbox whose only import is the controlled ofm:sdk; the network is limited to the domains the manifest declares, secrets go in and never come out, and every hook has a timeout breaker.',
+        'ext.securityBody2': "These defenses target accidents and carelessness, not a determined author — the real gates are the signature, human review, and this index's commit history. Report anything suspicious through SECURITY.md in the ofm-extensions repository.",
+        'ext.openRepo': 'Open the ofm-extensions repository',
+        'ext.detail': 'Details',
+        'ext.confirmRemove': 'Uninstall {name}? Its configuration and secrets are removed too.',
+        'ext.notRunning': 'Not running',
+        'ext.count': '{n} extensions in the index',
+        'ext.discoverEmpty': 'No extensions match.',
+        'ext.installedEmpty': 'Nothing installed yet — pick something on the Discover tab.',
+        'ext.permissions': 'Permissions',
+        'ext.permNetwork': 'Network: {n} declared host(s)',
+        'ext.permSecrets': 'Secrets: {n} (write-only)',
+        'ext.openHomepage': 'Open homepage',
+        'ext.secretPlaceholder': 'Type to save; only the last 4 are shown',
+        'ext.close': 'Close',
+        'ext.countByType': '{c} channels · {e} enhancements',
+        'ext.sort': 'Sort',
+        'ext.sortCurated': 'Curated',
+        'ext.sortNewest': 'Newest',
+        'ext.sortName': 'Name',
+        'ext.searchHint': 'Press / to search',
+        'ext.clearSearch': 'Clear filters',
+        'ext.updateAll': 'Update all',
+        'ext.updateProgress': 'Updating {i}/{n}',
+        'ext.updateCount': '{n} update(s) ready',
+        'ext.modelCount': '{n} models',
+        'ext.requiresHost': 'needs host ≥ {v}',
+        'ext.selfTest': 'Self-test',
+        'ext.selfTestOk': 'Self-test passed',
+        'ext.selfTestFail': 'Self-test failed',
+        'ext.replaces': 'takes over the built-in {name} lane',
+        'ext.filterTag': 'Tag',
+        'ext.hooks': 'Hooks',
+        'ext.type': 'Type',
+        'ext.license': 'License',
+        'ext.published': 'Published',
+        'ext.models': 'Models',
+        'ext.repository': 'Repository',
+        'ext.openRepository': 'Open repository',
+        'ext.storage': 'Local storage',
+        'ext.storageOn': 'May read and write a local storage file',
+        'ext.storageOff': 'Reads and writes no local files',
+        'ext.originEmpty': 'No network access',
+        'ext.notInstalledHint': 'Not installed yet — details are for reference.',
+        'ext.autoUpdate': 'Auto-update',
+        'ext.autoUpdateHint': 'On each registry refresh, install enabled updates that have cleared the observation window; a new version soaks {h} hours before it auto-installs, blunting supply-chain attacks.',
+        'ext.source': 'Index source',
+        'ext.sourceBundled': 'bundled snapshot',
+        'ext.soakReady': 'Cleared the observation window — update now',
+        'ext.soakWaiting': 'About {h}h left in the observation window (new versions soak before auto-install, blunting supply-chain attacks); manual update is always available',
+        'ext.auditTitle': 'Recent actions',
+        'ext.auditEmpty': 'Nothing yet.',
+        'ext.auditInstall': 'Install',
+        'ext.auditInstallLocal': 'Local install',
+        'ext.auditUninstall': 'Uninstall',
+        'ext.auditEnabled': 'Enable/disable',
+        'ext.auditConfig': 'Config',
+        'ext.auditSecret': 'Secret',
+        'ext.auditAutoUpdate': 'Auto-update',
+        'ext.auditRegistry': 'Refresh index',
+        'ext.exportShelf': 'Export list',
+        'ext.importShelf': 'Import list',
+        'ext.exportDone': 'Extension list exported (JSON, no secrets)',
+        'ext.importDone': 'Restored {ok} extension(s){fail}',
+        'ext.importFail': ', {n} failed (delisted or incompatible)',
+        'ext.importInvalid': 'The file is not valid JSON, or carries no installable extensions',
+        'ext.shelfTitle': 'Migration: the list carries ids, versions, toggles and config — never secrets',
         'sponsor.bannerTag': 'Relay',
         'sponsor.bannerTitle': 'Beichen API relay',
         'sponsor.bannerDescription': 'OFM’s official relay partner provides stable, open and cost-effective model API access. Claude, ChatGPT, Grok, Gemini, GLM, Kimi and DeepSeek are supported for one consistent setup in Codex, Gemini CLI, Claude Code and other developer tools. Invite others to receive 10% cashback.',
@@ -1117,8 +1513,17 @@ window.__ModuleLoader__.load({
         'eac.title': 'EAC models',
         'eac.sub': 'The desktop co-paid lane: unlocked by a GitHub login plus a star, independent of the free lane.',
         'eac.tankLabel': 'Co-paid pool pressure',
-        'chan.title': 'Free channel access',
-        'chan.sub': 'Bring each vendor\'s free quota in: sign in once and its models appear in the composer\'s model picker. Credentials are written to the local credential store only — this page never sees them.',
+        'chan.title': 'EAC router',
+        'chan.sub': 'Account channels',
+        'chan.search': 'Search channel, vendor or ID',
+        'chan.filterStatus': 'Connection status',
+        'chan.filterAll': 'All',
+        'chan.filterEmpty': 'No channel matches the filters.',
+        'chan.showing': '{shown} / {total} channels',
+        'chan.connect': 'Connect',
+        'chan.manage': 'Manage',
+        'chan.collapse': 'Collapse',
+        'chan.state.loading': 'Loading',
         'chan.pack.failed': 'Channel pack not mounted: {reason} (the free and EAC lanes are unaffected)',
         'chan.pack.hint': 'The pack ships inside this plugin (vendor/channel-pack) and upgrades with it.',
         'chan.state.on': 'Connected',
@@ -1299,10 +1704,67 @@ window.__ModuleLoader__.load({
         'chan.auto.timeFailed': 'Could not save check-in time: {reason}',
         'chan.auto.timeInvalid': 'Enter a 24-hour time, e.g. 10:05',
         'nav.tab.aggregate': 'Aggregate',
+        'nav.tab.workspace': 'Model workspace (magpie)',
+        'engine.start': 'Open workspace',
+        'engine.starting': 'Starting workspace…',
+        'engine.failed': 'Workspace could not start',
+        'engine.title': 'Model workspace (magpie)',
+        'engine.refresh': 'Refresh models',
+        'engine.expand': 'Expand workspace',
+        'engine.close': 'Collapse workspace',
+        'engine.tools': 'Workbench',
+        'engine.settings': 'Workspace settings',
+        'sub.title': 'Subscriptions',
+        'sub.add': 'Import account',
+        'sub.discover': 'Find local accounts',
+        'sub.candidates': 'Local sign-ins',
+        'sub.noCandidates': 'No local sign-ins available to import.',
+        'sub.review': 'Select for import',
+        'sub.empty': 'No subscription accounts imported.',
+        'sub.provider': 'Provider',
+        'sub.label': 'Account label',
+        'sub.models': 'Model IDs',
+        'sub.credentials': 'Credentials JSON',
+        'sub.file': 'Credentials file',
+        'sub.paste': 'Paste JSON',
+        'sub.upload': 'Choose file',
+        'sub.key': 'API Key',
+        'sub.baseUrl': 'Base URL',
+        'sub.format': 'API format',
+        'sub.import': 'Confirm import',
+        'sub.cancel': 'Cancel',
+        'sub.working': 'Working…',
+        'sub.invalidJson': 'Credentials must be a valid JSON object.',
+        'sub.fileTooLarge': 'Credentials file must be 1 MB or smaller.',
+        'sub.fileFailed': 'Could not read credentials file.',
+        'sub.invalidEndpoint': 'Enter an HTTP(S) address without userinfo, query parameters or a fragment.',
+        'sub.keyRequired': 'Enter an API key.',
+        'sub.invalidModels': 'Enter valid model IDs separated by commas or newlines.',
+        'sub.loadFailed': 'Could not load subscription accounts',
+        'sub.operationFailed': 'Operation failed. Please retry.',
+        'sub.enabled': 'Enable account',
+        'sub.refreshQuota': 'Refresh quotas',
+        'sub.remove': 'Remove',
+        'sub.confirmRemove': 'Confirm removal',
+        'sub.removeQuestion': 'Remove this account and its saved credentials?',
+        'sub.unknown': 'Unknown',
+        'sub.quotaFailed': 'Quota query failed',
+        'sub.fiveHour': '5 hours',
+        'sub.weekly': 'Weekly',
+        'sub.used': '{n}% used',
+        'sub.remaining': '{n}% remaining',
+        'sub.resets': 'Resets',
+        'sub.checked': 'Checked',
+        'sub.plan': 'Plan',
+        'sub.balance': 'Balance',
+        'sub.credits': 'credits',
+        'sub.unlimited': 'Unlimited',
+        'sub.noModels': 'No models specified',
+        'sub.accounts': '{n} accounts',
         'nav.tab.saver': 'Token savers',
         'nav.tab.routing': 'Routing',
         'agg.title': 'Aggregate providers',
-        'agg.sub': 'Bring third-party OpenAI-compatible endpoints into the same model roster: a key written here is echoed back as a fingerprint only, and saving updates the roster and the model picker together.',
+        'agg.sub': 'Third-party providers',
         'agg.registryCount': '{n} in the registry',
         'agg.configuredCount': '{n} configured',
         'agg.addProvider': 'Add provider',
@@ -1320,11 +1782,15 @@ window.__ModuleLoader__.load({
         'agg.credential': 'Get a key',
         'agg.modelCount': '{n} models',
         'agg.select': 'Configure',
-        'agg.configuredTitle': 'Configured providers',
+        'agg.configuredTitle': 'Provider directory',
         'agg.configuredHint': 'Changes take effect immediately: saving updates the roster and the model picker together.',
+        'agg.configured': 'Configured',
+        'agg.unconfigured': 'Not connected',
+        'agg.connect': 'Connect',
+        'agg.manage': 'Manage',
         'agg.empty': 'No aggregate provider is connected yet',
         'agg.emptyHint': 'This page brings third-party endpoints into the model roster: an aggregator, a free-tier pool, a local inference server. Fill in a key and an optional base URL and their models appear in the model picker — and can become a link in a fallback chain.',
-        'agg.filterEmpty': 'No configured provider matches the filter.',
+        'agg.filterEmpty': 'No provider matches the filters.',
         'agg.contributes': 'Contributes {n} models',
         'agg.contributesNone': 'Contributes no model right now',
         'agg.hasKey': 'Key {hint}',
@@ -1438,6 +1904,9 @@ window.__ModuleLoader__.load({
         'routing.strategy': 'Strategy',
         'routing.strategy.fallback': 'Fallback',
         'routing.strategy.roundRobin': 'Round-robin',
+        'routing.strategy.smart': 'Quota reset priority',
+        'routing.strategy.usage': 'Least used',
+        'routing.strategy.pace': 'Weekly quota pace',
         'routing.stickyLimit': 'Round-robin sticky limit',
         'routing.stickyHint': 'How many calls in a row one model serves before the rotation moves on.',
         'routing.members': 'Members (in order)',
@@ -1530,12 +1999,12 @@ window.__ModuleLoader__.load({
 .ofm_sechead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .ofm_sec_title{font-size:14px;font-weight:680;letter-spacing:-.2px}
 .ofm_sec_hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-left:auto}
-.ofm_grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:10px}
+.ofm_grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:10px;align-items:start}
 /* ══ 卡片（双层 bezel：hairline 边框 + 顶部内高光 + 柔和外阴影） ═══════ */
 .ofm_card{position:relative;display:flex;flex-direction:column;gap:8px;padding:12px 13px;border-radius:13px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 80%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 6%),0 1px 2px color-mix(in srgb,var(--dsw-alias-state-business-primary) 7%,transparent),0 3px 10px color-mix(in srgb,var(--dsw-alias-state-business-primary) 4%,transparent);transition:transform .2s cubic-bezier(.32,.72,0,1),box-shadow .24s ease,border-color .18s ease}
 .ofm_card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 66%,var(--dsw-alias-border-l2));box-shadow:inset 0 1px 0 rgb(255 255 255 / 9%),0 16px 34px color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent)}
 .ofm_card.dim{opacity:.68}
-.ofm_cardhead{display:flex;align-items:center;gap:8px}
+.ofm_cardhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ofm_cardname{font-size:13.5px;font-weight:650;letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ofm_badge{margin-left:auto;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 60%,transparent);white-space:nowrap}
 .ofm_badge.available{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}
@@ -1545,6 +2014,11 @@ window.__ModuleLoader__.load({
 .ofm_id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ofm_tags{display:flex;gap:5px;flex-wrap:wrap}
 .ofm_tag{font-size:10.5px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 70%,transparent);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}
+/* 能力标签：与上面的规格标签分开一行，颜色更实一点，表示「擅长什么」而不是「多大」 */
+.ofm_captags{align-items:center;margin-top:2px}
+.ofm_caplabel{font-size:10px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.3px}
+.ofm_tag.cap{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 38%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600}
+.ofm_tag.cap.fast{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 38%,transparent);color:var(--dsw-alias-state-success-primary)}
 .ofm_chantag{font-size:10px;font-weight:650;padding:2px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 50%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 9%,transparent);color:var(--dsw-alias-state-business-primary);white-space:nowrap}
 /* ══ 新品/热门徽标与高速标签（置顶的 opencode 免费模型） ═════════════════ */
 .ofm_newtag{flex:none;font-size:9.5px;font-weight:750;letter-spacing:.4px;padding:2px 7px;border-radius:999px;color:#fff;background:var(--dsw-alias-state-error-primary);box-shadow:0 1px 4px color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);white-space:nowrap;text-transform:uppercase}
@@ -1554,6 +2028,54 @@ window.__ModuleLoader__.load({
 .ofm_card.pinned:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 62%,var(--dsw-alias-border-l2))}
 .ofm_metrics{display:flex;gap:12px;font-size:11px;color:var(--dsw-alias-label-tertiary);flex-wrap:wrap}
 .ofm_metrics b{color:var(--dsw-alias-label-secondary);font-weight:600;font-variant-numeric:tabular-nums}
+/* ══ 性能条（复刻站点模型广场：成功率柱 + 延迟 + 吞吐 + 详情） ═════════ */
+/* The site's strip is designed for a 317px card; the roster's grid is 252px.
+   Two rows here rather than one: the three metrics keep the site's own gaps and
+   type sizes, and the 详情 button drops beneath them instead of crushing the
+   numbers it sits beside. */
+/* The strip has to survive the roster's 252px card, where three metric columns
+   plus a button cannot share one line: the numbers would either spill past the
+   border or collapse to "1…". So it wraps into two clean rows — the status
+   column (label + 24-tick bar) with the 详情 button on the first, latency and
+   throughput side by side on the second. At the site's own 317px and wider the
+   status column and both figures still fit one line, and the wrap never fires. */
+.ofm_perf{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;width:100%;min-width:0;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}
+.ofm_perfstats{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 14px;flex:1 1 auto;min-width:0;margin:0;font-size:12px;font-variant-numeric:tabular-nums}
+.ofm_perfcol{min-width:0}
+/* The status column always owns its row, so the bar is never cut in half. */
+.ofm_perfcol.status{width:96px;flex:0 0 100%}
+/* The two figures then share the next row, each with room for a full reading
+   (a value like 119.1t/s needs about 48px). */
+.ofm_perfcol.value{flex:1 1 60px;min-width:52px}
+.ofm_perflabel{display:flex;align-items:center;justify-content:space-between;gap:4px;margin:0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;min-width:0}
+.ofm_perfnum{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dsw-alias-label-secondary)}
+.ofm_perflabel .ofm_perfnum{font-size:11px}
+/* A figure that still does not fit is clipped, never allowed to run past the
+   card's edge: an ellipsis reads as "too narrow here", a number hanging outside
+   the border reads as a broken layout. */
+.ofm_perfnum.wide{display:block;margin-top:4px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-primary)}
+.ofm_perfbars{display:flex;align-items:center;gap:1px;height:12px;width:96px;max-width:100%;margin:4px 0 0;overflow:hidden}
+/* Each tick keeps the site's 3px at full width and shrinks proportionally when
+   the column is narrower — the bar must never widen the card it sits in. */
+.ofm_perfbar{flex:0 1 3px;min-width:0;height:100%;border-radius:2px;background:var(--dsw-alias-border-l1)}
+.ofm_perfbar.good{background:#34d399}
+.ofm_perfbar.fair{background:#f59e0b}
+.ofm_perfbar.poor{background:#ef4444}
+.ofm_perfbar.none{background:color-mix(in srgb,var(--dsw-alias-border-l1) 70%,transparent)}
+.ofm_perfmore{display:inline-flex;align-items:center;gap:4px;flex:none;height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--dsw-alias-border-l1);background:transparent;font:inherit;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background .15s ease,border-color .15s ease;margin-left:auto}
+.ofm_perfmore:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 70%,transparent);border-color:var(--dsw-alias-border-l2)}
+.ofm_perfchev{font-size:9px;color:var(--dsw-alias-label-tertiary);line-height:1}
+.ofm_perfnote{flex-basis:100%;margin:0;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+/* ══ 趋势图（详情展开：延迟趋势 + 可用率，站点同款） ═══════════════════ */
+.ofm_charts{flex-basis:100%;display:flex;flex-direction:column;gap:12px;margin-top:2px}
+.ofm_chartblock{display:flex;flex-direction:column;gap:4px}
+.ofm_charthead{display:flex;flex-direction:column;gap:1px}
+.ofm_charttitle{font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.ofm_chartsub{font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.ofm_chart{width:100%;height:auto;display:block;overflow:visible}
+.ofm_chartgrid{stroke:var(--dsw-alias-border-l1);stroke-width:.6}
+.ofm_chartaxis{font-size:6.4px;fill:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.ofm_chartdot{stroke:#fff;stroke-width:.6}
 .ofm_note{font-size:11px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
 /* ══ 面板 ══════════════════════════════════════════════════════════════ */
 .ofm_panel{padding:16px;border-radius:16px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 82%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 5%),0 2px 6px rgb(0 0 0 / 4%);display:flex;flex-direction:column;gap:12px}
@@ -1654,6 +2176,13 @@ window.__ModuleLoader__.load({
 .ofm_annbody ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
 .ofm_annfoot{display:flex;align-items:center;gap:10px;padding:13px 22px;border-top:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 72%,transparent)}
 .ofm_annfoot .spacer{margin-left:auto}
+.ofm_disclaimersec{display:flex;flex-direction:column;gap:4px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
+.ofm_disclaimersec:first-of-type{border-top:0;padding-top:0}
+.ofm_disclaimersec h3{margin:0;font-size:13px;font-weight:660;color:var(--dsw-alias-label-primary)}
+.ofm_disclaimer{width:min(640px,92vw)}
+.ofm_shellfoot{display:flex;justify-content:center;padding:6px 0 2px}
+.ofm_linkbtn{appearance:none;background:none;border:0;padding:2px 6px;font:inherit;font-size:11.5px;color:var(--dsw-alias-label-tertiary);cursor:pointer;border-radius:6px;text-decoration:underline;text-underline-offset:3px;text-decoration-color:color-mix(in srgb,currentColor 40%,transparent)}
+.ofm_linkbtn:hover{color:var(--dsw-alias-label-secondary)}
 .ofm_kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 .ofm_kvc{padding:9px 12px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 74%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 4%);display:flex;flex-direction:column;gap:3px}
 .ofm_kvc b{font-size:12.5px;font-variant-numeric:tabular-nums}
@@ -1706,6 +2235,8 @@ window.__ModuleLoader__.load({
 .ofm_toast.warn::before{background:var(--dsw-alias-state-warning-primary,#f0a441)}
 .ofm_toast.urgent::before{background:var(--dsw-alias-state-error-primary)}
 .ofm_toast.warn{border-color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 42%,var(--dsw-alias-border-l2))}
+/* urgent 弹层的关闭倒计时提示：弱化、右对齐到按钮旁 */
+.ofm_holdhint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .ofm_toast.urgent{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 42%,var(--dsw-alias-border-l2))}
 .ofm_toast .ofm_toasttitle{font-weight:660;font-size:12.5px;display:flex;align-items:center;gap:7px}
 .ofm_toast .ofm_toastbody{color:var(--dsw-alias-label-secondary);max-height:180px;overflow:auto;overflow-wrap:anywhere}
@@ -1788,11 +2319,6 @@ window.__ModuleLoader__.load({
    shell, which keeps it behind our content and above the app background without
    ever escaping into the shell's own stacking order. */
 .ofm_shell{position:relative;display:flex;flex-direction:column;gap:18px;max-width:1120px;isolation:isolate}
-.ofm_aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
-.ofm_aurora i{position:absolute;display:block;border-radius:50%;filter:blur(70px);opacity:.42;animation:ofmdrift 44s ease-in-out infinite alternate}
-.ofm_aurora i:nth-child(1){width:46vw;height:46vw;left:-12vw;top:-14vw;background:radial-gradient(circle,color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,transparent),transparent 68%)}
-.ofm_aurora i:nth-child(2){width:38vw;height:38vw;right:-10vw;top:4vh;background:radial-gradient(circle,rgba(62,207,160,.42),transparent 70%);animation-duration:56s;animation-delay:-12s}
-.ofm_aurora i:nth-child(3){width:42vw;height:42vw;left:22vw;bottom:-18vw;background:radial-gradient(circle,rgba(227,106,166,.34),transparent 70%);animation-duration:64s;animation-delay:-26s}
 @keyframes ofmdrift{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(3vw,2vh,0) scale(1.09)}100%{transform:translate3d(-3vw,-2vh,0) scale(.96)}}
 .ofm_nav{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:16px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l2) 82%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 62%,transparent);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);box-shadow:inset 0 1px 0 rgb(255 255 255 / 7%),0 8px 26px rgb(0 0 0 / 10%)}
 .ofm_navbrand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;letter-spacing:-.2px;white-space:nowrap}
@@ -1804,7 +2330,6 @@ window.__ModuleLoader__.load({
 .ofm_tab[data-on="true"]{color:var(--dsw-alias-label-primary)}
 .ofm_tab:hover{color:var(--dsw-alias-label-primary)}
 .ofm_tab .ofm_tabnum{font-variant-numeric:tabular-nums;font-weight:600;color:var(--dsw-alias-label-tertiary);margin-left:6px;font-size:11px}
-.ofm_navspacer{display:none}
 /* The star belongs beside the brand: grid auto-placement would push it below
    the tabs row (they come first in the DOM) and stretch it across the row. */
 .ofm_nav .ofm_starbtn{grid-column:2;grid-row:1;justify-self:end}
@@ -1858,6 +2383,52 @@ window.__ModuleLoader__.load({
 .ofm_foldtoggle:hover{color:var(--dsw-alias-label-primary)}
 .ofm_foldtoggle svg{width:10px;height:10px;fill:currentColor;transition:transform .22s ease}
 .ofm_foldtoggle[data-open="true"] svg{transform:rotate(90deg)}
+/* Compact account and provider directories. */
+.ofm_directoryhero{display:flex;flex-direction:column;gap:12px;padding:4px 0 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.ofm_directoryhero>.ofm_btn{align-self:flex-start}
+.ofm_directoryhero h2{font-size:20px;letter-spacing:0;background:none;-webkit-text-fill-color:currentColor}
+.ofm_directorytools{display:flex;align-items:end;flex-wrap:wrap;gap:10px}
+.ofm_directorytools label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0;flex:1 1 140px}
+.ofm_directorytools label:first-child{flex:3 1 220px}
+.ofm_directorytools .ofm_input{width:100%;min-width:0;box-sizing:border-box}
+.ofm_directory{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,310px),1fr));align-items:start;gap:10px}
+.ofm_directorycount{font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.ofm_chan.compact,.ofm_provider{min-width:0;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);box-shadow:none;display:flex;flex-direction:column;gap:10px;overflow-wrap:anywhere}
+.ofm_chan.compact::before{display:none}
+.ofm_chan.compact:hover{transform:none;box-shadow:none}
+.ofm_chan.compact .ofm_chanhead{gap:8px;flex-wrap:wrap}
+.ofm_chan.compact .ofm_chanid{flex:1;min-width:100px}
+.ofm_chan.compact .ofm_chanlogo{width:32px;height:32px;border-radius:6px;letter-spacing:0;box-shadow:none;transform:none}
+.ofm_chan.compact .ofm_chanid b{letter-spacing:0}
+.ofm_chan.compact .ofm_chanmeta{gap:10px}
+.ofm_directoryactions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.ofm_directorydetail{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l1);min-width:0}
+.ofm_directorydetail .ofm_duo{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))}
+.ofm_directorydetail .ofm_input{min-width:0;width:100%;box-sizing:border-box}
+.ofm_provider .ofm_cardhead{flex-wrap:wrap;gap:8px}
+.ofm_provider .ofm_cardname{font-size:14px;letter-spacing:0;white-space:normal;overflow-wrap:anywhere}
+.ofm_provider .ofm_starlink{color:var(--dsw-alias-state-business-primary);font-size:11px;text-decoration:none}
+.ofm_provider .ofm_starlink:hover{text-decoration:underline}
+.ofm_subform{display:flex;flex-direction:column;gap:14px;padding:16px 0;border-block:1px solid var(--dsw-alias-border-l1);min-width:0}
+.ofm_subform label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12px}
+.ofm_subform .ofm_input{box-sizing:border-box;border-radius:6px;width:100%;max-width:100%}
+.ofm_subform textarea{resize:vertical;min-height:84px}
+.ofm_subform .ofm_duo{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.ofm_subscriptions .ofm_row{flex-wrap:wrap;min-width:0}
+.ofm_subscriptions .ofm_btn{border-radius:6px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.ofm_subaccount{display:flex;flex-direction:column;gap:12px;padding:16px 0;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0;overflow-wrap:anywhere}
+.ofm_subaccount h3{font-size:14px;font-weight:600;margin:0;letter-spacing:0}
+.ofm_submeta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ofm_subwindows{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:14px}
+.ofm_subwindow{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px}
+.ofm_subwindow strong{font-size:13px;font-variant-numeric:tabular-nums}
+.ofm_subwindow progress{appearance:none;width:100%;height:5px;border:0;border-radius:2px;background:var(--dsw-alias-border-l1);accent-color:var(--dsw-alias-state-business-primary)}
+.ofm_subwindow progress::-webkit-progress-bar{background:var(--dsw-alias-border-l1);border-radius:2px}
+.ofm_subwindow progress::-webkit-progress-value{background:var(--dsw-alias-state-business-primary);border-radius:2px}
+.ofm_submodels{display:flex;flex-wrap:wrap;gap:5px;margin:0;padding:0;list-style:none;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.ofm_submodels li{max-width:100%;overflow-wrap:anywhere}
+.ofm_submodels li+li::before{content:"/";padding-right:5px;color:var(--dsw-alias-label-tertiary)}
+.ofm_subcandidates{padding:10px 0;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 /* ══ 骨架屏 ════════════════════════════════════════════════════════════ */
 .ofm_skel{position:relative;overflow:hidden;border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 60%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 60%,transparent);min-height:96px;animation:ofmpulse 1.8s ease-in-out infinite}
 .ofm_skel::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent) 50%,transparent 70%);transform:translateX(-100%);animation:ofm-skel-shine 1.8s ease-in-out infinite}
@@ -2440,6 +3011,176 @@ window.__ModuleLoader__.load({
 .ofm_logpager-nav{display:flex;align-items:center;gap:10px}
 .ofm_logpager-size{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .ofm_logpager-size select{padding:4px 8px;font-size:12px;border-radius:7px;max-width:none}
+
+/* 装饰特效默认关闭；鱼缸独立保留。布局用的 transform 不受影响。 */
+.ofm_navtools{grid-column:2;grid-row:1;display:flex;align-items:center;justify-self:end;gap:12px;flex-wrap:wrap}
+.ofm_root[data-ofm-effects="off"]::before{content:none}
+.ofm_root[data-ofm-effects="off"],
+.ofm_root[data-ofm-effects="off"] :not(.ofm_tank):not(.ofm_tank *){
+ backdrop-filter:none!important;-webkit-backdrop-filter:none!important;filter:none!important;
+ animation:none!important;transition:none!important;will-change:auto!important;
+}
+.ofm_root[data-ofm-effects="off"] :not(.ofm_tank):not(.ofm_tank *)::before,
+.ofm_root[data-ofm-effects="off"] :not(.ofm_tank):not(.ofm_tank *)::after{
+ animation:none!important;transition:none!important;filter:none!important;
+}
+.ofm_root[data-ofm-effects="off"] :is(.ofm_nav,.ofm_panel,.ofm_hero,.ofm_glass){background:var(--dsw-alias-bg-layer-2)!important}
+.ofm_root[data-ofm-effects="off"] :is(.ofm_recoglow,.ofm_recostarring){display:none!important}
+.ofm_root[data-ofm-effects="off"] :not(.ofm_tank):not(.ofm_tank *):is(:hover,:active){transform:none!important}
+.ofm_root[data-ofm-effects="off"] :is(.ofm_btn,.ofm_starbtn)::after{content:none!important}
+.ofm_tank[data-ofm-motion="off"] *{animation-play-state:paused!important}
+.ofm_root[data-ofm-active="false"] *,
+.ofm_root[data-ofm-active="false"] *::before,
+.ofm_root[data-ofm-active="false"] *::after{animation-play-state:paused!important}
+@media(prefers-reduced-motion:reduce){
+ .ofm_root *,.ofm_root *::before,.ofm_root *::after{animation:none!important;transition:none!important}
+}
+
+/* Preserve the upstream horizontal navigation within narrow settings panes. */
+.ofm_root.ofm_shell{width:100%;min-width:0;letter-spacing:0}
+.ofm_shell .ofm_navbrand{min-width:0;white-space:normal;letter-spacing:0}
+.ofm_shell .ofm_tabs{min-width:0}
+.ofm_shell .ofm_tab{letter-spacing:0}
+.ofm_workspace{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.ofm_workspace>.ofm_page{min-width:0;width:100%}
+.ofm_modelworkspace{min-width:0;gap:12px}
+.ofm_workspacetabs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding-bottom:8px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.ofm_workspacetab{position:relative;font:inherit;font-size:12px;font-weight:600;letter-spacing:0;cursor:pointer;padding:8px 14px;border:1px solid transparent;border-radius:8px;color:var(--dsw-alias-label-secondary);background:transparent;transition:color .18s ease,background-color .18s ease,border-color .18s ease}
+.ofm_workspacetab::after{content:"";position:absolute;left:14px;right:14px;bottom:-9px;height:2px;border-radius:2px 2px 0 0;background:var(--dsw-alias-state-business-primary);transform:scaleX(0);transform-origin:center;transition:transform .24s cubic-bezier(.3,.7,.3,1)}
+.ofm_workspacetab:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.ofm_workspacetab[aria-selected="true"]{background:var(--dsw-alias-bg-layer-3);border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary)}
+.ofm_workspacetab[aria-selected="true"]::after{transform:scaleX(1)}
+.ofm_workspacetab:focus-visible,.ofm_tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.ofm_workspaceview{min-width:0;animation:ofm_workspaceview_in .28s ease}
+.ofm_workspaceview[hidden]{display:none}
+@keyframes ofm_workspaceview_in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.ofm_enginebar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-height:32px;margin-bottom:0}
+.ofm_enginebar h2{display:flex;align-items:center;gap:9px;margin:0;font-size:18px;font-weight:650}
+.ofm_enginebar h2::before{content:"";width:9px;height:9px;border-radius:3px;flex:none;background:linear-gradient(135deg,var(--dsw-alias-state-business-primary),var(--dsw-alias-state-success-primary))}
+.ofm_engineworkspace{gap:8px}
+.ofm_enginetools{display:flex;align-items:center;gap:4px;flex:none}
+.ofm_engineicon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none;transition:color .16s ease,background-color .16s ease,border-color .16s ease,transform .12s ease,box-shadow .16s ease}
+.ofm_engineicon:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);transform:translateY(-1px)}
+.ofm_engineicon:active{transform:translateY(0) scale(.96)}
+.ofm_engineicon:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.ofm_engineicon svg{display:block;width:16px;height:16px;transition:transform .3s ease}
+.ofm_engineicon:hover svg{transform:rotate(12deg)}
+.ofm_engineframe{display:block;width:100%;height:clamp(420px,calc(100dvh - 340px),900px);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);color-scheme:normal;animation:ofm_engineframe_in .4s ease}
+@keyframes ofm_engineframe_in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ofm_engineempty{display:flex;flex-direction:column;align-items:flex-start;gap:14px;padding:34px 26px;border:1px dashed var(--dsw-alias-border-l2);border-radius:10px;animation:ofm_workspaceview_in .3s ease}
+.ofm_enginestarting{display:inline-flex;align-items:center;gap:9px}
+.ofm_enginestarting::before{content:"";width:13px;height:13px;border-radius:50%;flex:none;border:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 32%,transparent);border-top-color:var(--dsw-alias-state-business-primary);animation:ofm_engine_spin .9s linear infinite}
+@keyframes ofm_engine_spin{to{transform:rotate(360deg)}}
+.ofm_engineoverlay{position:fixed!important;inset:0;z-index:1900!important;display:flex!important;flex-direction:column;box-sizing:border-box;width:100%!important;max-width:none!important;min-height:0;padding:12px 16px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);gap:10px;animation:ofm_engineoverlay_in .26s cubic-bezier(.2,.9,.3,1)}
+@keyframes ofm_engineoverlay_in{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+.ofm_engineoverlay .ofm_enginebar{flex:none}
+.ofm_engineoverlay .ofm_engineframe{height:100%;min-height:0;flex:1}
+.ofm_directory>*{animation:ofmrisein .3s ease backwards}
+.ofm_directory>*:nth-child(2){animation-delay:.03s}
+.ofm_directory>*:nth-child(3){animation-delay:.06s}
+.ofm_directory>*:nth-child(4){animation-delay:.09s}
+.ofm_directory>*:nth-child(5){animation-delay:.12s}
+.ofm_directory>*:nth-child(6){animation-delay:.15s}
+.ofm_directory>*:nth-child(n+7){animation-delay:.18s}
+.ofm_directory .ofm_chan.compact,.ofm_directory .ofm_provider{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.ofm_directory .ofm_chan.compact:hover,.ofm_directory .ofm_provider:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 42%,var(--dsw-alias-border-l2));box-shadow:0 4px 16px rgb(0 0 0 / 7%);transform:translateY(-1px)}
+.ofm_subaccount{animation:ofmrisein .3s ease backwards}
+.ofm_subaccount:nth-child(2){animation-delay:.04s}
+.ofm_subaccount:nth-child(3){animation-delay:.08s}
+.ofm_subaccount:nth-child(n+4){animation-delay:.12s}
+.ofm_subwindow progress{transition:opacity .3s ease}
+.ofm_shell .ofm_grid{grid-template-columns:repeat(auto-fill,minmax(min(252px,100%),1fr))}
+.ofm_shell :is(input,textarea,select){max-width:100%}
+@media(max-width:420px){
+ .ofm_shell .ofm_nav{gap:8px;padding:8px}
+ .ofm_shell .ofm_navtools{gap:8px}
+ .ofm_shell .ofm_navtools .ofm_switch span{display:none}
+ .ofm_shell .ofm_navtools .ofm_starbtn{font-size:0;padding:6px;gap:0}
+}
+/* ── 扩展市场卡片与详情抽屉（2.8.1 新增页签，其余样式全部复用既有令牌） ── */
+.ofm_extcard{gap:10px;padding-left:17px}
+.ofm_extcard::before{content:"";position:absolute;left:6px;top:13px;bottom:13px;width:3px;border-radius:999px;background:var(--dsw-alias-state-business-primary);opacity:.75;transition:opacity .2s var(--ease-instrument)}
+.ofm_extcard.channel::before{background:linear-gradient(180deg,var(--dsw-alias-state-business-primary),color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent))}
+.ofm_extcard.enhancement::before{background:linear-gradient(180deg,var(--dsw-alias-state-success-primary),color-mix(in srgb,var(--dsw-alias-state-success-primary) 30%,transparent))}
+.ofm_extcard:hover::before{opacity:1}
+.ofm_extgrid>.ofm_extcard{animation:ofmrisein .4s var(--ease-instrument) backwards;animation-delay:calc(var(--i,0)*45ms)}
+.ofm_extskel{position:relative;overflow:hidden;border-radius:13px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 80%,transparent);min-height:150px;padding:13px;display:flex;flex-direction:column;gap:9px;justify-content:center;animation:ofmrisein .4s var(--ease-instrument) backwards;animation-delay:calc(var(--i,0)*45ms)}
+.ofm_extskel::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent) 50%,transparent 70%);transform:translateX(-100%);animation:ofm-skel-shine 1.8s ease-in-out infinite}
+.ofm_extskel i{display:block;height:11px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-label-secondary) 14%,transparent);animation:ofmpulse 1.8s ease-in-out infinite}
+.ofm_extdetail{width:min(560px,92vw)}
+.ofm_extdetail:focus{outline:none}
+.ofm_extcard .ofm_id{white-space:normal;text-overflow:clip;line-height:1.5}
+/* 卡片头：字母头像 + 标题列；详情弹层头复用同一行排布（后声明覆盖弹层的纵向列） */
+.ofm_exthead{display:flex;flex-direction:row;align-items:center;gap:10px;min-width:0}
+.ofm_exttitle{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ofm_extavatar{flex:none;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:750;color:var(--dsw-alias-label-on-accent,#fff);background:linear-gradient(135deg,var(--dsw-alias-state-business-primary),color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,#000));box-shadow:inset 0 1px 0 rgb(255 255 255 / 22%),0 2px 6px color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent);transition:transform .2s var(--ease-instrument)}
+.ofm_extavatar.enhancement{background:linear-gradient(135deg,var(--dsw-alias-state-success-primary),color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,#000));box-shadow:inset 0 1px 0 rgb(255 255 255 / 22%),0 2px 6px color-mix(in srgb,var(--dsw-alias-state-success-primary) 30%,transparent)}
+.ofm_extcard:hover .ofm_extavatar{transform:scale(1.06)}
+.ofm_extcard .ofm_cardhead{gap:6px}
+.ofm_extblurb{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:0}
+.ofm_extfoot{display:flex;gap:8px;align-items:center;padding-top:9px;margin-top:auto;border-top:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 72%,transparent)}
+.ofm_extfoot .ofm_btn+.ofm_btn,.ofm_extfoot .ofm_badge{margin-left:auto}
+/* 工具行：搜索框内嵌 / 快捷键角标 */
+.ofm_exttoolbar{flex-wrap:wrap}
+.ofm_extsearch{position:relative;display:inline-flex;align-items:center}
+.ofm_extsearch .ofm_input{padding-right:30px}
+.ofm_kbd{position:absolute;right:9px;pointer-events:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;line-height:1;padding:3px 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-1);box-shadow:inset 0 -1px 0 var(--dsw-alias-border-l1)}
+/* 空态与详情弹层 */
+.ofm_extempty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 12px;border:1px dashed var(--dsw-alias-border-l2);border-radius:14px}
+.ofm_extorigins{display:flex;flex-wrap:wrap;gap:6px}
+.ofm_extorigins code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;padding:3px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 74%,transparent);color:var(--dsw-alias-label-secondary)}
+.ofm_extdetail .ofm_anntitle{font-size:16.5px}
+.ofm_extdetail .ofm_annsub{overflow-wrap:anywhere}
+.ofm_extdetail .ofm_annfoot .ofm_badge{margin-left:0}
+/* 更新内容：详情弹层里的 newest-first 发布说明列表 */
+.ofm_changelog{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+.ofm_changelog li{font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary);padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 78%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);overflow-wrap:anywhere}
+.ofm_changelog li:first-child{color:var(--dsw-alias-label-primary)}
+/* 封面横幅：负 margin 出血到卡片内缘（padding 上 12/右 13/左 17），加载失败由
+   组件整块退场；详情弹层第一子元素自然贴顶，仅配内圆角 */
+.ofm_extcover{position:relative;height:96px;flex:none;margin:-12px -13px 0 -17px;border-radius:12px 12px 0 0;overflow:hidden;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);border-bottom:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 82%,transparent)}
+.ofm_extcover img{display:block;width:100%;height:100%;object-fit:cover}
+.ofm_extdetail .ofm_extcover{height:150px;margin:0;border-radius:17px 17px 0 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.ofm_extdetail .ofm_annhead{position:relative}
+/* 标签点选浏览 / 接管内置渠道徽标 / 分段控件计数（magpie 市场的分类手势） */
+.ofm_tagbtn{cursor:pointer;font:inherit;transition:border-color .18s var(--ease-instrument),color .18s var(--ease-instrument),transform .18s var(--ease-instrument)}
+.ofm_tagbtn:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,transparent);color:var(--dsw-alias-state-business-primary);transform:translateY(-1px)}
+.ofm_replacetag{flex:none;font-size:10px;font-weight:700;line-height:1;padding:2px 8px;border-radius:999px;white-space:nowrap;color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f2a65a) 80%,var(--dsw-alias-label-primary));background:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f2a65a) 22%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f2a65a) 52%,transparent)}
+.ofm_segcount{margin-left:5px;font-size:9.5px;font-weight:650;color:var(--dsw-alias-label-tertiary);background:color-mix(in srgb,var(--dsw-alias-label-secondary) 10%,transparent);padding:1px 5px;border-radius:999px}
+.ofm_seg button[aria-pressed="true"] .ofm_segcount{color:var(--dsw-alias-label-secondary)}
+/* 2.10 增补：soak 说明行、索引来源徽标、最近操作行、模型货架、清单导入标签 */
+.ofm_soakline{margin:2px 0 0;font-size:11.5px;line-height:1.55;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
+.ofm_extsource{flex:none;font-size:10.5px;line-height:1;padding:4px 10px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 74%,transparent);white-space:nowrap}
+.ofm_importlabel{display:inline-flex;align-items:center}
+.ofm_audrows{display:flex;flex-direction:column;gap:4px}
+.ofm_audrow{display:flex;align-items:baseline;gap:10px;font-size:12px;flex-wrap:wrap}
+.ofm_audrow code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.ofm_audat{flex:none;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.ofm_inlinehint{display:inline-flex;align-items:center;cursor:help}
+.ofm_modelshelf{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ofm_modelchip{font-size:10.5px;line-height:1;padding:4px 9px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 82%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 62%,transparent);color:var(--dsw-alias-label-secondary);white-space:nowrap;max-width:210px;overflow:hidden;text-overflow:ellipsis}
+/* 封面淡入：字节到位前不占住卡片顶部的视觉重量 */
+.ofm_extcover img{opacity:0;transition:opacity .45s var(--ease-instrument)}
+.ofm_extcover img.ofm_loaded{opacity:1}
+/* ── 反馈与许愿 ──────────────────────────────────────────────────────────── */
+/* 设备码：等宽大字号 + 字距，用户要照着念到另一个窗口里 */
+.ofm_fbcode{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.ofm_fbcodeval{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;font-weight:700;letter-spacing:.16em;line-height:1.2;padding:10px 16px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 70%,transparent);color:var(--dsw-alias-label-primary);user-select:all}
+.ofm_fbgate{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.ofm_fbgate h3{margin:0;font-size:15px;font-weight:650;color:var(--dsw-alias-label-primary)}
+.ofm_fbform{display:flex;flex-direction:column;gap:12px}
+.ofm_fbfield{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.ofm_fbtext{resize:vertical;min-height:150px;line-height:1.6;font-weight:400}
+.ofm_fbfoot{align-items:center}
+.ofm_fbfoot .ofm_note{margin-left:auto;font-variant-numeric:tabular-nums}
+.ofm_fbreceipt{margin:0;font-size:12px;color:var(--dsw-alias-state-success-primary)}
+/* 类型切换：两枚等宽按钮，选中态用底色而不是描边，和导航的滑片语言一致 */
+.ofm_fbsegments{display:inline-flex;gap:4px;padding:3px;border-radius:11px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l2) 82%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 58%,transparent);align-self:flex-start}
+.ofm_fbseg{font:inherit;font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color .18s ease,background .18s ease}
+.ofm_fbseg[data-on="true"]{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent)}
+.ofm_fbseg:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.ofm_fbseg:disabled{cursor:default;opacity:.6}
+.ofm_fbseg:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 `
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -2502,6 +3243,30 @@ window.__ModuleLoader__.load({
       if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`
       if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K`
       return String(n)
+    }
+
+    /**
+     * A money balance, in the currency's own units.
+     *
+     * `kilo()` is a *token* formatter: it rounds to an integer and appends K/M.
+     * Running a dollar balance through it turned $5.00 into "5" and $1234.56
+     * into "1.2K", which reads as a token count, not a balance (issue #821).
+     * Cline is the channel that declares `unit: 'dollars'`.
+     */
+    function money(value, locale) {
+      const n = Number(value)
+      if (!Number.isFinite(n)) return '—'
+      const digits = Math.abs(n) >= 100 ? 0 : 2
+      try {
+        return n.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US',
+          { minimumFractionDigits: digits, maximumFractionDigits: digits })
+      } catch { return n.toFixed(digits) }
+    }
+
+    /** Format a balance with the formatter its declared unit calls for. */
+    function balanceText(value, capability, locale) {
+      if (capability?.unit === 'dollars') return money(value, locale)
+      return kilo(value)
     }
 
     function ago(ts, locale) {
@@ -2772,8 +3537,20 @@ window.__ModuleLoader__.load({
       return undefined
     }
 
-    /** Modal surface for `urgent` announcements; dismiss runs the ack callback. */
-    function showUrgentModal({ title, html, confirmLabel, onClose }) {
+    /** Urgent announcement ids already shown on this page. Both the arrival
+     *  push and the boot re-check consult it, so one announcement opens one
+     *  modal per page load — a replace, never a stack. */
+    const urgentShownIds = new Set()
+
+    /** Modal surface for `urgent` announcements; dismiss runs the ack callback.
+     *
+     *  `holdMs` keeps the close control locked for that long with a visible
+     *  countdown: an announcement that must be read should not be dismissible
+     *  by reflex. The timer is one-shot and cleared with the modal. The hint
+     *  text travels in from the caller like `confirmLabel` — this function
+     *  predates any `t` binding and must not grow one (same rule as
+     *  showToast's comment below). */
+    function showUrgentModal({ title, html, confirmLabel, onClose, holdMs = 0, holdHint = '' }) {
       try {
         document.querySelector('.ofm_scrim[data-ofm-urgent]')?.remove()
         const scrim = document.createElement('div')
@@ -2795,8 +3572,35 @@ window.__ModuleLoader__.load({
         ok.type = 'button'
         ok.className = 'ofm_btn primary'
         ok.textContent = confirmLabel ?? 'OK'
-        ok.addEventListener('click', () => { scrim.remove(); onClose?.() })
+        ok.addEventListener('click', () => {
+          if (ok.disabled === true) return
+          scrim.remove()
+          if (holdTimer !== undefined) { clearTimeout(holdTimer); holdTimer = undefined }
+          onClose?.()
+        })
         foot.appendChild(ok)
+        let remaining = Math.max(0, Math.round(Number(holdMs) || 0))
+        let holdTimer
+        const settle = () => {
+          ok.disabled = false
+          ok.textContent = confirmLabel ?? 'OK'
+          hint?.remove()
+          hint = undefined
+        }
+        // 倒计时提示行：告诉用户这不是坏的按钮，是刻意的三秒。
+        let hint = remaining > 0 ? document.createElement('span') : undefined
+        if (hint !== undefined) {
+          hint.className = 'ofm_holdhint'
+          hint.setAttribute('aria-live', 'polite')
+          foot.appendChild(hint)
+        }
+        const tick = () => {
+          if (remaining <= 0) { settle(); return }
+          ok.disabled = true
+          hint.textContent = String(holdHint ?? '').replace('{s}', String(Math.ceil(remaining / 1000)))
+          holdTimer = setTimeout(() => { remaining = Math.max(0, remaining - 250); tick() }, 250)
+        }
+        tick()
         modal.appendChild(head)
         modal.appendChild(body)
         modal.appendChild(foot)
@@ -2817,6 +3621,7 @@ window.__ModuleLoader__.load({
       type: 'button',
       className: 'ofm_switch',
       role: 'switch',
+      'aria-label': props.label,
       'aria-checked': props.checked ? 'true' : 'false',
       // Several call sites already pass `disabled` (the gateway switch does, while
       // its RPC is in flight) and it was silently dropped, so a switch stayed
@@ -2836,6 +3641,8 @@ window.__ModuleLoader__.load({
       disabled: props.disabled,
       onClick: props.onClick,
       title: props.title,
+      'aria-label': props['aria-label'],
+      'aria-busy': props.busy === true ? 'true' : props['aria-busy'],
     }, props.children)
 
     function Section(props) {
@@ -2936,7 +3743,8 @@ window.__ModuleLoader__.load({
 
     // ── model roster ──────────────────────────────────────────────────────────
     function ModelCard(props) {
-      const { model: m, t, onBench, bench, locked, eacLogin, onVisibility, busy } = props
+      const { model: m, t, onBench, bench, locked, eacLogin, onVisibility, busy, perf } = props
+      const [perfOpen, setPerfOpen] = useState(false)
       const listed = m.availabilitySource === 'listing'
       const manual = m.availabilitySource === 'manual'
       const stateKey = `state.${m.availability}`
@@ -2956,15 +3764,38 @@ window.__ModuleLoader__.load({
       const levels = Array.isArray(m.efforts) && m.efforts.length > 0
         ? m.efforts.map(levelName).join(' / ')
         : undefined
+      // Capability tags, translated from the ids the catalog derives. Every id
+      // is looked up with a literal call so the dictionary lint can see the key
+      // (an id with no entry is skipped rather than rendered raw).
+      const CAPABILITY_TAGS = {
+        'long-context': { label: () => t('tag.longContext'), title: () => t('tag.longContextTitle') },
+        'long-output': { label: () => t('tag.longOutput'), title: () => t('tag.longOutputTitle') },
+        vision: { label: () => t('tag.vision'), title: () => t('tag.visionTitle') },
+        reasoning: { label: () => t('tag.thinking'), title: () => t('tag.thinkingTitle') },
+        'thinking-levels': { label: () => t('tag.thinkingLevels'), title: () => t('tag.thinkingLevelsTitle') },
+        fast: { label: () => t('tag.fast'), title: () => t('tag.fastTitle') },
+        eac: { label: () => t('tag.eac'), title: () => t('tag.eacTitle') },
+      }
+      const capabilityTags = Array.isArray(m.tags) && m.tags.length > 0
+        ? m.tags.map(id => CAPABILITY_TAGS[id] === undefined ? null : {
+          id, label: CAPABILITY_TAGS[id].label(), title: CAPABILITY_TAGS[id].title(),
+        }).filter(tag => tag !== null)
+        : undefined
       return h('article', { className: 'ofm_card' + (dim ? ' dim' : '') + (m.pinned === true ? ' pinned' : '') },
+        // Two rows, not one: the chips row carries the channel tag and the
+        // badges, and the model name gets a full-width row of its own. They
+        // used to share one flex line, where the name was the only child that
+        // could shrink — so a card with EAC + NEW + 爆 + a status badge left it
+        // about seven pixels and the name rendered as "EA…". A name is the one
+        // thing on the card that must never be the thing that gives way.
         h('div', { className: 'ofm_cardhead' },
           m.channel === 'eac' ? h('span', { className: 'ofm_chantag', title: t('tag.eacChannel') }, 'EAC') : null,
           m.channel === 'eac' && locked === true ? h('span', { className: 'ofm_chantag', title: t('eac.lockedTitle') }, '🔒') : null,
           m.channel === 'kilo' ? h('span', { className: 'ofm_chantag', title: t('tag.kiloChannel') }, 'Kilo') : null,
-          h('span', { className: 'ofm_cardname', title: m.name }, m.name),
           m.isNew === true ? h('span', { className: 'ofm_newtag', title: t('tag.newTitle') }, t('tag.new')) : null,
           m.hot === true ? h('span', { className: 'ofm_hottag', title: t('tag.hotTitle') }, t('tag.hot')) : null,
           h('span', { className: 'ofm_badge ' + (listed ? 'unknown' : m.availability), title: listed ? t('hint.listed') : undefined }, listed ? t('state.listed') : t(stateKey))),
+        h('div', { className: 'ofm_cardname', title: m.name }, m.name),
         h('div', { className: 'ofm_id', title: m.id }, m.label ?? m.id),
         h('div', { className: 'ofm_tags' },
           m.hiddenByUser === true ? h('span', { className: 'ofm_tag' }, t('visibility.hidden')) : null,
@@ -2978,6 +3809,17 @@ window.__ModuleLoader__.load({
               `${t('tag.rung')} ${kilo(rung.tokens)}`),
           levels === undefined ? null
             : h('span', { className: 'ofm_tag', title: t('tag.levelsTitle') }, `${t('tag.levels')} ${levels}`)),
+        // Capability tags answer a different question from the spec tags above:
+        // those say "how big are its limits", these say "what is it good at"
+        // (issue #869). Derived from the entry's own fields by
+        // `capabilityTagsOf`, so a model with no declared facts gets no claim.
+        capabilityTags === undefined ? null : h('div', { className: 'ofm_tags ofm_captags' },
+          h('span', { className: 'ofm_caplabel' }, t('tag.capabilities')),
+          capabilityTags.map(tag => h('span', {
+            className: `ofm_tag cap ${tag.id}`,
+            key: tag.id,
+            title: tag.title,
+          }, tag.label))),
         m.channel === 'eac' && locked === true
           ? h(Fragment, null,
             h('p', { className: 'ofm_note' }, t('eac.lockedNote')),
@@ -2994,6 +3836,39 @@ window.__ModuleLoader__.load({
                 m.ttftMs === undefined || m.ttftMs === 0 ? null : h('span', null, t('tag.latency'), ' ', h('b', null, Math.round(m.ttftMs)), ' ms'),
                 h('span', null, manual ? t('pref.measuredAt') : t('pref.probedAt'), ' ', h('b', null, ago(m.probedAt, t.locale)))),
         m.canDisableThinking === false ? h('p', { className: 'ofm_note' }, t('hint.sharedBudget')) : null,
+        perf === undefined || perf.settling === true ? null : h(Fragment, null,
+          // The site's own performance strip, reproduced: a 24-tick success bar
+          // under its rate, then latency and throughput, then 详情. The bar is
+          // the whole point — it shows the shape of the day, not just its
+          // average, so a model that was fine this morning and is failing now
+          // cannot hide behind a healthy-looking mean.
+          h('div', { className: 'ofm_perf' },
+            h('dl', { className: 'ofm_perfstats' },
+              h('div', { className: 'ofm_perfcol status' },
+                h('dt', { className: 'ofm_perflabel', title: t('perf.rateTitle') },
+                  h('span', null, t('perf.rate')),
+                  h('span', { className: 'ofm_perfnum' }, `${perf.rate.toFixed(2)}%`)),
+                h('dd', { className: 'ofm_perfbars', title: t('perf.barsTitle'), role: 'img',
+                  'aria-label': t('perf.barsTitle') },
+                  (perf.ticks ?? []).map((tick, i) => h('span', {
+                    key: i, className: 'ofm_perfbar ' + perfTone(tick),
+                  })))),
+              h('div', { className: 'ofm_perfcol value' },
+                h('dt', { className: 'ofm_perflabel' }, t('perf.latency')),
+                h('dd', { className: 'ofm_perfnum wide' }, formatLatency(perf.latencyMs))),
+              h('div', { className: 'ofm_perfcol value' },
+                h('dt', { className: 'ofm_perflabel' }, t('perf.speed')),
+                h('dd', { className: 'ofm_perfnum wide' }, formatSpeed(perf.speed)))),
+            h('button', {
+              type: 'button', className: 'ofm_perfmore', 'aria-expanded': perfOpen ? 'true' : 'false',
+              onClick: () => setPerfOpen(open => !open),
+            }, perfOpen ? t('perf.less') : t('perf.more'), h('span', { className: 'ofm_perfchev' }, perfOpen ? '▴' : '▾')),
+            // The window the figures describe. Without it a reader has to guess
+            // whether "92%" is this hour or the whole day — and the bar's shape
+            // is only meaningful once you know how far back it reaches.
+            h('p', { className: 'ofm_perfnote' },
+              t('perf.windowNote').replace('{h}', String(perf.windowHours ?? 24)))),
+          perfOpen ? h(PerfCharts, { modelId: m.id, t }) : null),
         onVisibility === undefined ? null : h('div', { className: 'ofm_sec' },
           h(Switch, { checked: m.hiddenByUser !== true, label: t('visibility.showModel'),
             disabled: busy || m.hiddenByGroup === true, onChange: () => onVisibility(m) }),
@@ -3003,8 +3878,193 @@ window.__ModuleLoader__.load({
           bench?.result === undefined ? null : h('span', { className: 'ofm_note' }, bench.result)))
     }
 
+    /**
+     * The site's own per-model performance figures, for the roster's capsules.
+     *
+     * One read per roster mount, keyed by catalog id. It is best-effort by
+     * design: a failure leaves the map empty and every card renders exactly as
+     * it did before this feature — a card must never fail to draw because a
+     * metrics endpoint was slow. The server hop exists because the site's
+     * endpoint sends no CORS headers (see index.js `/perf`).
+     */
+    function usePerfFigures() {
+      const [figures, setFigures] = useState({})
+      useEffect(() => {
+        let alive = true
+        api('/perf').then(payload => {
+          if (!alive) return
+          const models = payload?.models
+          setFigures(models !== null && typeof models === 'object' ? models : {})
+        }).catch(() => { /* no figures: every card renders without a capsule */ })
+        return () => { alive = false }
+      }, [])
+      return figures
+    }
+
+    /**
+     * The panel 详情 opens: the site's two trend charts.
+     *
+     * Latency over time (blue) and availability over time (green, with the
+     * sub-band samples marked red). Both read one hourly series; when the site
+     * has none, a single line says so rather than an empty box.
+     */
+    function PerfCharts(props) {
+      const { modelId, t } = props
+      const { status, series } = usePerfSeries(modelId, true)
+      if (status === 'loading') return h('p', { className: 'ofm_perfnote' }, t('perf.loading'))
+      if (series === null) return h('p', { className: 'ofm_perfnote' }, t('perf.noSeries'))
+      return h('div', { className: 'ofm_charts' },
+        h('div', { className: 'ofm_chartblock' },
+          h('div', { className: 'ofm_charthead' },
+            h('span', { className: 'ofm_charttitle' }, t('perf.latencyTrend')),
+            h('span', { className: 'ofm_chartsub' }, t('perf.latencySub'))),
+          h(PerfTrendChart, {
+            points: series, pick: point => point.latencyMs, min: 0, unit: ' ms',
+            color: '#2563eb', t, label: t('perf.latencyTrend'),
+          })),
+        h('div', { className: 'ofm_chartblock' },
+          h('div', { className: 'ofm_charthead' },
+            h('span', { className: 'ofm_charttitle' }, t('perf.rateTrend')),
+            h('span', { className: 'ofm_chartsub' }, t('perf.rateSub'))),
+          h(PerfTrendChart, {
+            points: series, pick: point => point.rate, min: 0, max: 100, unit: '%',
+            color: '#10b981', t, label: t('perf.rateTrend'),
+            // The site marks a sub-band sample in the error colour; a dip is
+            // the whole reason this chart exists beside the average.
+            tone: point => (point.rate !== null && point.rate < 90 ? '#ef4444' : '#10b981'),
+          })))
+    }
+
+    /**
+     * One model's hourly series, fetched when its 详情 is opened.
+     *
+     * Lazy on purpose: the roster shows twelve strips, and the charts behind
+     * them would cost twelve extra requests to draw something nobody has asked
+     * to see. `enabled` is false until the card expands.
+     */
+    function usePerfSeries(modelId, enabled) {
+      const [state, setState] = useState({ status: 'idle', series: null })
+      useEffect(() => {
+        if (enabled !== true || typeof modelId !== 'string' || modelId === '') return undefined
+        let alive = true
+        setState({ status: 'loading', series: null })
+        api(`/perf/series?model=${encodeURIComponent(modelId)}`, { timeout: 12000 }).then(payload => {
+          if (!alive) return
+          const series = Array.isArray(payload?.series) ? payload.series : null
+          setState({ status: series === null ? 'none' : 'ready', series })
+        }).catch(() => { if (alive) setState({ status: 'none', series: null }) })
+        return () => { alive = false }
+      }, [modelId, enabled])
+      return state
+    }
+
+    /**
+     * The site's two trend charts, drawn as SVG.
+     *
+     * The site renders them to a canvas; SVG is used here so the lines stay
+     * crisp at any density and the theme's own text colours apply. The shape
+     * matches: 60px of Y-axis labels, horizontal gridlines, a line with a dot
+     * per sample, and hour labels along the bottom. The availability chart
+     * marks the samples that fell below the healthy band in the error colour,
+     * which is how the site shows an incident at a glance.
+     */
+    function PerfTrendChart(props) {
+      const { points, pick, min, max, unit, color, t, tone } = props
+      const W = 300
+      const H = 116
+      const pad = { left: 34, right: 6, top: 8, bottom: 18 }
+      const rows = points.filter(point => pick(point) !== null && pick(point) !== undefined)
+      if (rows.length < 2) return h('p', { className: 'ofm_perfnote' }, t('perf.noSeries'))
+      const lo = min === undefined ? 0 : min
+      const hi = max === undefined ? Math.max(...rows.map(pick)) : max
+      // Five gridlines on a round ladder, the way the site labels its axis
+      // (0 / 60k / 120k / 180k / 240k / 300k) — not the raw peak, which would
+      // print 20303 and 60908. The line scales to the same top the axis shows,
+      // so a point never floats above its own gridline.
+      const top = max === undefined ? niceCeil(hi) : hi
+      const span = top - lo || 1
+      const x = i => pad.left + (i / (rows.length - 1)) * (W - pad.left - pad.right)
+      const y = v => pad.top + (1 - (v - lo) / span) * (H - pad.top - pad.bottom)
+      const path = rows.map((point, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(pick(point)).toFixed(1)}`).join(' ')
+      const ticks = Array.from({ length: 5 }, (_, i) => lo + (span * i) / 4)
+      const tickLabel = value => unit === '%'
+        ? `${Math.round(value)}%`
+        : value >= 1000 ? `${Math.round(value / 1000)}k ms` : `${Math.round(value)} ms`
+      const hourLabel = ts => {
+        const d = new Date(ts * 1000)
+        return `${String(d.getHours()).padStart(2, '0')}:00`
+      }
+      return h('svg', { className: 'ofm_chart', viewBox: `0 0 ${W} ${H}`, role: 'img',
+        'aria-label': props.label },
+        ticks.map((tick, i) => h('g', { key: i },
+          h('line', { x1: pad.left, x2: W - pad.right, y1: y(tick), y2: y(tick),
+            className: 'ofm_chartgrid', strokeDasharray: i === 0 ? undefined : '3 3' }),
+          h('text', { x: pad.left - 5, y: y(tick) + 3, className: 'ofm_chartaxis', textAnchor: 'end' },
+            tickLabel(tick)))),
+        h('path', { d: path, fill: 'none', stroke: color, strokeWidth: 1.6,
+          strokeLinejoin: 'round', strokeLinecap: 'round' }),
+        rows.map((point, i) => h('circle', {
+          key: i, cx: x(i), cy: y(pick(point)), r: 1.9,
+          fill: tone === undefined ? color : tone(point),
+          className: 'ofm_chartdot',
+        })),
+        // Four hour labels across the window, as the site spaces them.
+        [0, Math.floor(rows.length / 3), Math.floor((rows.length * 2) / 3), rows.length - 1].map((idx, i) => h('text', {
+          key: `x${i}`, x: x(idx), y: H - 5, className: 'ofm_chartaxis',
+          textAnchor: i === 0 ? 'start' : i === 3 ? 'end' : 'middle',
+        }, hourLabel(rows[idx].ts))))
+    }
+
+    /**
+     * One bar's colour, using the site's own thresholds.
+     *
+     * The model square colours each hourly tick emerald at 99 and above, amber
+     * from 90, red below — and grey for an hour with no sample. Copying those
+     * cut-offs is the point: the same day must look the same in both places.
+     */
+    function perfTone(rate) {
+      if (rate === null || rate === undefined) return 'none'
+      const n = Number(rate)
+      if (!Number.isFinite(n)) return 'none'
+      if (n >= 99) return 'good'
+      if (n >= 90) return 'fair'
+      return 'poor'
+    }
+
+    /**
+     * The next round number at or above `value`, for an axis top.
+     *
+     * 60908 → 70000, 300000 → 300000, 96 → 100. One significant-figure step
+     * above the data, so the top gridline is always a number a reader can hold
+     * in their head rather than the exact peak of the sample.
+     */
+    function niceCeil(value) {
+      const n = Number(value)
+      if (!Number.isFinite(n) || n <= 0) return 1
+      const magnitude = 10 ** Math.floor(Math.log10(n))
+      for (const step of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+        const candidate = step * magnitude
+        if (candidate >= n) return candidate
+      }
+      return 10 * magnitude
+    }
+
+    /** The strip's latency figure, in the site's own spelling (`144.96s`). */
+    function formatLatency(ms) {
+      const n = Number(ms)
+      if (!Number.isFinite(n) || n < 0) return '—'
+      return `${(n / 1000).toFixed(2)}s`
+    }
+
+    /** The strip's throughput figure, in the site's own spelling (`55.9t/s`). */
+    function formatSpeed(tps) {
+      const n = Number(tps)
+      if (!Number.isFinite(n) || n < 0) return '—'
+      return `${n.toFixed(1)}t/s`
+    }
+
     function isFreePoolModel(model) {
-      return !model.channel || model.channel === 'anonymous' || model.channel === 'kilo'
+      return !model.channel || model.channel === 'anonymous' || model.channel === 'kilo' || model.channel === 'extension'
     }
 
     function freePoolView(data) {
@@ -3040,6 +4100,8 @@ window.__ModuleLoader__.load({
       // `nav.tab.routing` 是链路编排），收窄会让这些模型从界面上消失。
       // 因此清单页仍显示除 EAC 外的全部模型；水位与五格统计另按 freePoolView
       // 的「匿名 + Kilo」口径计算，两个口径在文案里各自写明。
+      const perfFigures = usePerfFigures()
+      // 免费页与水位采用相同范围：匿名免费模型和 Kilo；其他付费来源留在各自页面。
       const roster = only === undefined ? summary.catalog
         : only === 'eac' ? summary.catalog.filter(m => m.channel === 'eac')
           : summary.catalog.filter(m => m.channel !== 'eac')
@@ -3064,6 +4126,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ofm_grid' }, list.map(m => h(ModelCard, {
             key: m.id, model: m, t, onBench, locked: m.channel === 'eac' && locked, eacLogin,
             onVisibility: toggleModel, busy,
+            perf: perfFigures[m.id],
             bench: { running: benches[m.id]?.running === true, ...benches[m.id]?.result === undefined ? {} : { result: benches[m.id].result } },
           }))))
       // The lane closed at the gate is the one "no EAC models" case the page can
@@ -3107,12 +4170,23 @@ window.__ModuleLoader__.load({
      */
     function Tank(props) {
       const { pct, level = 'ok', size, label } = props
+      const filled = Number(pct) > 0
+      const tankRef = useRef(null)
+      const [visible, setVisible] = useState(true)
+      useEffect(() => {
+        if (!filled || typeof IntersectionObserver !== 'function' || !tankRef.current) return undefined
+        const observer = new IntersectionObserver(entries => setVisible(entries.some(entry => entry.isIntersecting)))
+        observer.observe(tankRef.current)
+        return () => observer.disconnect()
+      }, [filled])
       const fish = ['f1', 'f2', 'f3'].map(name => h('i', { className: `ofm_fish ${name}`, key: name },
         h('svg', { viewBox: '0 0 24 14' }, h('path', { d: FISH_PATH }))))
       const bubbles = ['b1', 'b2', 'b3', 'b4', 'b5'].map(name => h('i', { className: `ofm_bubble ${name}`, key: name }))
       if (pct === null || pct === undefined) return null
       return h('div', {
         className: `ofm_tank ${level}${size === 'xl' ? ' xl' : ''}`,
+        ref: tankRef,
+        'data-ofm-motion': filled && visible ? 'on' : 'off',
         role: 'img',
         'aria-label': label ?? `${pct}%`,
         style: { '--lvl': `${Math.max(0, Math.min(100, pct))}%` },
@@ -3896,7 +4970,8 @@ window.__ModuleLoader__.load({
           control.current.phase = ''
           const version = event.detail?.version ?? ''
           setPhase(''); setError('')
-          setMessage(control.current.managed || version === '' ? '' : t('upgrade.done').replace('{version}', version))
+          setMessage(control.current.managed || version === '' ? '' : event.detail?.restartRequired === true
+           ? t('upgrade.restart').replace('{version}', version) : t('upgrade.done').replace('{version}', version))
           void status.reload()
         }
         window.addEventListener('ofm:upgraded', handler)
@@ -3938,7 +5013,8 @@ window.__ModuleLoader__.load({
           const result = await post('/update/apply', {}, 600_000)
           // The response releases controls even when hot reload closes SSE.
           if (!finish(token)) return
-          setMessage(result?.version === undefined ? t('upgrade.phase.install') : t('upgrade.doneRefresh').replace('{version}', result.version))
+          setMessage(result?.version === undefined ? t('upgrade.phase.install') : result.restartRequired === true
+            ? t('upgrade.restart').replace('{version}', result.version) : t('upgrade.doneRefresh').replace('{version}', result.version))
           void status.reload()
         } catch (err) {
           if (!finish(token)) return
@@ -3969,7 +5045,8 @@ window.__ModuleLoader__.load({
           !managed && data?.available === true ? h('span', { className: 'ofm_pill' }, h('span', { className: 'ofm_dot warn' }), t('upgrade.available').replace('{version}', data.latest)) : null,
           upToDate ? h('span', { className: 'ofm_pill' }, h('span', { className: 'ofm_dot ok' }), t('upgrade.upToDate')) : null,
           h('span', { className: 'ofm_pill' }, `${t('upgrade.checkedAt')}: ${data?.checkedAt ? ago(data.checkedAt, t.locale) : t('upgrade.never')}`)),
-        h('div', { className: 'ofm_row' },
+        data?.hotReloadAvailable === false || data?.restartRequired === true ? h('div', { className: 'ofm_callout', role: 'status' }, t('upgrade.restartHint')) : null,
+         h('div', { className: 'ofm_row' },
           h(Button, { disabled: managed || phase !== '' || status.status !== 'ready' || data?.applying === true, onClick: check }, !managed && phase === 'checking' ? t('upgrade.checking') : t('upgrade.check')),
           data?.available === true ? h(Button, { kind: 'primary', disabled: managed || status.status !== 'ready' || phase !== '' || data.applying === true || data.recoveryRequired === true, onClick: applyUpgrade }, !managed && phase === 'applying' ? t('upgrade.applying') : t('upgrade.apply')) : null,
           h('a', {
@@ -3997,8 +5074,8 @@ window.__ModuleLoader__.load({
           data.lastApplied.ok === false && data.lastApplied.error ? ` — ${data.lastApplied.error}` : '') : null,
         !managed ? h('p', { className: 'ofm_note' }, (settings.updateCheckHours ?? 0) > 0 ? t('upgrade.auto').replace('{n}', String(settings.updateCheckHours)) : t('upgrade.autoOff')) : null,
         h('div', { className: 'ofm_row' },
-          h(Button, { disabled: managed || status.status !== 'ready' || phase !== '' || data?.applying === true || data?.recoveryRequired === true, onClick: reload }, phase === 'reloading' && !managed ? t('reload.reloading') : t('reload.now')),
-          h(Switch, { checked: !managed && settings.autoReloadWatch === true, disabled: managed || status.status !== 'ready' || phase !== '' || busy, label: t('reload.auto'), onChange: () => { if (!control.current.managed && control.current.ready && control.current.phase === '' && !busy) onApply({ autoReloadWatch: !(settings.autoReloadWatch === true) }) } }),
+          h(Button, { disabled: managed || data?.hotReloadAvailable === false || data?.restartRequired === true || status.status !== 'ready' || phase !== '' || data?.applying === true || data?.recoveryRequired === true, onClick: reload }, phase === 'reloading' && !managed ? t('reload.reloading') : t('reload.now')),
+          h(Switch, { checked: !managed && data?.autoReloadWatch === true, disabled: managed || data?.hotReloadAvailable === false || status.status !== 'ready' || phase !== '' || busy, label: t('reload.auto'), onChange: () => { if (!control.current.managed && control.current.ready && control.current.data?.hotReloadAvailable !== false && control.current.phase === '' && !busy) onApply({ autoReloadWatch: !(control.current.data?.autoReloadWatch === true) }) } }),
           managed ? null : h('span', { className: 'ofm_note' }, t('reload.done').replace('{n}', String(settings.reloadCount ?? 0)))))
     }
 
@@ -4036,13 +5113,13 @@ window.__ModuleLoader__.load({
      * Reduced motion skips straight to the value — the number is the point, the
      * motion is not.
      */
-    function useCountUp(target) {
+    function useCountUp(target, effects = false) {
       const [value, setValue] = useState(target ?? null)
       useEffect(() => {
         if (typeof target !== 'number') return
         const reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
           && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        if (reduced) { setValue(target); return }
+        if (reduced || !effects) { setValue(target); return }
         const started = Date.now()
         let raf = 0
         const tick = () => {
@@ -4052,14 +5129,14 @@ window.__ModuleLoader__.load({
         }
         raf = requestAnimationFrame(tick)
         return () => cancelAnimationFrame(raf)
-      }, [target])
+      }, [target, effects])
       return value
     }
 
     function RecoCard(props) {
       const { t, index, stat, mark, name, repo, badge, tagline, body, chips, repoUrl, extraUrl, extraLabel } = props
       const stars = stat !== null && typeof stat.stars === 'number' ? stat.stars : null
-      const shown = useCountUp(stars)
+      const shown = useCountUp(stars, props.effects)
       const forks = stat !== null && typeof stat.forks === 'number' ? stat.forks : null
       const pushedAt = stat !== null && typeof stat.pushedAt === 'number' ? stat.pushedAt : null
       const stale = stat !== null && stat.stale === true
@@ -4126,7 +5203,7 @@ window.__ModuleLoader__.load({
               h(StarButton, { t })))),
         h('div', { className: 'ofm_recogrid' },
           h(RecoCard, {
-            t, index: 0, stat: statOf('eac-desktop'), mark: RECO_DESKTOP_MARK,
+            t, effects: props.effects, index: 0, stat: statOf('eac-desktop'), mark: RECO_DESKTOP_MARK,
             name: 'EAC-Desktop', repo: 'Ebony-Vinyl/EAC-Desktop',
             badge: t('picks.desktop.badge'),
             tagline: t('picks.desktop.tagline'),
@@ -4135,7 +5212,7 @@ window.__ModuleLoader__.load({
             repoUrl: RECO_LINKS.desktop.repo, extraUrl: RECO_LINKS.desktop.extra, extraLabel: t('picks.getDesktop'),
           }),
           h(RecoCard, {
-            t, index: 1, stat: statOf('eac-pack'), mark: RECO_PACK_MARK,
+            t, effects: props.effects, index: 1, stat: statOf('eac-pack'), mark: RECO_PACK_MARK,
             name: 'EAC-Pack', repo: 'Ebony-Vinyl/EAC-Pack',
             badge: t('picks.pack.badge'),
             tagline: t('picks.pack.tagline'),
@@ -4144,7 +5221,7 @@ window.__ModuleLoader__.load({
             repoUrl: RECO_LINKS.pack.repo, extraUrl: RECO_LINKS.pack.extra, extraLabel: t('picks.getPack'),
           }),
           h(RecoCard, {
-            t, index: 2, stat: statOf('eac-design-world'), mark: RECO_DESIGN_MARK,
+            t, effects: props.effects, index: 2, stat: statOf('eac-design-world'), mark: RECO_DESIGN_MARK,
             name: 'EAC-design-world', repo: 'Ebony-Vinyl/EAC-design-world',
             badge: t('picks.design.badge'),
             tagline: t('picks.design.tagline'),
@@ -4156,15 +5233,184 @@ window.__ModuleLoader__.load({
         h('p', { className: 'ofm_reconote' }, t('picks.foot')))
     }
 
-    // ── 白嫖模型接入页 ────────────────────────────────────────────────────────
+    // ── 反馈与许愿 ────────────────────────────────────────────────────────────
+    /**
+     * Sign in with GitHub, then file one problem report or feature wish.
+     *
+     * Sign-in is required rather than optional: an anonymous report cannot be
+     * followed up when the fix lands, and there is no way to tell one person's
+     * complaint from the same complaint arriving ten times.
+     *
+     * The token never reaches this page — every call goes through the host's
+     * `/feedback/*` routes, which keep it in the settings file on this machine
+     * and answer only `{signedIn, login}`. So even a script injected into the
+     * page cannot steal a credential that submits as the user.
+     */
+    function FeedbackPage(props) {
+      const { t } = props
+      const [auth, setAuth] = useState({ signedIn: false, login: '' })
+      const [login, setLogin] = useState(undefined)
+      const [kind, setKind] = useState('bug')
+      const [title, setTitle] = useState('')
+      const [detail, setDetail] = useState('')
+      const [busy, setBusy] = useState('')
+      const [error, setError] = useState('')
+      const [status, setStatus] = useState('')
+      const [sent, setSent] = useState('')
+      // 轮询定时器与"还挂在页面上吗"的标记：设备码轮询会跨越多秒，页面切走
+      // 之后 setState 属于泄漏的更新，清理函数必须把它们都停掉。
+      const pollTimer = useRef(undefined)
+      const live = useRef(true)
+      useEffect(() => () => { live.current = false; clearTimeout(pollTimer.current) }, [])
+
+      const readAuth = useCallback(async () => {
+        try {
+          const value = await api('/feedback')
+          if (live.current) setAuth(value)
+        } catch { /* 状态读取失败不该挡住表单；登录按钮会再报一次 */ }
+      }, [])
+      useEffect(() => { void readAuth() }, [readAuth])
+
+      const signIn = async () => {
+        if (busy) return
+        setBusy('signin'); setError(''); setStatus('')
+        try {
+          const value = await post('/feedback/start', undefined, 30_000)
+          if (!live.current) return
+          setLogin(value)
+          setStatus(t('fb.opened'))
+          // 授权页在新标签打开：本页要保持可见，验证码还要照着输。
+          try { window.open(value.verifyUrl, '_blank', 'noopener,noreferrer') } catch { /* 弹窗被拦，页面里还有链接 */ }
+        } catch (reason) { if (live.current) setError(String(reason?.message ?? reason)) }
+        finally { if (live.current) setBusy('') }
+      }
+
+      // 只在登录流程进行中轮询，成功后立刻停 —— 常驻轮询会让一台已经登录的机器
+      // 每隔几秒向外部服务发一次毫无意义的请求。
+      useEffect(() => {
+        if (login === undefined) return undefined
+        let cancelled = false
+        const tick = async () => {
+          try {
+            const value = await post('/feedback/poll', { session: login.session }, 30_000)
+            if (cancelled || !live.current) return
+            if (value.status === 'ok') {
+              setLogin(undefined); setAuth({ signedIn: true, login: value.login ?? '' })
+              setStatus(t('fb.signedIn')); return
+            }
+            if (value.status === 'expired') { setLogin(undefined); setError(t('fb.expired')); return }
+            if (value.status === 'denied') { setLogin(undefined); setError(t('fb.denied')); return }
+            pollTimer.current = setTimeout(() => { void tick() }, 3000)
+          } catch (reason) {
+            if (cancelled || !live.current) return
+            setLogin(undefined); setError(String(reason?.message ?? reason))
+          }
+        }
+        pollTimer.current = setTimeout(() => { void tick() }, 3000)
+        return () => { cancelled = true; clearTimeout(pollTimer.current) }
+      }, [login, t])
+
+      const signOut = async () => {
+        setBusy('signout'); setError(''); setStatus('')
+        try {
+          const value = await post('/feedback/signout')
+          if (live.current) { setAuth(value); setStatus(t('fb.signedOut')); setSent('') }
+        } catch (reason) { if (live.current) setError(String(reason?.message ?? reason)) }
+        finally { if (live.current) setBusy('') }
+      }
+
+      const submit = async () => {
+        if (busy) return
+        setBusy('submit'); setError(''); setStatus(''); setSent('')
+        try {
+          const result = await post('/feedback/submit', {
+            kind, title, detail, platform: navigator.platform, page: 'feedback',
+          }, 30_000)
+          if (!live.current) return
+          setTitle(''); setDetail(''); setSent(result.id)
+          setStatus(t('fb.submitted'))
+        } catch (reason) {
+          if (!live.current) return
+          // 401 是反馈令牌失效（收集端重启丢了内存会话，或到期），不是管理会话
+          // 失效：留在本页、把登录态重置，正文留在输入框里，不必重打一遍。
+          const stale = /登录已失效|sign-in has lapsed/.test(String(reason?.message ?? ''))
+          if (stale) {
+            setAuth({ signedIn: false, login: '' })
+            setError(t('fb.stale'))
+            return
+          }
+          setError(String(reason?.message ?? reason))
+        }
+        finally { if (live.current) setBusy('') }
+      }
+
+      const canSubmit = title.trim() !== '' && detail.trim() !== '' && busy === ''
+      return h('div', { className: 'ofm_page' },
+        h(PageHero, { title: t('fb.title'), sub: t('fb.sub') },
+          auth.signedIn
+            ? h(Button, { onClick: () => void signOut(), disabled: busy !== '' },
+              t('fb.signOut').replace('{login}', auth.login))
+            : h(Button, { onClick: () => void signIn(), disabled: busy !== '' },
+              t('fb.signIn'))),
+
+        error !== '' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, error)) : null,
+        status !== '' ? h('div', { className: 'ofm_callout' }, h('div', null, status)) : null,
+
+        login !== undefined ? h('div', { className: 'ofm_panel ofm_fbcode' },
+          h('div', { className: 'ofm_fbcodeval' }, login.userCode),
+          h('p', { className: 'ofm_note' }, t('fb.code')),
+          h('a', { className: 'ofm_linkbtn', href: login.verifyUrl, target: '_blank', rel: 'noopener noreferrer' },
+            t('fb.openVerify')),
+          h('p', { className: 'ofm_note' }, t('fb.waiting'))) : null,
+
+        !auth.signedIn && login === undefined ? h('div', { className: 'ofm_panel ofm_fbgate' },
+          h('h3', null, t('fb.gateTitle')),
+          h('p', { className: 'ofm_note' }, t('fb.gateBody')),
+          h(Button, { onClick: () => void signIn(), disabled: busy !== '' }, t('fb.signIn'))) : null,
+
+        auth.signedIn ? h(Section, { title: t('fb.title'), hint: t('fb.note') },
+          h('div', { className: 'ofm_panel ofm_fbform' },
+            h('div', { className: 'ofm_row ofm_fbsegments', role: 'group', 'aria-label': t('fb.title') },
+              h('button', {
+                type: 'button', className: 'ofm_fbseg', 'data-on': kind === 'bug' ? 'true' : 'false',
+                'aria-pressed': kind === 'bug' ? 'true' : 'false', disabled: busy !== '',
+                onClick: () => setKind('bug'),
+              }, t('fb.kind.bug')),
+              h('button', {
+                type: 'button', className: 'ofm_fbseg', 'data-on': kind === 'wish' ? 'true' : 'false',
+                'aria-pressed': kind === 'wish' ? 'true' : 'false', disabled: busy !== '',
+                onClick: () => setKind('wish'),
+              }, t('fb.kind.wish'))),
+            h('label', { className: 'ofm_fbfield' },
+              h('span', null, t('fb.titleField')),
+              h('input', {
+                className: 'ofm_input', value: title, maxLength: 120, disabled: busy !== '',
+                placeholder: t(kind === 'bug' ? 'fb.titlePlaceholderBug' : 'fb.titlePlaceholderWish'),
+                onChange: event => setTitle(event.target.value),
+              })),
+            h('label', { className: 'ofm_fbfield' },
+              h('span', null, t('fb.detailField')),
+              h('textarea', {
+                className: 'ofm_input ofm_fbtext', rows: 9, value: detail, maxLength: 8000, disabled: busy !== '',
+                placeholder: t(kind === 'bug' ? 'fb.detailPlaceholderBug' : 'fb.detailPlaceholderWish'),
+                onChange: event => setDetail(event.target.value),
+              })),
+            h('div', { className: 'ofm_row ofm_fbfoot' },
+              h(Pill, null, `${t('fb.version')} v${props.version ?? ''}`),
+              h('span', { className: 'ofm_note' }, `${detail.length} / 8000`)),
+            sent !== '' ? h('p', { className: 'ofm_fbreceipt', role: 'status' },
+              t('fb.sent').replace('{id}', sent)) : null,
+            h('div', { className: 'ofm_row' },
+              h(Button, { onClick: () => void submit(), disabled: !canSubmit },
+                busy === 'submit' ? '…' : t('fb.submit'))))) : null)
+    }
+
+    // ── EAC router ────────────────────────────────────────────────────────
     // Real channel logos carried over from the upstream Channel Pack client (see
     // vendor/channel-pack/NOTICE.md) — the same artwork users know from those
     // products, embedded so no network fetch is involved. Channels without an
     // entry fall back to their two-letter tile.
     const CHANNEL_ICONS = {
-      'codearts': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAcgUlEQVR4nNV7eZBd1Znf7/vOufe+93pvtYQkJNQWYEALAjeYzSCBM7IAY1xOmj8ydpzMTHDFSVUmU5VKKjU1rU5VJqmKKy6XZ6rG2PGEOJmZSBlj4w0DtiQb8ILbIEDLaBegBbT09vot995zvtR37nutRkIbeKYmR7r93r33vHPPt6+XcHmDBKAxwJQAOgHwYLi87F2mDl7w/NCyi8955/nZ94pxZZTJPuzDgp4F/sDYkB8GPIVt/oaHAKQIwP8HQyCXvE++tAVBWwEjgMHf87EFYh8bGrOXigS6FOApfMye847u7l5K0y7nbVkkivR6DiGLuDWvExE6RdAl+l2SRIAEQNxaJUYad7bOW0esn52znym6Wt+Le86XmITJkpVc8rBvISsSUWbYN5MZmbk53jdJOx9J23sdwQiPYtRfCD57MeDHijlZ+9rLuOKqpNG4GbCr4OkqsO8WEBkxJCTCYXq4kgPkvYjAidfbgIcgAtiARJmP4NkD5CCeC/7yBmACGweICBmCd8zMiDzrol5IJwQEcM5iJsTJ2/VIDoy5JS+D8GqbXIuHNpqRMeBCSLCXQPlsBODhyvwFLnWDhOzDAhkSYBVIlgCuGzAMEp3vFXRVQgJRCDwoLKXgeRDrn7CyXi5wwK2jzYzt+wpg+LGeM8ARg7hQcMreBBZxID8BmLeF+MC0XbDsiVXHFzRq3XsW7i8fu3eMAuFUHM6nGO35gEdBj1y/PdyxcB43848TsF7gV5NgHghdQj5Ruoetk05XPFgQjH4LwBgmCHPYghKOyMCTgSGC120F2EyYEwirnwq4XiOGsHJMBEtRgaiW3Aq4oA5JWcADGcfLalIaylx5nYvx9J7l9b/CAbyu87euhZFt4t4NCfZCSkER8caVS0pTEzPXgXi9BR6swFRUyPQQOO8gTgJrF2u3Mae0DhYp0PzMff2rd/S8uKpX2p/hNwDcnLvF/fAYUXEp9uZJUahPsQxUEqFKUjL9/Q3nBsVnjBLv/i9DMrl8Oap4exYi5Rw5rxUQ5dWCDjrJbV22LJkYH7/W5rgLIjdWwBWdlyoDqzYUYpXSwKRnYPMqvMXTSG2y7lqvzTlwgYM8RA94mT1ERUvOHCweBiliTqVCNSljWmLMKKqtRcPytdMx3VuXfGjHYXSs24ZA/U3DCu87rYN9FwngFunk16dOddk0usmD7iTwwhwIFM/1A15/a0xgTDYGqq7a/xgGJnwW/GAK5UcRhCJ4sq3P4ry4HgOUFAcnED1MqThY3S61IoX4eGV/sUjFoC7WNyVydbZ5Ks7W2dBURL1TxENVkjfyDLsJNKWAPXuggO28CNgI0PAcrujITJfzWA1ShYfuoNZJt5CThze6HZV1/YFV8W3JPc/5Vyg4lec2IhQAC4GdRUSBABs+w8FxgYCApAIp4RwxHCJkiJFLhAYIVfJcJ6DJhBkjdso4mjDcUSW6qsm8FBHKbXjG66ARbKTROWbd4gIjE1cyBgsA7lcb3IQIiyOm3Fj2lAMuA03n4qchvk7iPMMRIWdCLnpAUiFvJTCe2ga1isGhdtAVRC2sJEHiz+wrg0gOsD7RQbhJnssMWPGI0KASTUtHPE2lrirb7owpqjMwZUDjxsu0tdQg6fBBUSvrnX/YszhAdsy9GaeeHGcecKRSqMxDEiy+Maot0CDm/Vb8Sz6XPc75yUBzJxHDOyHvYBRPxqtg65oOXNg/VRPUbFlJpb4BpLVXl+siYO/FW6emyDiKYkOJAwxNU9T5elwZnPDmQznhRlgbVUl4ir1UmSg1QF6oKTU0Z5TeSmB050ZRz+CSOCBnyi3cDMNXhaXPBgToPwpOWKy+i3VIyU/EOf2kfNrsmgZzjnpXDut60ZGfKiPvoC4/jZMEzIef9RYV0EPoxQRwehATy64uAp6JQ4Be6wW6VWLSEg7EYo+Y+aV7va1d9epL9T++5ZZrXuu0n7JCKGcqkvA1JppRviP1qch5kSkQpjyfceIuygE6dmLOSCmFpdMgnLJWBgyhpKpd7RExucSglDCuyUlOcyV9Zt6p+vQAnxb5EGYwVmj1RVNzKHDesQ04/Pg7L03O+U6EZf/El/7p49TQ04/2SATrb6ow39Bocokz5E2CcUadCGU21AA+wuKOghB+o+PAgXP3wmdfmN/SksEZiuOqh3kFTLs5YtdTIlMpgUyCnGKSKCaTROiJLN3EBhtOryrdefAqlGgMGSm3q6U8c9A7D3mX48x19eNHRoRH1opVZj78ODXWrt1iN2yQqylxHyPCLWLQ37CwVYak5J1q5MiwEdHn+53C8mptHDNt07d8+TstwDkcoKYvOOwANg+Dl2+emubOhc910slFFOEjlQjdQiSZ6gSiWP3bGSINc/qF5B+lTVexFFWBbHtYcC0I6yAYDTuQS4vDZq8LNm6kFRvByiA6Gr23LyHKP8uePsU5FmaKYl3YwrDnvP1zT/40IvkFxTO/6pvXUx1eDt68GW7z5kBXuaAIcAsB4wfAt6g6rr51Yu/85GXifEfG6DOGumKFmcBZMTfvYMQl0NIp5+9nw2+/vSzio43+PbTtrRndfPHUkcBtG8Ohiujdx0ZsJIxsxM5R0GYitxNIh4clnkhwJfLsIZ/TpyyZlQHQps/Vh2bWYKTwF3OvCgTb89i/+vT3escDHZSL2kg9a9izL7SMET02duZKT7lxsEn26SZR2TFuLxmUcoF3Hk4Roaivk6hXtMQb/xlnMdDPU/8DoF+2nslYOxpIuzF4ZaPnQwANDwu9DdAC9do2BzHCyXn4ADXy3wbzQ2TMtcGXDN4xCLlG4jCqm3KPKfZ43pP8IKbo8FmQneMGX9AK9IXIruXae0ycMLStTlIxkPkidH0EGFWvOiETOEfIVClWCIM1wQORTSeOrEyiim3soO2YaLOxDo0u1eS+QywKTwFK9faltZ+VkhtsLveT2QMs/EnjzGpFiWv6TJ1Niov9qTFSE52lOGaAHxGb54YOYGp6rdht2+DWrYPfNuf5F80IESCaW9PvY0MgehP1+ch2mYh+yIStmeBw3UM0uLOsFiGEvZFCkxJgDZbaCJ+Obf6vcjb37B9Czyyca2E3rgiIP6MERGjtVhg92ogIm1tUW2nr9Htk6HeQmOskLlwFsWIkErXD6hzCqd0XTDH57R54YekEDo7upPS664pnjI6eK/sX5QBquSpDnYFKRIfRkBuz3eMpnmp4E2toHDEtS4oMiJJTMlEzjKzMKFcslk442cBM9V4TJ8dvobF6R/MobTtjljYNw+xYMSKjRH6bht6tcesfT84rG1rh0/hj3MBDZO016lF7n2scZsgq6sEhr6LuRAMnGXiBSZ7OCfsfC3kAoUWL2hx2/iQpn+9GGwnYFuSwyEu8ghlK8Jyz+Csy2CaQ464dB2jMW+Q7Ir1W90Bi0GsZD5L3ny8Z90hvM1oxS3SA7qoPJRgcjLFp02yuce0XZCCO+KPe8O+jZD+Dkh0MsqK0tGIRkaeYQzihDqWHnxLjX3Am//M0r3/vRz/C6TYXbdyoe79whpgudHPuZrECEXYG+y7yW+g4cQwPQugBEv6IMViaGMRKwuD9qIPPcLFBUrFE00Fc6Oc5uR8a55+eybBv8cuaVT+zt48/eaQycTxagrTzNiJ7P5r+4ShJKjINuGraMBkZOLLkLGl21jcBqfuT0sDP4Phbpg9//exjFNynFcMS79ysHuDF0+N8KQgInLAzsHfBCc9gJvZ41kC+KownPGSPKsSSCfGxgx5MVqHWxEnZgJhlDRN+G0T/0sR8/1Prb+ifg+AodbWbpMv8Y1/yn6ckWs/lpOI06NacYQLrIxHErMEgRH1f+Coifp7If93m+G4beB07V6g4XVptgC5l0pyNMq5BhH2BEzRngFOr7T3euAcJtKFk6Gpr0KGcoDGhC2EdvDWwsQnZMdQdTot3W5js/z04eN3L/+ljf5a9vOyupVGOf9BVzTbYGoYiipBXnff1rIkmLIuN2Nlgb33NZWjiGJoYI2++a3yb8kJrP4tk2+OarAph2yUNezkICEnPFvAthKCP8rG3BVOJoYkc8kDq6c6eiLimAUMhCpFwqCmElIkx3G/T/O5YsoG42dy/ZOrAxO70w/M9oiEytNxo1Ftv6s4YEWwRPbPizvgZgRjZh4ifJue/Y1O8+sws5UnWDUpa+F2XBdPlD+WEvRsQXftUEItgt6sfxpqm5/UAP1AyWEGEBRqaqK1Miw8XIl42pjNvkvOQ431XTGy77uGJn1z7cPlw/8qFtc7FqDmbUy31Ud3ZyFnWxBM5gqv5Ks1k+6lpnmVvvz+wZvO2zY884t4r5d8TB7RHUIRPhTBzFtsd/didnfZTBHvIk9sgQp/sstTvjEEjxDli1EhoFkllAsw00BjvW7f3u90LZo6Zn3/wE3hpyVq83vEBmyaxt67uYyfsDaEx1fRE/CIsvm+8f6Y5ffJAAfx7p/z7QgBaXlyI8oZgsRyeNqMJ4KA8XB4fP1HVFE5cb2Z3lCkb6AQqsIgyZk2iSY3Za8q7I2/w4vEjpjc7hQRNFzfH0XHFHXyk64M0mczDhOOazXDa+vxvIPRdMZWnt/wRhYh9eFjM9ELYp76MbHT08il/WVbgfCPogjHk1PLZw7UnJyf2Lrji+YnO+X/qmb6GFK/ZHGlQAlodsobEMDOJEXVoEqDiGlhz7Of80O5v8MN/83X/oRM/oQ5M0HQFr9cjfKuv/tafLaye+PbN8d797eds3kzutv53cuHfJQfMjpZppC1rYbqqQ/Sdj3fKbaPbTqmBmLwNp3697LqrKsgHe5tT5Z50kjryZsib54bRjGJx1qDsauiuT6I7f4V78tNI2MG4Rr63+8aDb9Lyp578g+U/aMv3yMgWuxPzefPoyvdF+d8YAlpDNq4bQXXxQ6jfNcQoAj9c+9XjUx858MrJG47snvzw3ufm3/zGL+Olk4eK8NEAzlpNsLZKZKHYg4HG23Tb0WcxePqVxnTUO9nMzKl78WwAVFfdiHsxdmxINmHsN1Krp/e9QnA7w//CSQLwz772ta6JJTdd+YvBm271iVm/9PiR2+/c9eOr7ti3LV59ZAxLTu33Xel0yC66iJDaGN6wVsPIwkkkqYa5k2D8Ggm+f7qz7/k3upbuf6Jz+8m5VJcR8LsnW/6uECBCQ2NjtnN6SLbdq9nfYqz++Z7bOe4YTm15LShZjNx39c2criw7sZ9uOvRL3LnvGX/r6z+RpJZp9ZtmKmWw0bKqZ8OeIk2JAw1Y1BDTyYaNfy0xfzMns7X7y9UT4dGbYLCjqF/S6Lmprr9dERAhbAzZYT/WKp1r/u6vNxyYL6V4BeJovTj6ZEdsl8d5hhoEp7oXYKrc42eSbk7LFZN3d+P6t7ZjoHocFdE0uEdmbUibZ1oYMRx3lLmEyPdTwy0O3q/LS41/Hf9y3Pa9SY+8NROy7O+TE+g9IoA3/GBv1FV9OW/b4zVbxgels/FRX5JPmDi+GZ4WGyHDminJNXXE3sH6jmYNffXT9gMTB3DrgR/jvp3fcstPHQQSMc2kLCQ+9yxaVjZJTNp4ULj1jJNNj33E8izF0VPxF6o/C3GXAl90WaTvhRPsZc7XckOg/FMIdh/X7TrRFYe+gfrd3pj7ifBb3NmVSLUG12jWnSJBvE08WKIyu0oFbySV2sly30GTVg8PHfpJHaf2z9OljKVFlikkVnISNEUy8kWmCRENxJ4GcvFlTYXU/10Slbi5g0ahItF4r5zAlwW+CG3Yi2g2a7NFbOzdbYjksy6R30OFP8KVOPG1GkTrp9Acjld29rlWEiML51J1n15rlJPHD105NFKPKxtdxI95a55z4sdVqrVQxBpRKoWJolybCJQRItEU1PUwMszEn6+76AH5He2lme1piDFyeVxNlzxzRNS8zbLYjfv2LciapdWW8DAZs54Sc5328viZpkcjV7/cMNmIrMbCBr6ealH5JGduV+SzZwcax5/4/ro7dulau/9g0cAHTo3fLywfI0NDbORKG1GXFkScppgEOSzUZTDGapsQkHqZ9JAtPqJvSEQ/6/zD2rFZOo2AL1Uc+NKgF1qxcoe2foRx68435/ms9KA19DkwfUIYy2EspKnRv+OQsyNxoo6/NjppsYb9IW/kSWfcFz1H31jSGe1rr379F4+fbLJ9ysF9meC/7kVeTB2cSnaovxtkMMTaIxRicC2TWu4hy/cYQ//CsPzDyX+PebOc0A/NHvxmusRQyHyLwwQ37Tk6P2/kH5GIP8PE91Ep6ZFcU3CSI3deGMzW2lDm1p9mmJS0eQhWk6n5D3fJ5I+walXo5Hr0KyOVR49+F7eOjtXaQtt4NL4ewHoYfiiJsUosLVSKa5VTCzKhryr0WBHHJdL6cQ7IFuflK5WEf0r/dqboB1FF4EPDkrx3DhChtbO9gYI1B8d7swwbYPBpCO6SyPYom3qvLVHeeN0WUaZk40oJkjWbXrLnAXzdOf7zLCo/3wZex6KjaBzYubw5d4cJ0v3e8BPw/k884Zs5yTFNOnLRd5ODKQAfmowMkKhACN1Clj+bOnlQvqhl1VaEsBVaJqP3aAUo/K22PM5r9kiSzbzxQRhejyhaC+J5XnIvmfPeawYKxFFkVUoVI25m5pgXeUmce5LI/GjH6itCIDO8aZN5+9Zbo22Dg9loqwYQNvkIIqyAp1EldOMN+TRON5Kkpi04LpP7bESDSYRE1W8alCO8dh9oSBpF1OcI93hP9XqttEe+0ngJj6KOx0Jp7pxex4tzgGiSWyt/QOf0Vlny+gvliI5f4xLc7SI35DvtPFcxcJyLo5y99eSMZF77MyMLn+dHxbtNgPmyZ/udFasWaM07DPUbtg0OKhfMKqnApiuCR3cmqvxfmJmR5i9M5v7EEH1VIHtDl1mLE5QjtENBgdNGsiiiHohoVml9Viuvxp/O7xhrV7c2FfMukwPAIMo1X3/Nnj19ady8A0wfBWQJU6Z9S144c6QtEOXYiFZl08xJrXnI5vx0Lu5b7Jf+bPcqSndrunuL2Oq60HiZqx9xDr+1tLYMw2BFsVkaxRSQvSZ/WMoaPu9VxrJMHwycwEDTQyvCXn+p3VhsaJEQf9SnbmpGZl6/5TFU8Rggj57bG3QhBFCBrF/NYswZs8jF9fsoSu5kcJfLZnQxFs61aTPnxBpOLFxWPwyirycN+nZWqr2+c1VICocRYoVZhXqBsfldNmqmD6Ij+e/s7XER+ecwtLrVMqgrmiwUNEUbxCpCWJPm5lTsZSuAY2cXes4WBXvOw0ZGCKF4OS3YJOaa+/Z2NBv+es/ZatPT2ZM3UkhW15y7pYrVomTs0My4WjtKkO+BzRPbb7462PcVr22Ky43lMjY0LcA6d1Hg2xstdALLCtDPphDRKOpA84D81/KTaaN5RSMTa2O+OrEUK7ayPIhOrhqILHUy5HpxWDM10nm4C9UJrIRXTpjtsTyvDhAhrFxZ9LFinZu/Ykc5dc1V3s7c4m064Ewd3urRJB81nO/w8P0GOc+85U3jL73P/2eKFw62l9u5clwmhx7na/Z+02DrRm14uXhzts7ZDIaKwvAKvuN3z+gFdE8cFXZ/IRH9pYMcpbLAaFtR0XTazirAM+YL6J44cncB3d14pMVVm4pGwwtzwPD8YoJam2PPV3zsr/fO3SAkiW82HbwPbcsFoXInual6pC81TfydE8tu/lVYQsRs1i4n+lw26+1c4mjZbQXazW3YeW0YMX1ODUC6c+ZLtiweqyDSDUPdRrsVHFh7SUPzmQ39dCsR016U0l8TcDos8mxA7Pn7BIuxZxZDJn49ycksEsMLtcADTVMrlwQrzGqH6uKxXzh/1ZdbD5FN5pcTW7uGjryYjl15Sw1nD6XAeZwTpc7ZjkuI+2fQhY7OSP5NbxV3/G4TT/y36eyk2+7YLIaXNSaiTnWHnApZ6J+lEkXSB6JesLbzt+qxi87lQIsLjNzUlMHUJ+8k0WimaFMvmkEZyLSPrwGYfIDT7L4rpr+wxlUPUy06FL/Z12zOa/yHBkw25Ru1k951vTnZ858nLqQHFPhgrp7o6UGJr4RJF8JSL/qoIxi7ejXFj7+ktbZu009XeC04NAXaRq5d9loQUySG2rEG2IQSXLjzXsPhZmh6Vf8W5IpeJ30rQF2Qws9NiPKrBdkAKL/bFyGgJrpIJM0ochQme7vbkvs/PfiLn06Cxtt6aGRE22ZGtX5/hi3/d08vKny7ZxlmG62BUZ86sEcUuq7DNogRSwmCbngqh7CRIMaCtGmmzWFCws0zffihT/CyEGCdZM6kk2CuhiVjfXshF/GpE+3Gs2Ioph6KbA+1XpTQLu9WoiZ0CytZPE99kMhN28ZrM/Plj35xgkaren/rutApMosA+SE64NyNIGxgoofQzwNh/+ost5gv9K04gOvaoayVJo9cK5DBWsMoiTQ0IdAECZ2KIxPyFmEsv2iPEIW4t30m/fW6n/JHADoCo2VRY8RnXlzTa9ewFnxIfVOvff1zxSv0TrUsTgZWGXX5WsCfTCemD6iHrbPKV54289MVMqvsuG+eY3c3kdzNRP1q/IIPp0u1l2/jN9QZlCgEtpp0kByxvpZAhmuizWv7yGAPKNfUWTGmL6FJCm2PKSQ9Nta8TXYhz7cT5EZjkl4Yb7SVNezAOZFcvOShMUKb/NuWlkJ/v9aIJRfEVIL460RkJVkXEhg6JkrHuePIzJlNJVmnNOh6Iro2vHNRk9CZX/h6LRR4rSoEtlZ30pBGHyqnmlPWtmh1CZ1/iwkvwtJr6OqaEakWynUrvMYG5/cDSEEYVT5W4M0xoMGV5i6R+nMijd2+Pu2DJxuk0msePxWN/gJNlB2UKYIGUkpIYFvSNxtCDcmR07edoll5T5ZW3kkRp2o2eI/qLocXTloN6Pqsojcs7FHC+wRMyEL0qc/RrKBGpplU2WI72L2AeZU9+OGbzXZUqO722VbGnkP/8DJPC9s06k8A1YHq77/mJX7KO09U9TeQMf1g6qLYJMTtfqe56wb/rLB3uYev51URvAyRX5AV7eMLYwFqfuZER8FwukiWTInPXiRDC30uH+aI5iEKXWpK61YPX4tmai9UFFQ/aM7VyTSaOAmSVxzT06aOXXTLsWCGZd35w3463413+O0ybPpPLVnoOpIbrI/uAfnbAbeGI7OArfJdYWmK11zaCFDdk0Gq9VS8vEgsm3xknulP/IF9+HLB2jLC2kaqhAsJzdu0F757iatoLxkPG6bbkaA3LB+p79XCcwhtpEjIT3r9+zpIdjiPMcPup0hkF07UTtAjrbT5u/gX5+eA9mgD/6tHI9Bj2WngCAhHepr/cdy67Lj4/JBPs6Vout6Qwix6fXPR111Ic5m+Cck0VTIOkl9FEZ4+VvrS7uAtzeGwuRSgBxRrU/vr3058KUr0JYK3UcMifaHAU2DywsgEt1dfPkDKIifgcVjl3fjsJdxf294GVrbA0r3IL5QVIlxsnB3ByUhpYCbrEy89xL5sSL3xAo5MVbaaoEjzFcoODXGSZUj9xKL+k2/tpM3peR8zJ1LbMgK77r6B+ch8H+BKMMLq6oaJ+RyyqXLMOUXma4CbRjQzUSCxvfWLp8QubYQEyYhVNxfvZ2wavmBAFN6IUtf3fQz9vVL+UpOilz5+4wv+7Y3LAZ4ub2Wdv4mxY4dZ1gF2g1Pkjna/Yw2zuLvFcm8W5+iWw0Er7nSgzWdC2wsDoI3SFvPBSJYU6590dLR1f3F74oARNN8U1CFYAI8D8BrtXQ7b/z8C90qhMD+bxwAAAABJRU5ErkJggg==',
-      'buddy': 'data:image/png;base64,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',
-      'workbuddy': 'data:image/png;base64,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',
       'qodercn': 'data:image/png;base64,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',
       'qoder': 'data:image/png;base64,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',
       'cline': 'data:image/png;base64,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',
@@ -4176,7 +5422,7 @@ window.__ModuleLoader__.load({
     const BRAND_ICON = 'data:image/jpeg;base64,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'
 
     /**
-     * The thirteen account channels enabled by OFM. Identity is static (it is
+     * The current account channels enabled by OFM. Identity is static (it is
      * the product, not a reading), so the grid renders instantly and only the
      * *state* comes from the pack over RPC. `accent` drives each card's stripe
      * and logo tile; `login` picks the flow the card offers.
@@ -4200,9 +5446,6 @@ window.__ModuleLoader__.load({
 
     /** 与现有 RPC 的能力对应：余额、每日领取及独立签到状态分别判断。 */
     const CHANNEL_CREDITS = {
-      codearts: { claim: true },
-      buddy: { claim: true, status: true },
-      workbuddy: {},
       lobsterai: { claim: true },
       qoder: { claim: true },
       qodercn: { claim: true },
@@ -4292,7 +5535,7 @@ window.__ModuleLoader__.load({
     }
 
     function ChannelCard(props) {
-      const { channel, status, rpc, t, onError, onChanged } = props
+      const { channel, status, rpc, t, onError, onChanged, compact = false, pending = false } = props
       const [open, setOpen] = useState(null)
       const [accounts, setAccounts] = useState(undefined)
       const [models, setModels] = useState(undefined)
@@ -4327,9 +5570,9 @@ window.__ModuleLoader__.load({
       const enabledCount = status?.accounts?.enabled ?? 0
       const modelsTotal = status?.models?.total ?? 0
       const modelsOff = status?.models?.disabled ?? 0
-      const connected = enabledCount > 0
+      const connected = status?.closed !== true && enabledCount > 0
       const chanState = status?.closed === true ? 'off' : connected ? 'on' : 'idle'
-      const stateText = status?.closed === true ? t('chan.state.closed') : connected ? t('chan.state.on') : t('chan.state.off')
+      const stateText = pending ? t('chan.state.loading') : status?.closed === true ? t('chan.state.closed') : connected ? t('chan.state.on') : t('chan.state.off')
 
       const loadAccounts = useCallback(async () => {
         try {
@@ -4570,10 +5813,12 @@ window.__ModuleLoader__.load({
       }
 
       const creditFor = accountId => (credits ?? []).find(row => row.accountId === accountId)?.status ?? null
+      const [expanded, setExpanded] = useState(false)
 
       const card = h('article', {
-        className: `ofm_chan ofm_glass${status?.closed === true ? ' off' : ''}`,
+        className: `ofm_chan ${compact ? 'compact' : 'ofm_glass'}${status?.closed === true ? ' off' : ''}`,
         'data-state': chanState,
+        'data-channel': channel.id,
         style: { '--chan-accent': channel.accent },
       },
         h('div', { className: 'ofm_chanhead' },
@@ -4594,8 +5839,24 @@ window.__ModuleLoader__.load({
           creditCapability ? h('span', { className: 'ofm_credittotal' },
             `${balanceLabel} `,
             h('b', null, balanceLoading ? '…' : balancesKnown
-              ? creditCapability.quota ? t('chan.credits.loaded').replace('{count}', String((balances ?? []).filter(row => Number.isFinite(row.balance?.total)).length)) : kilo(balancesTotal)
+              ? creditCapability.quota ? t('chan.credits.loaded').replace('{count}', String((balances ?? []).filter(row => Number.isFinite(row.balance?.total)).length)) : balanceText(balancesTotal, creditCapability, t.locale)
               : balances === undefined ? '…' : '—')) : null),
+        compact ? h('div', { className: 'ofm_directoryactions' },
+          h('span', { className: 'ofm_id' }, channel.id),
+          h('button', {
+            type: 'button', className: `ofm_btn ${accountsCount > 0 || expanded ? 'ghost' : 'primary'}`,
+            disabled: !rpc || busy !== '', 'aria-expanded': expanded,
+            'aria-controls': `ofm-channel-${channel.id}`,
+            onClick: () => {
+              if (expanded) { setExpanded(false); return }
+              setExpanded(true)
+              if (accountsCount > 0) { if (open !== 'accounts') void toggle('accounts') }
+              else void startLogin()
+            },
+          }, expanded ? t('chan.collapse') : accountsCount > 0 ? t('chan.manage') : t('chan.connect'))) : null,
+        !compact || expanded ? h('div', {
+          className: compact ? 'ofm_directorydetail' : undefined, id: `ofm-channel-${channel.id}`,
+        },
         h('div', { className: 'ofm_chanacts' },
           channel.id === 'zcode' ? h('div', { className: 'ofm_seg', role: 'group', 'aria-label': t('chan.zcode.provider') },
             h('button', {
@@ -4626,10 +5887,10 @@ window.__ModuleLoader__.load({
             type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc, 'aria-busy': busy === 'claim' ? 'true' : undefined,
             onClick: claim,
           }, busy === 'claim' ? '…' : t('chan.act.claim')) : null,
-          h('button', { type: 'button', className: 'ofm_foldtoggle', 'data-open': open === 'accounts' ? 'true' : 'false', onClick: () => void toggle('accounts') },
+          h('button', { type: 'button', className: 'ofm_foldtoggle', disabled: !rpc, 'data-open': open === 'accounts' ? 'true' : 'false', onClick: () => void toggle('accounts') },
             h('svg', { viewBox: '0 0 12 12', 'aria-hidden': 'true' }, h('path', { d: 'M3 1.5l6 4.5-6 4.5z' })),
             t('chan.fold.accounts'), accounts === undefined ? null : ` (${accounts.length})`),
-          h('button', { type: 'button', className: 'ofm_foldtoggle', 'data-open': open === 'models' ? 'true' : 'false', onClick: () => void toggle('models') },
+          h('button', { type: 'button', className: 'ofm_foldtoggle', disabled: !rpc, 'data-open': open === 'models' ? 'true' : 'false', onClick: () => void toggle('models') },
             h('svg', { viewBox: '0 0 12 12', 'aria-hidden': 'true' }, h('path', { d: 'M3 1.5l6 4.5-6 4.5z' })),
             t('chan.fold.models'), models === undefined ? null : ` (${models.length})`)),
         notice !== '' ? h('p', { className: 'ofm_note' }, notice) : null,
@@ -4658,7 +5919,7 @@ window.__ModuleLoader__.load({
                         : result?.error || t('chan.credits.unavailable'))
                     const reading = creditCapability.quota
                       ? (balance.packages ?? []).map(pkg => `${pkg.name} ${pkg.remaining}%`).join(' · ') || '—'
-                      : kilo(balance.total)
+                      : balanceText(balance.total, creditCapability, t.locale)
                     return h('span', { className: 'ofm_creditbadge strong', title: balanceLabel },
                       `${balanceLabel} ${reading}`)
                   })(),
@@ -4668,13 +5929,15 @@ window.__ModuleLoader__.load({
                       onClick: () => accountAction('test:' + row.id, row.id, async () => {
                         const startedAt = Date.now()
                         const value = await rpc('account.test', { accountId: row.id }, 90_000)
-                        // 失败原因在 `message`（见 RpcTestAccountResponse）：旧代码读的是
-                        // `error`，该字段后端从不返回，于是文案永远是「测试失败：」后面空着，
-                        // 用户只能看到失败看不到为什么。耗时同理：后端不返回 ms/latencyMs，
-                        // 用本地实测兜底，避免成功时恒显示「（— ms）」。
+                        // The RPC envelope is `ok: true` here even when the probe
+                        // failed — `account.test` reports the outcome *inside*
+                        // `value`, so a failed probe lands on this branch with its
+                        // reason in `value.message`. Reading `value.error` (which
+                        // the server never sets) printed an empty reason: the
+                        // user saw "测试失败：" and nothing else (#681).
                         setNotice(value?.ok === false
-                          ? t('chan.test.failed').replace('{reason}', value?.message ?? '')
-                          : t('chan.test.ok').replace('{ms}', String(value?.ms ?? value?.latencyMs ?? (Date.now() - startedAt))))
+                          ? t('chan.test.failed').replace('{reason}', value?.error ?? value?.message ?? '')
+                          : t('chan.test.ok').replace('{ms}', String(value?.ms ?? value?.latencyMs ?? '—')))
                       }),
                     }, t('chan.act.test')),
                     h('button', {
@@ -4729,7 +5992,7 @@ window.__ModuleLoader__.load({
                     else await rpc('model.setDisabled', { provider: channel.id, modelId: model.id, disabled: model.disabled !== true })
                     await loadModels(); onChanged()
                   }),
-                }, model.dead === true ? t('chan.model.restore') : model.disabled === true ? t('chan.model.on') : t('chan.model.off'))))))) : null)
+                }, model.dead === true ? t('chan.model.restore') : model.disabled === true ? t('chan.model.on') : t('chan.model.off'))))))) : null) : null)
 
       const modal = login === null ? null : h('div', { className: 'ofm_scrim' },
         h('div', { className: 'ofm_modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chan.login.title').replace('{name}', channel.name) },
@@ -4749,6 +6012,8 @@ window.__ModuleLoader__.load({
     function ChannelsPage(props) {
       const { t, ctx, summary } = props
       const { available, rpc } = useChannelRpc(ctx)
+      const [query, setQuery] = useState('')
+      const [filter, setFilter] = useState('')
       // The pack runs a daily auto check-in engine across the credit channels;
       // this page is where it is switched and watched (usage.autoCheckin).
       const [auto, setAuto] = useState(undefined)
@@ -4865,11 +6130,17 @@ window.__ModuleLoader__.load({
         showToast({ title: t('chan.error').replace('{reason}', reason).slice(0, 120), body: channel.name, tone: 'warn' })
       }, [t])
 
-      const connected = statuses === undefined ? 0 : CHANNEL_PROVIDERS.filter(row => (statuses[row.id]?.accounts?.enabled ?? 0) > 0).length
+      const stateOf = channel => !available ? 'disconnected' : statuses?.[channel.id]?.closed === true ? 'closed'
+        : (statuses?.[channel.id]?.accounts?.enabled ?? 0) > 0 ? 'connected' : 'disconnected'
+      const connected = CHANNEL_PROVIDERS.filter(row => stateOf(row) === 'connected').length
+      const needle = query.trim().toLowerCase()
+      const rows = CHANNEL_PROVIDERS.filter(channel =>
+        (filter === '' || (statuses !== undefined || !available) && stateOf(channel) === filter)
+        && (needle === '' || `${channel.id} ${channel.name} ${channel.org}`.toLowerCase().includes(needle)))
       const failed = !ready && pack.state === 'failed'
 
       return h('div', { className: 'ofm_page' },
-        h('header', { className: 'ofm_hero ofm_glass' },
+        h('header', { className: 'ofm_directoryhero' },
           h('div', { className: 'ofm_pagehead' },
             h('div', { className: 'ofm_pagetitle' },
               h('h2', null, t('chan.title')),
@@ -4910,17 +6181,32 @@ window.__ModuleLoader__.load({
         failed ? h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, t('chan.pack.failed').replace('{reason}', pack.error ?? ''), h('div', { className: 'ofm_note' }, t('chan.pack.hint')))) : null,
         !available ? h('div', { className: 'ofm_callout' }, h('div', null, t('chan.rpc.unavailable'))) : null,
-        !ready ? h('div', { className: 'ofm_chanwrap' },
-          [0, 1, 2].map(index => h('div', { className: 'ofm_skel', key: index, style: { minHeight: 168 } }))) : null,
-        ready ? h('div', { className: 'ofm_chanwrap' }, CHANNEL_PROVIDERS.map(channel => h(ChannelCard, {
+        h('div', { className: 'ofm_directorytools' },
+          h('label', null, t('chan.search'),
+            h('input', {
+              className: 'ofm_input', type: 'search', value: query, placeholder: t('chan.search'),
+              onChange: event => setQuery(event.target.value),
+            })),
+          h('label', null, t('chan.filterStatus'),
+            h('select', { className: 'ofm_input', 'aria-label': t('chan.filterStatus'), value: filter, onChange: event => setFilter(event.target.value) },
+              h('option', { value: '' }, t('chan.filterAll')),
+              h('option', { value: 'connected' }, t('chan.state.on')),
+              h('option', { value: 'disconnected' }, t('chan.state.off')),
+              h('option', { value: 'closed' }, t('chan.state.closed'))))),
+        h('div', { className: 'ofm_directorycount', role: 'status' },
+          t('chan.showing').replace('{shown}', String(rows.length)).replace('{total}', String(CHANNEL_PROVIDERS.length))),
+        rows.length === 0 ? h('p', { className: 'ofm_note' }, t('chan.filterEmpty')) : null,
+        h('div', { className: 'ofm_directory' }, rows.map(channel => h(ChannelCard, {
           key: channel.id,
           channel,
-          status: statuses?.[channel.id],
-          rpc: available ? rpc : null,
+          status: available ? statuses?.[channel.id] : undefined,
+          rpc: available && ready ? rpc : null,
+          compact: true,
+          pending: available && statuses === undefined && !failed && error === '',
           t,
           onError,
           onChanged,
-        }))) : null,
+        }))),
         error !== '' && !failed ? h('p', { className: 'ofm_note' }, `${t('chan.error').replace('{reason}', error)}`) : null)
     }
 
@@ -5843,20 +7129,42 @@ window.__ModuleLoader__.load({
           h('div', null, h('b', null, t('agg.failed')), h('div', null, error))))
     }
 
-    /** A configured provider as one card: identity, what it contributes, and its
-     *  editor. The editor is inline rather than behind a fold because every field
-     *  on it is something the card's own state can disagree with. */
+    /** Registry identity stays visible even after its saved configuration is removed. */
     function ProviderCard(props) {
-      const { t, provider, state, contributions, onSaved, onRemoved, onChanged, index } = props
-      return h('div', { className: 'ofm_card ofm_rise', style: { animationDelay: `${Math.min(index, 8) * 22}ms` } },
+      const { t, provider, state, contributions, onSaved, onRemoved, onChanged } = props
+      const [expanded, setExpanded] = useState(false)
+      const fresh = state === undefined
+      const blocked = AGG_UNUSABLE.has(provider.authKind)
+      return h('article', { className: 'ofm_provider', 'data-provider': provider.id },
         h('div', { className: 'ofm_cardhead' },
           h('span', { className: 'ofm_cardname', title: provider.name }, provider.name),
-          state.enabled === false ? h('span', { className: 'ofm_tagpill dead' }, t('agg.disabled')) : null),
+          h('span', { className: 'ofm_tagpill' },
+            fresh ? t('agg.unconfigured') : state.enabled === false ? t('agg.disabled') : t('agg.configured'))),
         h('div', { className: 'ofm_id' }, provider.id),
-        h('div', { className: 'ofm_metrics' },
+        h('div', { className: 'ofm_pickmeta' },
+          h('span', { className: 'ofm_tag' }, AGG_CATEGORY(t)[provider.category] ?? provider.category),
+          h('span', { className: 'ofm_tag' }, provider.format),
+          h('span', null, t('agg.modelCount').replace('{n}', String(provider.modelCount)))),
+        fresh ? null : h('div', { className: 'ofm_metrics' },
           h('span', null, contributions > 0 ? t('agg.contributes').replace('{n}', String(contributions)) : t('agg.contributesNone')),
           h('span', null, state.hasKey === true ? t('agg.hasKey').replace('{hint}', state.keyHint) : t('agg.noKey'))),
-        h(ProviderEditor, { t, provider, state, contributions, onSaved, onRemoved, onChanged, showContributions: false }))
+        blocked ? h('p', { className: 'ofm_note' },
+          t('agg.notUsableWhy').replace('{kind}', AGG_AUTH(t)[provider.authKind] ?? provider.authKind)) : null,
+        h('div', { className: 'ofm_directoryactions' },
+          provider.credentialUrl === '' ? h('span') : h('a', {
+            className: 'ofm_starlink', href: provider.credentialUrl, target: '_blank', rel: 'noreferrer noopener',
+          }, t('agg.credential')),
+          h('button', {
+            type: 'button', className: `ofm_btn ${fresh && !expanded ? 'primary' : 'ghost'}`,
+            disabled: blocked && fresh, 'aria-expanded': expanded, 'aria-controls': `ofm-provider-${provider.id}`,
+            onClick: () => setExpanded(value => !value),
+          }, expanded ? t('chan.collapse') : fresh ? t('agg.connect') : t('agg.manage'))),
+        expanded ? h('div', { className: 'ofm_directorydetail', id: `ofm-provider-${provider.id}` },
+          h(ProviderEditor, {
+            key: fresh ? 'new' : 'saved', t, provider, state, contributions, onSaved, onChanged,
+            onRemoved: (aggregate, removed) => { setExpanded(false); onRemoved(aggregate, removed) },
+            showContributions: false,
+          })) : null)
     }
 
     /**
@@ -5874,6 +7182,7 @@ window.__ModuleLoader__.load({
       const [draft, setDraft] = useState(null)
       const [query, setQuery] = useState('')
       const [category, setCategory] = useState('')
+      const [filter, setFilter] = useState('')
       const catalog = summary?.data?.catalog ?? []
       const registry = panel.data?.registry ?? []
       const configured = panel.data?.configured?.providers ?? {}
@@ -5887,23 +7196,28 @@ window.__ModuleLoader__.load({
       }
       const afterRemove = (aggregate, provider) => {
         if (aggregate !== undefined && aggregate !== null) panel.patch({ configured: aggregate })
+        if (draft?.id === provider.id) setDraft(null)
         summary?.reload?.()
         showToast({ title: t('agg.saved'), body: t('agg.removedBody').replace('{name}', provider.name), holdMs: 3600 })
       }
       const afterDiscover = () => { panel.reload(); summary?.reload?.() }
 
       const needle = query.trim().toLowerCase()
-      const rows = Object.keys(configured)
-        .map(id => ({ id, provider: registry.find(entry => entry.id === id) ?? null, state: configured[id] }))
-        .filter(row => row.provider !== null)
+      const configuredCount = registry.filter(provider => configured[provider.id] !== undefined).length
+      const rows = registry
+        .map(provider => ({ id: provider.id, provider, state: configured[provider.id] }))
         .filter(row => category === '' || row.provider.category === category)
+        .filter(row => filter === '' || (filter === 'unconfigured' ? row.state === undefined
+          : filter === 'disabled' ? row.state?.enabled === false : row.state !== undefined))
         .filter(row => needle === '' || `${row.id} ${row.provider.name}`.toLowerCase().includes(needle))
 
       return h('div', { className: 'ofm_page' },
-        h(PageHero, { title: t('agg.title'), sub: t('agg.sub') },
+        h('header', { className: 'ofm_directoryhero' },
+          h('div', { className: 'ofm_pagehead' },
+            h('div', { className: 'ofm_pagetitle' }, h('h2', null, t('agg.title')), h('p', { className: 'ofm_pagesub' }, t('agg.sub'))),
           h('div', { className: 'ofm_pills' },
             h(Pill, null, t('agg.registryCount').replace('{n}', String(registry.length))),
-            h(Pill, { strong: true }, t('agg.configuredCount').replace('{n}', String(Object.keys(configured).length)))),
+            h(Pill, { strong: true }, t('agg.configuredCount').replace('{n}', String(configuredCount))))),
           h(Button, {
             kind: adding ? 'ghost' : 'primary',
             onClick: () => { setAdding(value => !value); setDraft(null) },
@@ -5918,33 +7232,288 @@ window.__ModuleLoader__.load({
               ? h('div', { className: 'ofm_panel ofm_rise' },
                 h('div', { className: 'ofm_paneltitle' }, draft.name, h('span', { className: 'ofm_sec_hint' }, draft.id)),
                 h(ProviderEditor, {
-                  t, provider: draft, state: undefined, contributions: 0,
+                  key: draft.id, t, provider: draft, state: configured[draft.id], contributions: contributedBy(catalog, draft.id),
                   onSaved: afterWrite, onRemoved: afterRemove, onChanged: afterDiscover,
                 }))
               : adding
                 ? h(ProviderPicker, { t, registry, onPick: setDraft })
                 : null,
             h(Section, { title: t('agg.configuredTitle'), hint: t('agg.configuredHint') },
-              h('div', { className: 'ofm_row' },
-                h('div', { className: 'ofm_field', style: { flex: '1 1 180px' } },
-                  h('span', null, t('agg.search')),
-                  h('input', { className: 'ofm_input', value: query, placeholder: t('agg.search'), onChange: event => setQuery(event.target.value) })),
-                h('div', { className: 'ofm_field' }, h('span', null, t('agg.filterCategory')),
-                  h('select', { className: 'ofm_input', value: category, onChange: event => setCategory(event.target.value) },
+              h('div', { className: 'ofm_directorytools' },
+                h('label', null, t('agg.search'),
+                  h('input', { className: 'ofm_input', type: 'search', value: query, placeholder: t('agg.search'), onChange: event => setQuery(event.target.value) })),
+                h('label', null, t('agg.filterCategory'),
+                  h('select', { className: 'ofm_input', 'aria-label': t('agg.filterCategory'), value: category, onChange: event => setCategory(event.target.value) },
                     h('option', { value: '' }, t('agg.filterAll')),
-                    Object.keys(categories).map(id => h('option', { key: id, value: id }, categories[id]))))),
-              Object.keys(configured).length === 0
+                    Object.keys(categories).map(id => h('option', { key: id, value: id }, categories[id])))),
+                h('label', null, t('chan.filterStatus'),
+                  h('select', { className: 'ofm_input', 'aria-label': t('chan.filterStatus'), value: filter, onChange: event => setFilter(event.target.value) },
+                    h('option', { value: '' }, t('agg.filterAll')),
+                    h('option', { value: 'configured' }, t('agg.configured')),
+                    h('option', { value: 'unconfigured' }, t('agg.unconfigured')),
+                    h('option', { value: 'disabled' }, t('agg.disabled'))))),
+              h('div', { className: 'ofm_directorycount', role: 'status' },
+                t('agg.showing').replace('{shown}', String(rows.length)).replace('{total}', String(registry.length))),
+              registry.length === 0
                 ? h('div', { className: 'ofm_panel' },
                   h('div', { className: 'ofm_paneltitle' }, t('agg.empty')),
                   h('p', { className: 'ofm_note' }, t('agg.emptyHint')))
                 : rows.length === 0
                   ? h('p', { className: 'ofm_note' }, t('agg.filterEmpty'))
-                  : h('div', { className: 'ofm_grid' }, rows.map((row, index) => h(ProviderCard, {
-                    key: row.id, t, index, provider: row.provider, state: row.state,
+                  : h('div', { className: 'ofm_directory' }, rows.map(row => h(ProviderCard, {
+                    key: row.id, t, provider: row.provider, state: row.state,
                     contributions: contributedBy(catalog, row.id),
                     onSaved: afterWrite, onRemoved: afterRemove, onChanged: afterDiscover,
                   })))))
           : null)
+    }
+
+    const SUBSCRIPTION_PROVIDERS = {
+      codex: 'Codex / ChatGPT', claude: 'Claude', gemini: 'Gemini', api: 'API',
+    }
+
+    function SubscriptionImport(props) {
+      const { t, localProvider, busy, onImport, onCancel } = props
+      const [provider, setProvider] = useState(localProvider ?? 'codex')
+      const [label, setLabel] = useState('')
+      const [modelText, setModelText] = useState('')
+      const [mode, setMode] = useState('paste')
+      const [json, setJson] = useState('')
+      const [apiKey, setApiKey] = useState('')
+      const [baseUrl, setBaseUrl] = useState('')
+      const [format, setFormat] = useState('openai-chat')
+      const [error, setError] = useState('')
+      const [reading, setReading] = useState(false)
+      const fileRef = useRef(null)
+      const readEpoch = useRef(0)
+      useEffect(() => () => { readEpoch.current++ }, [])
+      const clearCredentials = () => {
+        readEpoch.current++
+        setJson(''); setApiKey(''); setError(''); setReading(false)
+        if (fileRef.current) fileRef.current.value = ''
+      }
+      const readFile = async event => {
+        const file = event.target.files?.[0]
+        const epoch = ++readEpoch.current
+        setError(''); setJson(''); setReading(false)
+        if (!file) return
+        if (file.size > 1024 * 1024) { setError(t('sub.fileTooLarge')); return }
+        setReading(true)
+        try {
+          const contents = await file.text()
+          if (epoch === readEpoch.current) setJson(contents)
+        } catch {
+          if (epoch === readEpoch.current) setError(t('sub.fileFailed'))
+        } finally {
+          if (epoch === readEpoch.current) setReading(false)
+        }
+      }
+      const submit = async event => {
+        event.preventDefault()
+        if (busy || reading) return
+        setError('')
+        const models = [...new Set(parseModelIds(modelText))]
+        if (models.length === 0 || models.length > 200 || models.some(id =>
+          id.length > 240 || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(id) || id.startsWith('subscription:'))) {
+          setError(t('sub.invalidModels')); return
+        }
+        const body = { provider, models, ...(label.trim() ? { label: label.trim() } : {}) }
+        if (!localProvider && provider === 'api') {
+          if (!apiKey.trim()) { setError(t('sub.keyRequired')); return }
+          let endpoint
+          try { endpoint = new URL(baseUrl) } catch { setError(t('sub.invalidEndpoint')); return }
+          if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+            setError(t('sub.invalidEndpoint')); return
+          }
+          body.credentials = { apiKey: apiKey.trim() }
+          body.baseUrl = endpoint.href.replace(/\/$/, '')
+          body.format = format
+        } else if (!localProvider) {
+          let credentials
+          try { credentials = JSON.parse(json.replace(/^\uFEFF/, '')) } catch { setError(t('sub.invalidJson')); return }
+          if (credentials === null || typeof credentials !== 'object' || Array.isArray(credentials)) {
+            setError(t('sub.invalidJson')); return
+          }
+          body.credentials = credentials
+        }
+        if (await onImport(localProvider ? 'import-local' : 'import', body)) {
+          clearCredentials()
+          onCancel()
+        }
+      }
+      const disabled = busy || reading
+      return h('form', { className: 'ofm_subform', onSubmit: submit, 'aria-label': t('sub.add'), 'aria-busy': disabled },
+        h('div', { className: 'ofm_duo' },
+          h('label', null, t('sub.provider'),
+            h('select', {
+              className: 'ofm_input', 'aria-label': t('sub.provider'), value: provider, disabled: disabled || !!localProvider,
+              onChange: event => { clearCredentials(); setProvider(event.target.value) },
+            }, Object.entries(SUBSCRIPTION_PROVIDERS).map(([id, name]) => h('option', { key: id, value: id }, name)))),
+          h('label', null, t('sub.label'),
+            h('input', { className: 'ofm_input', value: label, maxLength: 120, disabled,
+              onChange: event => setLabel(event.target.value), autoComplete: 'off' }))),
+        h('label', null, t('sub.models'),
+          h('textarea', { className: 'ofm_input', value: modelText, rows: 3, disabled, spellCheck: false,
+            onChange: event => setModelText(event.target.value) })),
+        localProvider ? null : provider === 'api'
+          ? h(Fragment, null,
+            h('div', { className: 'ofm_duo' },
+              h('label', null, t('sub.baseUrl'),
+                h('input', { className: 'ofm_input', value: baseUrl, disabled, inputMode: 'url', autoComplete: 'off',
+                  onChange: event => setBaseUrl(event.target.value) })),
+              h('label', null, t('sub.format'),
+                h('select', { className: 'ofm_input', 'aria-label': t('sub.format'), value: format, disabled, onChange: event => setFormat(event.target.value) },
+                  ['openai-chat', 'openai-responses', 'anthropic-messages'].map(id => h('option', { key: id, value: id }, id))))),
+            h('label', null, t('sub.key'),
+              h('input', { className: 'ofm_input', type: 'password', value: apiKey, disabled, autoComplete: 'new-password',
+                spellCheck: false, onChange: event => setApiKey(event.target.value) })))
+          : h(Fragment, null,
+            h('div', { className: 'ofm_seg', role: 'group', 'aria-label': t('sub.credentials') },
+              h('button', { type: 'button', disabled, 'aria-pressed': mode === 'paste',
+                onClick: () => { clearCredentials(); setMode('paste') } }, t('sub.paste')),
+              h('button', { type: 'button', disabled, 'aria-pressed': mode === 'file',
+                onClick: () => { clearCredentials(); setMode('file') } }, t('sub.upload'))),
+            mode === 'paste'
+              ? h('label', null, t('sub.credentials'),
+                h('textarea', { className: 'ofm_input', value: json, rows: 5, disabled, autoComplete: 'off', spellCheck: false,
+                  onChange: event => setJson(event.target.value) }))
+              : h('label', null, t('sub.file'),
+                h('input', { className: 'ofm_input', ref: fileRef, type: 'file', accept: '.json,application/json',
+                  disabled: busy, onChange: readFile }))),
+        error ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, error) : null,
+        h('div', { className: 'ofm_row' },
+          h('button', { type: 'submit', className: 'ofm_btn primary', disabled }, disabled ? t('sub.working') : t('sub.import')),
+          h(Button, { kind: 'ghost', disabled: busy, onClick: () => { clearCredentials(); onCancel() } }, t('sub.cancel'))))
+    }
+
+    function SubscriptionWindow({ t, window, fallback }) {
+      const numeric = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+      const used = numeric(window?.usedPercent) ? window.usedPercent : null
+      const remaining = numeric(window?.remainingPercent) ? window.remainingPercent : null
+      const id = window?.id ?? window?.name ?? ''
+      const label = fallback ?? (window?.kind === 'five_hour' || id === 'five_hour' ? t('sub.fiveHour')
+        : window?.kind === 'weekly' || id === 'weekly' || id.startsWith('seven_day')
+          ? t('sub.weekly') + (id.startsWith('seven_day_') ? ` · ${id.slice(10)}` : '')
+          : window?.model ?? window?.name ?? id)
+      const reset = typeof window?.resetsAt === 'string' ? Date.parse(window.resetsAt) : NaN
+      return h('div', { className: 'ofm_subwindow' },
+        h('span', null, label),
+        h('strong', null, used !== null ? t('sub.used').replace('{n}', String(Math.round(used * 10) / 10))
+          : remaining !== null ? t('sub.remaining').replace('{n}', String(Math.round(remaining * 10) / 10)) : t('sub.unknown')),
+        used === null && remaining === null ? null : h('progress', {
+          max: 100, value: used ?? 100 - remaining, 'aria-label': label,
+        }),
+        Number.isFinite(reset) ? h('span', { className: 'ofm_note' }, `${t('sub.resets')} `,
+          h('time', { dateTime: window.resetsAt }, new Date(reset).toLocaleString(t.locale === 'zh' ? 'zh-CN' : 'en-US'))) : null)
+    }
+
+    function SubscriptionAccount({ t, account, busy, mutate }) {
+      const [confirm, setConfirm] = useState(false)
+      const quota = account.quota ?? {}
+      const windows = Array.isArray(quota.windows) ? quota.windows : []
+      const fiveHour = quota.fiveHour ?? windows.find(row => row.kind === 'five_hour' || row.id === 'five_hour' || row.name === 'five_hour')
+      const weekly = quota.weekly ?? windows.find(row => row.id === 'seven_day' || row.id === 'weekly'
+        || row.name === 'seven_day' || row.name === 'weekly')
+      const sameWindow = (row, other) => other && (row === other || (row.id ?? row.name) === (other.id ?? other.name))
+      const extra = windows.filter(row => row !== fiveHour && row !== weekly
+        && !sameWindow(row, fiveHour) && !sameWindow(row, weekly))
+      const checked = typeof quota.checkedAt === 'string' ? Date.parse(quota.checkedAt) : NaN
+      const modelIds = (Array.isArray(account.models) ? account.models : []).map(model => typeof model === 'string' ? model : model.id)
+      return h('article', { className: 'ofm_subaccount', 'data-subscription': account.id },
+        h('div', { className: 'ofm_directoryactions' },
+          h('div', null,
+            h('h3', null, account.label ?? SUBSCRIPTION_PROVIDERS[account.provider]),
+            h('span', { className: 'ofm_note' }, SUBSCRIPTION_PROVIDERS[account.provider] ?? account.provider)),
+          h(Switch, { checked: account.enabled !== false, label: t('sub.enabled'), disabled: !!busy,
+            onChange: () => mutate('enabled', { id: account.id, enabled: account.enabled === false }) })),
+        h('div', { className: 'ofm_submeta' },
+          h('span', null, `${t('sub.plan')}: ${quota.plan ?? t('sub.unknown')}`),
+          h('span', null, `${t('sub.balance')}: `, quota.balance?.unlimited === true ? t('sub.unlimited')
+            : typeof quota.balance?.amount === 'number' && Number.isFinite(quota.balance.amount)
+              ? `${quota.balance.amount} ${quota.balance.unit === 'credits' ? t('sub.credits') : quota.balance.unit ?? ''}`
+              : t('sub.unknown')),
+          Number.isFinite(checked) ? h('span', null, `${t('sub.checked')}: `,
+            h('time', { dateTime: quota.checkedAt }, new Date(checked).toLocaleString(t.locale === 'zh' ? 'zh-CN' : 'en-US'))) : null),
+        quota.status === 'error' ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' },
+          h('b', null, t('sub.quotaFailed')), quota.error?.message ? h('span', null, quota.error.message) : null) : null,
+        h('div', { className: 'ofm_subwindows' },
+          h(SubscriptionWindow, { t, window: fiveHour, fallback: t('sub.fiveHour') }),
+          h(SubscriptionWindow, { t, window: weekly, fallback: t('sub.weekly') }),
+          extra.map((window, index) => h(SubscriptionWindow, { key: window.id ?? index, t, window }))),
+        modelIds.length ? h('ul', { className: 'ofm_submodels', 'aria-label': t('sub.models') },
+          modelIds.map(id => h('li', { key: id }, id))) : h('span', { className: 'ofm_note' }, t('sub.noModels')),
+        h('div', { className: 'ofm_row' },
+          h(Button, { disabled: !!busy, onClick: () => mutate('quota', { id: account.id }) },
+            busy === `quota:${account.id}` ? t('sub.working') : t('sub.refreshQuota')),
+          h(Button, { kind: 'ghost', disabled: !!busy, onClick: () => setConfirm(value => !value) }, confirm ? t('sub.cancel') : t('sub.remove'))),
+        confirm ? h('div', { className: 'ofm_row' },
+          h('span', null, t('sub.removeQuestion')),
+          h(Button, { disabled: !!busy, onClick: () => mutate('remove', { id: account.id }) }, t('sub.confirmRemove'))) : null)
+    }
+
+    function SubscriptionsPage({ t, summary }) {
+      const panel = usePanel(() => api('/subscriptions'), [])
+      const [editor, setEditor] = useState(null)
+      const [candidates, setCandidates] = useState(null)
+      const [busy, setBusy] = useState('')
+      const [error, setError] = useState('')
+      const pending = useRef(false)
+      const mutate = async (action, body) => {
+        if (pending.current) return false
+        pending.current = true
+        setBusy(`${action}:${body.id ?? ''}`); setError('')
+        try {
+          const result = await post(`/subscriptions/${action}`, body, action === 'quota' ? 120_000 : 15_000)
+          if (!Array.isArray(result.accounts)) throw new Error()
+          panel.patch({ accounts: result.accounts })
+          if (action !== 'quota') summary?.reload?.()
+          return true
+        } catch {
+          // Never render a parse or transport error that might quote an import.
+          setError(t('sub.operationFailed'))
+          return false
+        } finally { pending.current = false; setBusy('') }
+      }
+      const discover = async () => {
+        if (pending.current) return
+        pending.current = true
+        setBusy('discover'); setError('')
+        try {
+          const result = await api('/subscriptions/discover', { timeout: 15_000 })
+          const rows = result.accounts ?? result.candidates
+          if (!Array.isArray(rows)) throw new Error()
+          setCandidates(rows.filter(row => ['codex', 'claude', 'gemini'].includes(row.provider))
+            .map(row => ({ id: row.id, provider: row.provider })))
+        } catch { setError(t('sub.operationFailed')) }
+        finally { pending.current = false; setBusy('') }
+      }
+      const accounts = panel.data?.accounts ?? []
+      return h('div', { className: 'ofm_page ofm_subscriptions' },
+        h('header', { className: 'ofm_directoryhero' },
+          h('div', { className: 'ofm_pagehead' },
+            h('div', { className: 'ofm_pagetitle' }, h('h2', null, t('sub.title'))),
+            h(Pill, null, t('sub.accounts').replace('{n}', String(accounts.length)))),
+          h('div', { className: 'ofm_row' },
+            h(Button, { kind: 'primary', disabled: !!busy || panel.status !== 'ready',
+              onClick: () => { setEditor({}); setError('') } }, t('sub.add')),
+            h(Button, { disabled: !!busy || panel.status !== 'ready', onClick: discover },
+              busy === 'discover' ? t('sub.working') : t('sub.discover')))),
+        panel.status === 'loading' ? h(PanelSkeleton) : null,
+        panel.error ? h(PanelError, { t, title: t('sub.loadFailed'), message: t('sub.operationFailed'), onRetry: panel.reload }) : null,
+        error ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, error) : null,
+        editor ? h(SubscriptionImport, {
+          key: editor.provider ?? 'manual', t, localProvider: editor.provider, busy: !!busy,
+          onImport: mutate, onCancel: () => setEditor(null),
+        }) : null,
+        candidates !== null ? h('section', { className: 'ofm_subcandidates', 'aria-label': t('sub.candidates') },
+          h('b', null, t('sub.candidates')),
+          candidates.length === 0 ? h('span', { className: 'ofm_note' }, t('sub.noCandidates'))
+            : candidates.map(row => h('div', { key: row.id, className: 'ofm_directoryactions' },
+              h('span', null, SUBSCRIPTION_PROVIDERS[row.provider]),
+              h(Button, { disabled: !!busy, onClick: () => { setEditor({ provider: row.provider }); setError('') } }, t('sub.review'))))) : null,
+        panel.status === 'ready' ? accounts.length
+          ? accounts.map(account => h(SubscriptionAccount, { key: account.id, t, account, busy, mutate }))
+          : h('p', { className: 'ofm_note' }, t('sub.empty')) : null)
     }
 
     /** The segmented level picker the two prompt savers share. */
@@ -6174,10 +7743,17 @@ window.__ModuleLoader__.load({
      * a text field is a link that silently never resolves, and the host has no way
      * to tell "you meant this model" from "this model is gone".
      */
+    const strategyLabels = t => ({
+      fallback: t('routing.strategy.fallback'),
+      'round-robin': t('routing.strategy.roundRobin'),
+      smart: t('routing.strategy.smart'),
+      usage: t('routing.strategy.usage'),
+      pace: t('routing.strategy.pace'),
+    })
     function ChainEditor(props) {
       const { t, chain, models, onSave, onCancel } = props
       const [name, setName] = useState(chain.name ?? '')
-      const [strategy, setStrategy] = useState(chain.strategy === 'round-robin' ? 'round-robin' : 'fallback')
+      const [strategy, setStrategy] = useState(['fallback', 'round-robin', 'smart', 'usage', 'pace'].includes(chain.strategy) ? chain.strategy : 'fallback')
       const [stickyLimit, setStickyLimit] = useState(String(chain.stickyLimit ?? 1))
       const [enabled, setEnabled] = useState(chain.enabled !== false)
       const [members, setMembers] = useState(Array.isArray(chain.models) ? chain.models : [])
@@ -6224,15 +7800,11 @@ window.__ModuleLoader__.load({
             })),
           h('div', { className: 'ofm_field' },
             h('span', null, t('routing.strategy')),
-            h('div', { className: 'ofm_seg', role: 'group' },
-              h('button', {
-                type: 'button', disabled: busy, 'aria-pressed': strategy === 'fallback' ? 'true' : 'false',
-                onClick: () => { if (!busy) setStrategy('fallback') },
-              }, t('routing.strategy.fallback')),
-              h('button', {
-                type: 'button', disabled: busy, 'aria-pressed': strategy === 'round-robin' ? 'true' : 'false',
-                onClick: () => { if (!busy) setStrategy('round-robin') },
-              }, t('routing.strategy.roundRobin')))),
+            h('select', {
+              className: 'ofm_input', value: strategy, disabled: busy,
+              onChange: event => { if (!busy) setStrategy(event.target.value) },
+            }, Object.entries(strategyLabels(t))
+              .map(([value, label]) => h('option', { key: value, value }, label)))),
           strategy === 'round-robin'
             ? h('div', { className: 'ofm_field' },
               h('span', null, t('routing.stickyLimit')),
@@ -6296,7 +7868,7 @@ window.__ModuleLoader__.load({
           h(Pill, { tone: usable ? 'ok' : 'warn' }, usable ? t('routing.usable') : t('routing.notUsable'))),
         h('div', { className: 'ofm_metrics' },
           h('span', null, chain.id),
-          h('span', null, chain.strategy === 'round-robin' ? t('routing.strategy.roundRobin') : t('routing.strategy.fallback')),
+          h('span', null, strategyLabels(t)[chain.strategy] ?? strategyLabels(t).fallback),
           h('span', null, t('routing.memberCount').replace('{n}', String((chain.models ?? []).length)))),
         h(ChainCapacity, { capacity, t }),
         h('div', { className: 'ofm_row' },
@@ -6471,31 +8043,283 @@ window.__ModuleLoader__.load({
     // people actually open this page for — below the fold:
     //   免费模型       the no-account lane (this plugin's own gateway),
     //   EAC 模型       the desktop co-paid lane behind GitHub auth,
-    //   白嫖模型接入   the thirteen enabled account channels and their logins.
+    //   EAC router     the current enabled account channels and their logins.
     // The active page lives in localStorage so a reload — or the hot reload the
     // upgrader triggers — comes back to the page the user was reading.
+    const EFFECTS_KEY = 'ofm.visualEffects'
     const TAB_KEY = 'ofm.tab'
-    const TABS = ['free', 'eac', 'channels', 'aggregate', 'saver', 'routing', 'ledger', 'logs', 'gateway', 'upgrade', 'picks']
+    const TABS = ['free', 'eac', 'channels', 'aggregate', 'workspace', 'extensions', 'saver', 'routing', 'ledger', 'logs', 'gateway', 'upgrade', 'picks', 'feedback']
+    const WORKSPACE_CSS = `
+      .who{min-width:0}
+      .who .name,.nm .n,.lib-path{white-space:normal!important;overflow-wrap:anywhere;overflow:visible!important;text-overflow:clip!important}
+      .lib-path{height:auto!important;max-width:100%;text-align:left}
+      .sheet .grid{grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr))!important}
+      .sheet .tile{height:auto;min-height:34px;padding-top:6px;padding-bottom:6px}
+      .sheet .kind,.row-head{flex-wrap:wrap}
+      .row-head .label{min-width:0;white-space:normal;overflow-wrap:anywhere}
+      input,select,textarea{min-width:0;max-width:100%;box-sizing:border-box}
+      @media(max-width:440px){
+        .row{flex-wrap:wrap;align-items:flex-start}
+        button.text{white-space:normal;overflow-wrap:anywhere;max-width:100%}
+        #view-sessions .who{flex:1 1 140px}
+      }
+    `
+
+    function WorkspaceIcon({ name }) {
+      const paths = {
+        expand: ['M8 3H5a2 2 0 0 0-2 2v3', 'M16 3h3a2 2 0 0 1 2 2v3', 'M21 16v3a2 2 0 0 1-2 2h-3', 'M8 21H5a2 2 0 0 1-2-2v-3'],
+        close: ['M18 6 6 18', 'm6 6 12 12'],
+        refresh: ['M3 12a9 9 0 0 1 15.36-6.36L21 8', 'M21 3v5h-5', 'M21 12a9 9 0 0 1-15.36 6.36L3 16', 'M8 16H3v5'],
+        settings: ['M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'],
+      }
+      return h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+        (paths[name] ?? []).map((d, i) => h('path', { key: i, d })),
+        name === 'settings' ? h('circle', { cx: 12, cy: 12, r: 3 }) : null)
+    }
+
+    function ModelWorkspace({ t, summary }) {
+      const [state, setState] = useState('starting')
+      const [error, setError] = useState('')
+      const [generation, setGeneration] = useState(0)
+      const frame = useRef(null)
+      const anchor = useRef(null)
+      const closeButton = useRef(null)
+      const [expanded, setExpanded] = useState(false)
+      const [portal, setPortal] = useState(null)
+      const syncTheme = () => {
+        const root = anchor.current?.closest('.ofm_root') ?? document.documentElement
+        const style = window.getComputedStyle(root)
+        const variables = {}
+        for (const token of ['label-primary', 'label-secondary', 'label-tertiary', 'label-on-accent', 'bg-layer-1', 'bg-layer-2',
+          'bg-layer-3', 'border-l1', 'border-l2', 'state-business-primary', 'state-success-primary', 'state-error-primary', 'state-warning-primary']) {
+          const name = `--dsw-alias-${token}`
+          const value = style.getPropertyValue(name).trim()
+          if (value) variables[name] = value
+        }
+        const themed = root.closest('[data-theme]')
+          ?? document.querySelector('[data-theme]')
+        const colorScheme = themed?.getAttribute('data-theme')
+          ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        frame.current?.contentWindow?.postMessage({
+          type: 'ofm:engine-theme', variables, fontFamily: style.fontFamily,
+          colorScheme: colorScheme === 'dark' ? 'dark' : 'light', externalControls: true,
+        }, window.location.origin)
+      }
+      useEffect(() => {
+        if (state !== 'ready') return
+        const observer = new MutationObserver(syncTheme)
+        const root = anchor.current?.closest('.ofm_root') ?? document.documentElement
+        for (let node = root; node; node = node.parentElement) {
+          observer.observe(node, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] })
+        }
+        const media = window.matchMedia?.('(prefers-color-scheme: dark)')
+        media?.addEventListener?.('change', syncTheme)
+        return () => { observer.disconnect(); media?.removeEventListener?.('change', syncTheme) }
+      }, [state, expanded])
+      useEffect(() => {
+        if (!expanded) { setPortal(null); return }
+        const host = document.createElement('div')
+        host.setAttribute('data-ofm-workspace-root', 'true')
+        document.body.appendChild(host)
+        const root = anchor.current?.closest('.ofm_shell')
+        const wasInert = root?.inert
+        const focused = document.activeElement
+        if (root) root.inert = true
+        setPortal(host)
+        const escape = event => {
+          if (event.key === 'Escape') setExpanded(false)
+        }
+        // The engine page is an iframe: once focus is inside it, key events go
+        // to the child document and the parent listener never sees them, so
+        // Escape did nothing in exactly the state the panel spends its time in.
+        // Listen on the frame's document too; same-origin, so it is reachable.
+        let frameEscape = null
+        const bindFrame = () => {
+          try {
+            const doc = frame.current?.contentDocument
+            if (!doc || frameEscape) return
+            frameEscape = doc
+            doc.addEventListener('keydown', escape)
+          } catch { /* cross-origin engine page: the parent listener still applies */ }
+        }
+        bindFrame()
+        const frameTimer = setInterval(bindFrame, 400)
+        const focus = event => {
+          if (!host.contains(event.target)) closeButton.current?.focus()
+        }
+        window.addEventListener('keydown', escape)
+        document.addEventListener('focusin', focus)
+        return () => {
+          clearInterval(frameTimer)
+          window.removeEventListener('keydown', escape)
+          document.removeEventListener('focusin', focus)
+          try { frameEscape?.removeEventListener('keydown', escape) } catch { /* frame already gone */ }
+          if (root) root.inert = wasInert
+          host.remove()
+          if (focused?.isConnected) focused.focus?.()
+        }
+      }, [expanded])
+      useEffect(() => { if (portal) closeButton.current?.focus() }, [portal])
+      useEffect(() => {
+        const changed = event => {
+          if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow
+            || event.data?.type !== 'ofm:engine-changed') return
+          void post('/engine/refresh', {}, 30_000).then(() => summary?.reload?.()).catch(() => {})
+        }
+        window.addEventListener('message', changed)
+        return () => window.removeEventListener('message', changed)
+      }, [summary?.reload])
+      useEffect(() => {
+        let alive = true
+        setState('starting'); setError('')
+        post('/engine/start', {}, 120_000).then(() => {
+          if (alive) { setState('ready'); summary?.reload?.() }
+        }).catch(() => {
+          if (alive) { setState('error'); setError(t('engine.failed')) }
+        })
+        return () => { alive = false }
+      }, [generation])
+      const refresh = async () => {
+        try { await post('/engine/refresh', {}, 30_000); summary?.reload?.() }
+        catch { setError(t('engine.failed')) }
+      }
+      const engineAction = action => frame.current?.contentWindow?.postMessage({
+        type: 'ofm:engine-action', action,
+      }, window.location.origin)
+      const toolbar = h('header', { className: 'ofm_enginebar' },
+          h('h2', null, t('engine.title')),
+          h('div', { className: 'ofm_enginetools', role: 'group', 'aria-label': t('engine.title') },
+            h('button', { ref: closeButton, type: 'button', className: 'ofm_engineicon',
+              title: expanded ? t('engine.close') : t('engine.expand'),
+              'aria-label': expanded ? t('engine.close') : t('engine.expand'),
+              onClick: () => setExpanded(value => !value) }, h(WorkspaceIcon, { name: expanded ? 'close' : 'expand' })),
+            state === 'ready' ? h('button', { type: 'button', className: 'ofm_engineicon',
+              title: t('engine.refresh'), 'aria-label': t('engine.refresh'),
+              onClick: () => { engineAction('refresh'); void refresh() } }, h(WorkspaceIcon, { name: 'refresh' })) : null,
+            state === 'ready' ? h('button', { type: 'button', className: 'ofm_engineicon',
+              title: t('engine.settings'), 'aria-label': t('engine.settings'),
+              onClick: () => engineAction('settings') }, h(WorkspaceIcon, { name: 'settings' })) : null))
+      const content = h(Fragment, null,
+        toolbar,
+        error ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, error) : null,
+        state === 'ready'
+          ? h('iframe', { ref: frame, className: 'ofm_engineframe', src: `${API}/engine/ui/?mode=window&view=providers`, title: t('engine.title'),
+            allow: 'clipboard-write', referrerPolicy: 'same-origin', onLoad: event => {
+              syncTheme()
+              const doc = event.currentTarget.contentDocument
+              if (!doc || doc.getElementById('ofm-workspace-layout')) return
+              const style = doc.createElement('style')
+              style.id = 'ofm-workspace-layout'
+              style.textContent = WORKSPACE_CSS
+              doc.head.appendChild(style)
+            } })
+          : h('div', { className: 'ofm_engineempty' },
+            h('span', { className: state === 'starting' ? 'ofm_note ofm_enginestarting' : 'ofm_note', role: 'status' },
+              state === 'starting' ? t('engine.starting') : t('engine.failed')),
+            state === 'error' ? h(Button, { kind: 'primary', onClick: () => setGeneration(value => value + 1) }, t('engine.start')) : null))
+      return h('div', { className: 'ofm_page ofm_engineworkspace', ref: anchor },
+        // While expanded the panel lives in its overlay portal. For the one frame
+        // before the portal host exists it stays inline: rendering `null` in that
+        // gap removed the whole toolbar, and with it the only collapse button —
+        // a missed portal left the workbench stuck open until a restart (#700).
+        expanded && portal ? ReactDOM.createPortal(
+          h('div', { className: 'ofm_root ofm_engineoverlay', role: 'dialog', 'aria-modal': 'true',
+            'aria-label': t('engine.title'), 'data-ofm-effects': 'off' }, content), portal) : content)
+    }
+
+    function WorkspacePage({ t, summary, section, onSelect }) {
+      const [visited, setVisited] = useState(() => new Set([section]))
+      useEffect(() => {
+        try { window.localStorage?.setItem('ofm.workspace.section', section) } catch { /* 当前页面仍可切换 */ }
+      }, [section])
+      const sections = [['tools', t('engine.tools')], ['accounts', t('sub.title')]]
+      const select = next => { onSelect(next); setVisited(previous => new Set([...previous, next])) }
+      return h('div', { className: 'ofm_page ofm_modelworkspace' },
+        h('div', { className: 'ofm_workspacetabs', role: 'tablist', 'aria-label': t('engine.title'),
+          onKeyDown: event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const next = event.key === 'Home' ? 'tools' : event.key === 'End' ? 'accounts'
+              : section === 'tools' ? 'accounts' : 'tools'
+            select(next)
+            event.currentTarget.querySelector(`#ofm-workspace-tab-${next}`)?.focus()
+          } },
+          sections.map(([id, label]) => h('button', { key: id, type: 'button',
+            className: 'ofm_workspacetab', role: 'tab', id: `ofm-workspace-tab-${id}`,
+            'aria-controls': `ofm-workspace-view-${id}`, 'aria-selected': section === id ? 'true' : 'false',
+            tabIndex: section === id ? 0 : -1, onClick: () => select(id) }, label))),
+        sections.filter(([id]) => visited.has(id)).map(([id]) => h('div', {
+          key: id, className: 'ofm_workspaceview', hidden: section !== id, role: 'tabpanel',
+          id: `ofm-workspace-view-${id}`, 'aria-labelledby': `ofm-workspace-tab-${id}`,
+        }, id === 'tools' ? h(ModelWorkspace, { t, summary }) : h(SubscriptionsPage, { t, summary }))))
+    }
 
     function Shell(props) {
       const { t, data, counts, summary, stats, eacAuth, setEacAuth, eacLogin, busy, setBusy, apply, bench, benches, ctx } = props
       const [tab, setTab] = useState(() => {
         try {
           const saved = window.localStorage?.getItem(TAB_KEY)
-          return TABS.includes(saved) ? saved : 'free'
+          return saved === 'subscriptions' ? 'workspace' : TABS.includes(saved) ? saved : 'free'
         } catch { return 'free' }
       })
+      const [workspaceSection, setWorkspaceSection] = useState(() => {
+        try { return window.localStorage?.getItem(TAB_KEY) === 'subscriptions' ? 'accounts'
+          : window.localStorage?.getItem('ofm.workspace.section') === 'accounts' ? 'accounts' : 'tools' }
+        catch { return 'tools' }
+      })
+      const [effects, setEffects] = useState(() => {
+        try { return window.localStorage?.getItem(EFFECTS_KEY) === 'on' } catch { return false }
+      })
+      const toggleEffects = () => setEffects(current => {
+        const next = !current
+        try { window.localStorage?.setItem(EFFECTS_KEY, next ? 'on' : 'off') } catch { /* 当前页面仍可切换 */ }
+        return next
+      })
+      /* The disclaimer is not a gate on the lanes: it reads once on the first
+         settings visit and is reopenable afterwards. `undefined` means the answer
+         has not arrived yet, which is neither "show it" nor "hide it". */
+      const [disclaimer, setDisclaimer] = useState(undefined)
+      const [disclaimerOpen, setDisclaimerOpen] = useState(false)
+      useEffect(() => {
+        let alive = true
+        api('/disclaimer')
+          .then(payload => { if (alive) setDisclaimer(payload) })
+          .catch(() => { if (alive) setDisclaimer({ acknowledged: true }) })
+        return () => { alive = false }
+      }, [])
+      useEffect(() => {
+        if (disclaimer === undefined) return
+        if (disclaimer.acknowledged !== true) setDisclaimerOpen(true)
+      }, [disclaimer])
+      const shellRef = useRef(null)
+      const [active, setActive] = useState(true)
+      useEffect(() => {
+        let inViewport = true
+        const update = () => setActive(inViewport && document.hidden !== true)
+        update()
+        document.addEventListener?.('visibilitychange', update)
+        const observer = typeof IntersectionObserver === 'function' && shellRef.current
+          ? new IntersectionObserver(entries => { inViewport = entries.some(entry => entry.isIntersecting); update() }) : null
+        if (observer) observer.observe(shellRef.current)
+        return () => { document.removeEventListener?.('visibilitychange', update); observer?.disconnect() }
+      }, [])
       const tabRefs = useRef({})
       const [glider, setGlider] = useState({ left: 0, top: 0, width: 0, height: 0 })
       const [catalogBusy, setCatalogBusy] = useState(false)
       const catalogPending = useRef(false)
       useEffect(() => {
         try { window.localStorage?.setItem(TAB_KEY, tab) } catch { /* storage unavailable */ }
+        const measure = () => {
+          const node = tabRefs.current[tab]
+          if (node) setGlider({ left: node.offsetLeft, top: node.offsetTop, width: node.offsetWidth, height: node.offsetHeight })
+        }
+        measure()
         const node = tabRefs.current[tab]
-        // Tabs may wrap onto a second row inside the group, so the glider is
-        // placed on both axes: translate alone would put it at the right
-        // height and the wrong row.
-        if (node !== undefined && node !== null) setGlider({ left: node.offsetLeft, top: node.offsetTop, width: node.offsetWidth, height: node.offsetHeight })
+        const observer = typeof ResizeObserver === 'function' && node?.parentElement ? new ResizeObserver(measure) : null
+        if (observer) observer.observe(node.parentElement)
+        window.addEventListener('resize', measure)
+        return () => { observer?.disconnect(); window.removeEventListener('resize', measure) }
       }, [tab, t.locale])
 
       const runCatalog = async path => {
@@ -6520,6 +8344,8 @@ window.__ModuleLoader__.load({
         ['eac', t('nav.tab.eac'), data.catalog.filter(m => m.channel === 'eac').length],
         ['channels', t('nav.tab.channels'), CHANNEL_PROVIDERS.length],
         ['aggregate', t('nav.tab.aggregate'), data.catalog.filter(m => m.channel === 'aggregate').length],
+        ['workspace', t('nav.tab.workspace'), data.catalog.filter(m => m.channel === 'subscription').length],
+        ['extensions', t('nav.tab.extensions'), (data.extensions?.installed ?? []).length],
         ['saver', t('nav.tab.saver'), null],
         ['routing', t('nav.tab.routing'), data.catalog.filter(m => m.channel === 'combo').length],
         ['ledger', t('nav.tab.ledger'), null],
@@ -6527,24 +8353,39 @@ window.__ModuleLoader__.load({
         ['gateway', t('nav.tab.gateway'), null],
         ['upgrade', t('nav.tab.upgrade'), null],
         ['picks', t('nav.tab.picks'), null],
+        ['feedback', t('nav.tab.feedback'), null],
       ]
       const nav = h('nav', { className: 'ofm_nav' },
         h('span', { className: 'ofm_navbrand' },
           h('span', { className: 'ofm_navmark', 'aria-hidden': 'true' },
             h('img', { src: BRAND_ICON, alt: '' })),
           t('title')),
-        h('div', { className: 'ofm_tabs', role: 'tablist' },
-          h('span', { className: 'ofm_tabglider', style: { transform: `translate(${glider.left}px, ${glider.top}px)`, width: `${glider.width}px`, height: `${glider.height}px` } }),
+        h('div', { className: 'ofm_tabs', role: 'tablist', 'aria-label': t('title'), onKeyDown: event => {
+          const steps = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }
+          if (!Object.hasOwn(steps, event.key) && event.key !== 'Home' && event.key !== 'End') return
+          event.preventDefault()
+          const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+            : (tabs.findIndex(([id]) => id === tab) + steps[event.key] + tabs.length) % tabs.length
+          setTab(tabs[index][0])
+          event.currentTarget.querySelectorAll('[role="tab"]')[index]?.focus()
+        } },
+          h('span', { className: 'ofm_tabglider', 'aria-hidden': 'true',
+            style: { transform: `translate(${glider.left}px, ${glider.top}px)`, width: `${glider.width}px`, height: `${glider.height}px` } }),
           tabs.map(([id, label, num]) => h('button', {
             key: id, type: 'button', role: 'tab', 'aria-selected': tab === id ? 'true' : 'false', className: 'ofm_tab', 'data-on': tab === id ? 'true' : 'false',
-            'aria-selected': tab === id ? 'true' : 'false',
+            tabIndex: tab === id ? 0 : -1,
             ref: node => { tabRefs.current[id] = node },
+            id: `ofm-tab-${id}`, 'aria-controls': 'ofm-workspace',
             onClick: () => setTab(id),
           }, label, num === null ? null : h('span', { className: 'ofm_tabnum' }, String(num))))),
-        h('span', { className: 'ofm_navspacer' }),
-        h(StarButton, { t }))
+        h('div', { className: 'ofm_navtools', title: t('effects.hint') },
+          h(Switch, { checked: effects, label: t('effects.enabled'), onChange: toggleEffects }),
+          h(StarButton, { t })))
 
-      const page = tab === 'channels'
+      const page = tab === 'workspace'
+        ? h(WorkspacePage, { t, summary, section: workspaceSection, onSelect: setWorkspaceSection })        : tab === 'extensions'
+          ? h(ExtensionsPage, { t, onChanged: summary.reload })
+          : tab === 'channels'
         ? h(ChannelsPage, { t, ctx, summary })
         : tab === 'aggregate'
           ? h(AggregatePage, { t, summary })
@@ -6561,15 +8402,36 @@ window.__ModuleLoader__.load({
                     : tab === 'upgrade'
                       ? h(UpgradePage, { t, settings: data.settings, onApply: apply, busy })
                     : tab === 'picks'
-                      ? h(PicksPage, { t })
+                      ? h(PicksPage, { t, effects })
+                    : tab === 'feedback'
+                      ? h(FeedbackPage, { t, version: data.version })
                     : tab === 'eac'
                       ? h(EacPage, { t, data, counts, summary, stats, eacAuth, setEacAuth, eacLogin, busy, catalogBusy, apply, bench, benches, refresh, reprobe })
                       : h(FreePage, { t, data, counts, summary, stats, eacAuth, eacLogin, busy, catalogBusy, apply, bench, benches, refresh, reprobe })
 
-      return h('div', { className: 'ofm_root ofm_shell' },
-        h('div', { className: 'ofm_aurora', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+      return h('div', { className: 'ofm_root ofm_shell', ref: shellRef, 'data-ofm-effects': effects ? 'on' : 'off', 'data-ofm-active': active ? 'true' : 'false' },
         nav,
-        page)
+        h('div', { className: 'ofm_workspace', id: 'ofm-workspace', role: 'tabpanel', 'aria-labelledby': `ofm-tab-${tab}` }, page),
+        h('footer', { className: 'ofm_shellfoot' },
+          h('button', {
+            type: 'button', className: 'ofm_linkbtn',
+            onClick: () => setDisclaimerOpen(true),
+          }, t('disclaimer.reopen'))),
+        disclaimerOpen && disclaimer !== undefined
+          ? h(Disclaimer, { t, copy: disclaimer, onClose: () => setDisclaimerOpen(false) })
+          : null)
+    }
+
+    function SponsorBanner({ t }) {
+      return h('aside', { className: 'ofm_sponsor_banner', 'aria-label': t('sponsor.bannerTitle') },
+        h('div', { className: 'ofm_sponsor_logo', 'aria-hidden': 'true' },
+          h('img', { src: SPONSOR_LOGO, alt: '', width: 56, height: 56, style: { display: 'block', objectFit: 'contain', borderRadius: 'inherit' } })),
+        h('div', { className: 'ofm_sponsor_bannerbody' },
+          h('span', { className: 'ofm_sponsor_kicker' }, t('sponsor.bannerTag')),
+          h('h3', null, t('sponsor.bannerTitle')),
+          h('p', null, t('sponsor.bannerDescription'))),
+        h('a', { className: 'ofm_sponsor_cta', href: SPONSOR_CARD_URL, target: '_blank', rel: 'noopener noreferrer' },
+          h('span', null, t('sponsor.bannerCta')), h('span', { 'aria-hidden': 'true' }, '↗')))
     }
 
     function SponsorBanner({ t }) {
@@ -6601,6 +8463,10 @@ window.__ModuleLoader__.load({
               h('p', { className: 'ofm_pagesub' }, t('free.sub'))),
             h('div', { className: 'ofm_pills' },
               h(Pill, { strong: true, tone: data.settings.enabled !== false ? 'ok' : 'err' }, data.settings.enabled !== false ? t('pref.enabled') : 'off'),
+              /* Environment readiness: a missing Bun silently kills the official
+                 free lane's inference — surface it where the lane lives. */
+              data.bun === false ? h('span', { title: t('ext.bunHint') },
+                h(Pill, { strong: true, tone: 'err' }, t('ext.bunMissing'))) : null,
               h(Pill, null, `${t('pref.egress')} ${data.egress?.country ?? data.egress?.ip ?? '—'}`),
               h(Pill, null, `${t('pref.probedAt')} ${ago(data.probedAt, t.locale)}`))),
           h('div', { className: 'ofm_tankrow' },
@@ -6636,6 +8502,560 @@ window.__ModuleLoader__.load({
         h(Section, { title: t('section.egress'), hint: t('section.egressHint') }, h(Egress, { settings: data.settings, t, onApply: apply, busy })),
         h(Section, { title: t('section.prefs'), hint: t('section.prefsHint') }, h(Preferences, { summary: data, t, onApply: apply, busy })),
         h(Section, { title: t('section.news'), hint: t('section.newsHint') }, h(NewsPanel, { t })))
+    }
+
+    /** The extension marketplace: discover, installed, and the safety contract. */
+    function ExtensionsPage({ t, onChanged }) {
+      const [state, setState] = useState({ status: 'loading' })
+      const [busyId, setBusyId] = useState('')
+      const [detail, setDetail] = useState(undefined)
+      const [tab, setTab] = useState('discover')
+      const [query, setQuery] = useState('')
+      const [typeFilter, setTypeFilter] = useState('all')
+      const [sortKey, setSortKey] = useState('curated')
+      const [updatingAll, setUpdatingAll] = useState(false)
+      /* 2.10 增补：自动更新开关与它的 soak 提示、索引来源、最近操作。
+         `updates` 由后端在每次索引读取时算好（seenAt 记第一次看到新版本），
+         页面只读；写开关走既有 /settings 路由。 */
+      const [autoUpdateBusy, setAutoUpdateBusy] = useState(false)
+      /* Tag browsing (magpie's category gesture): click a tag chip, the grid
+         narrows to it. `updateProgress` counts a running 全部更新; `selfTests`
+         keeps each card's latest selfTest verdict. */
+      const [tagFilter, setTagFilter] = useState('')
+      const [updateProgress, setUpdateProgress] = useState(null)
+      const [selfTests, setSelfTests] = useState({})
+      const searchRef = useRef(null)
+      const load = useCallback(() => {
+        /* Re-reads keep the previous payload so a refresh (or the read after an
+           install) does not blank the page out mid-flight. */
+        setState(current => ({ ...current, status: 'loading' }))
+        api('/extensions', { timeout: 20_000 })
+          .then(payload => setState({ status: 'ready', ...payload }))
+          .catch(error => setState(current => ({ ...current, status: 'error', error: String(error?.message ?? error) })))
+      }, [])
+      useEffect(() => { load() }, [load])
+      /* `/` focuses the search box — the marketplace's first gesture is search,
+         and the pointer should not be required for it. */
+      useEffect(() => {
+        const onKey = event => {
+          if (event.key !== '/' || event.defaultPrevented === true) return
+          const target = event.target
+          const tag = target !== null && typeof target === 'object' ? String(target.tagName ?? '').toLowerCase() : ''
+          if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable === true) return
+          const input = searchRef.current
+          if (input === null || input === undefined) return
+          event.preventDefault()
+          input.focus()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [])
+      /* A mutation's response refreshes `installed`, but each registry row also
+         carries its own installed/update/enabled copy — left alone, a card keeps
+         its stale "update ready" tag (or stays on Install) until a full reload. */
+      const patchRegistryRow = (id, patch) => setState(current => {
+        const registry = current.registry
+        if (registry === null || registry === undefined) return current
+        return { ...current, registry: { ...registry, plugins: registry.plugins.map(row => row.id === id ? { ...row, ...patch } : row) } }
+      })
+      const act = async (path, body, refresh = true) => {
+        setBusyId(body?.id ?? path)
+        try {
+          const payload = await post(path, body, 120_000)
+          if (refresh) setState(current => ({ ...current, ...payload, status: 'ready' }))
+          else load()
+          if (path === '/extensions/install' && payload?.record !== undefined) {
+            patchRegistryRow(payload.record.id, {
+              installed: true, installedVersion: payload.record.version, updateAvailable: false,
+              enabled: payload.record.enabled === true, state: payload.record.state,
+            })
+          } else if (path === '/extensions/uninstall' && typeof body?.id === 'string') {
+            patchRegistryRow(body.id, { installed: false, enabled: false, updateAvailable: false, state: 'stopped' })
+          } else if (path === '/extensions/toggle' && payload?.record !== undefined) {
+            patchRegistryRow(payload.record.id, { enabled: payload.record.enabled === true, state: payload.record.state })
+          }
+          /* The nav badge and the free-page roster read the summary — refresh it
+             so an install/uninstall is reflected everywhere, not just here. */
+          onChanged?.()
+          return payload
+        } catch (error) {
+          showToast({ title: t('ext.failed'), body: String(error?.message ?? error), tone: 'warn' })
+          throw error
+        } finally { setBusyId('') }
+      }
+      const installFromDetail = async id => {
+        try { await act('/extensions/install', { id }); setDetail(undefined) } catch { /* the toast already said why */ }
+      }
+      const installed = state.installed ?? []
+      const registry = state.registry
+      const registryById = new Map((registry?.plugins ?? []).map(plugin => [plugin.id, plugin]))
+      const needle = query.trim().toLowerCase()
+      const discover = (registry?.plugins ?? []).filter(plugin => {
+        if (typeFilter !== 'all' && plugin.type !== typeFilter) return false
+        /* Tags ride the haystack: "kilo" should find the entry that is tagged kilo
+           even when its name never says it. */
+        if (needle !== '' && !`${plugin.name} ${plugin.id} ${plugin.summary ?? ''} ${(plugin.tags ?? []).join(' ')}`.toLowerCase().includes(needle)) return false
+        if (tagFilter !== '' && !(plugin.tags ?? []).includes(tagFilter)) return false
+        return true
+      })
+      if (sortKey === 'newest') discover.sort((a, b) => String(b.publishedAt ?? '').localeCompare(String(a.publishedAt ?? '')))
+      else if (sortKey === 'name') discover.sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+      const indexRows = registry?.plugins ?? []
+      const channelCount = indexRows.filter(plugin => plugin.type === 'channel').length
+      /* magpie's Installed tab: what is outdated floats to the top with a count
+         and an "update all" beside it, so a stale shelf never hides. */
+      const updates = installed.filter(record => registryById.get(record.id)?.updateAvailable === true)
+      const installedSorted = [...installed].sort((a, b) => {
+        const ua = registryById.get(a.id)?.updateAvailable === true ? 0 : 1
+        const ub = registryById.get(b.id)?.updateAvailable === true ? 0 : 1
+        if (ua !== ub) return ua - ub
+        return String(b.installedAt ?? '').localeCompare(String(a.installedAt ?? ''))
+      })
+      /* soak 状态：updates[] 由后端在索引读取时算好，id 对齐。 */
+      const updatesById = new Map((state.updates ?? []).map(update => [update.id, update]))
+      const soakHint = plugin => {
+        const update = updatesById.get(plugin.id)
+        if (update === undefined) return ''
+        if (update.ready === true) return t('ext.soakReady')
+        return t('ext.soakWaiting').replace('{h}', String(Math.max(1, Math.ceil(update.soakRemainingMs / 3_600_000))))
+      }
+      const auditLabel = action => ({ install: t('ext.auditInstall'), 'install-local': t('ext.auditInstallLocal'), uninstall: t('ext.auditUninstall'), 'set-enabled': t('ext.auditEnabled'), config: t('ext.auditConfig'), secret: t('ext.auditSecret'), 'self-test': t('ext.selfTest'), 'auto-update': t('ext.auditAutoUpdate'), 'registry-refresh': t('ext.auditRegistry') })[action] ?? action
+      const sourceLabel = meta => {
+        if (meta?.source === 'bundled') return t('ext.sourceBundled')
+        const source = String(meta?.source ?? '')
+        if (source === '') return ''
+        try { return `${new URL(source).hostname}（缓存）` } catch { return source }
+      }
+
+      const updateAll = async () => {
+        if (updatingAll === true || updates.length === 0) return
+        setUpdatingAll(true)
+        setUpdateProgress({ done: 0, total: updates.length })
+        try {
+          let done = 0
+          for (const record of updates) {
+            try { await act('/extensions/install', { id: record.id }) } catch { /* one refusal must not strand the rest */ }
+            done += 1
+            setUpdateProgress({ done, total: updates.length })
+          }
+        } finally { setUpdatingAll(false); setUpdateProgress(null) }
+      }
+      /* 自动更新开关：写回 /settings 的持久位；页面值以响应的 settings 为准。 */
+      const toggleAutoUpdate = async () => {
+        if (autoUpdateBusy === true) return
+        setAutoUpdateBusy(true)
+        try {
+          const next = state.autoUpdate !== true
+          await post('/settings', { autoUpdateExtensions: next }, 15_000)
+          setState(current => ({ ...current, autoUpdate: next }))
+        } catch (error) {
+          showToast({ title: t('ext.failed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setAutoUpdateBusy(false) }
+      }
+      /* 迁移助手：导出已安装清单（id、版本、启停、配置；密钥永不导出）。 */
+      const exportShelf = () => {
+        const rows = state.installed ?? []
+        if (rows.length === 0) return
+        const shelf = {
+          version: 1, exportedAt: new Date().toISOString(),
+          plugins: rows.map(record => ({ id: record.id, version: record.version, enabled: record.enabled === true, config: record.values ?? {} })),
+        }
+        const blob = new Blob([JSON.stringify(shelf, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `ofm-extensions-${new Date().toISOString().slice(0, 10)}.json`
+        link.click()
+        URL.revokeObjectURL(url)
+        showToast({ title: t('ext.exportDone'), holdMs: 6000 })
+      }
+      /* 迁移助手：按清单逐个重装并恢复配置与启停；一个失败不拖累其余。 */
+      const importShelf = async file => {
+        let shelf
+        try { shelf = JSON.parse(await file.text()) } catch { shelf = null }
+        const entries = shelf !== null && typeof shelf === 'object' && Array.isArray(shelf?.plugins)
+          ? shelf.plugins.filter(row => row !== null && typeof row === 'object' && typeof row.id === 'string')
+          : []
+        if (entries.length === 0) { showToast({ title: t('ext.importInvalid'), tone: 'warn' }); return }
+        let restored = 0
+        let failed = 0
+        for (const entry of entries) {
+          try {
+            await post('/extensions/install', { id: entry.id }, 120_000)
+            if (entry.config !== null && typeof entry.config === 'object' && !Array.isArray(entry.config)) {
+              await post('/extensions/config', { id: entry.id, values: entry.config }, 30_000)
+            }
+            if (entry.enabled === true) await post('/extensions/toggle', { id: entry.id, enabled: true }, 60_000)
+            restored += 1
+          } catch { failed += 1 }
+        }
+        await load()
+        showToast({ title: t('ext.importDone').replace('{ok}', String(restored)).replace('{fail}', failed > 0 ? t('ext.importFail').replace('{n}', String(failed)) : ''), tone: failed > 0 ? 'warn' : undefined, holdMs: 8000 })
+      }
+
+      /* The manifest's optional selfTest(ctx), run from the card. The verdict is
+         data, not a toast: a failed hook paints ✗ + its reason on the card. */
+      const runSelfTest = async id => {
+        setSelfTests(current => ({ ...current, [id]: { busy: true } }))
+        try {
+          const verdict = await post('/extensions/self-test', { id }, 20_000)
+          setSelfTests(current => ({ ...current, [id]: { ok: verdict?.ok === true, message: verdict?.message ?? '' } }))
+        } catch (error) {
+          setSelfTests(current => ({ ...current, [id]: { ok: false, message: String(error?.message ?? error) } }))
+        }
+      }
+      const cardFor = (plugin, index = 0, filterable = false) => {
+        const record = installed.find(row => row.id === plugin.id)
+        const busy = busyId === plugin.id
+        const modelCount = plugin.models?.length ?? plugin.modelCount
+        const hasCover = plugin.cover !== null && plugin.cover !== undefined
+        const head = h('div', { className: 'ofm_exthead' },
+          extensionAvatar(plugin),
+          h('div', { className: 'ofm_exttitle' },
+            h('div', { className: 'ofm_cardhead' },
+              h('span', { className: 'ofm_cardname', title: plugin.name }, plugin.name),
+              h('span', { className: 'ofm_badge ok', title: t('ext.verifiedTitle') }, t('ext.verified')),
+              plugin.updateAvailable === true ? h('span', { className: 'ofm_hottag' }, t('ext.updateAvailable')) : null),
+            h('div', { className: 'ofm_id' }, `${plugin.id} · v${plugin.version} · ${plugin.author || '—'}`)))
+        const blurb = h('p', { className: 'ofm_note ofm_extblurb' }, plugin.summary || plugin.description || '')
+        const hostGate = plugin.installable === false
+        const hostHint = t('ext.requiresHost').replace('{v}', plugin.minHost ?? '')
+        const tagRow = h('div', { className: 'ofm_tags' },
+          h('span', { className: 'ofm_chantag' }, plugin.type === 'channel' ? t('ext.channel') : t('ext.enhancement')),
+          /* A silent lane takeover (kilo-free → the built-in Kilo) must be visible
+             where the user decides to install, not buried in the manifest. */
+          plugin.replaces ? h('span', { className: 'ofm_replacetag', title: t('ext.replaces').replace('{name}', plugin.replaces) }, t('ext.replaces').replace('{name}', plugin.replaces)) : null,
+          (plugin.tags ?? []).slice(0, 3).map(tag => filterable
+            ? h('button', { className: 'ofm_tag ofm_tagbtn', key: tag, type: 'button', title: t('ext.filterTag'), onClick: () => { setTab('discover'); setTagFilter(tag) } }, tag)
+            : h('span', { className: 'ofm_tag', key: tag }, tag)),
+          typeof modelCount === 'number' && modelCount > 0 ? h('span', { className: 'ofm_badge' }, t('ext.modelCount').replace('{n}', String(modelCount))) : null)
+        const acquire = label => h(Button, {
+          kind: 'primary', disabled: busy || hostGate, busy,
+          title: hostGate ? hostHint : undefined,
+          onClick: () => act('/extensions/install', { id: plugin.id }),
+        }, busy ? t('ext.installing') : label)
+        const action = record === undefined
+          ? hostGate
+            ? h('span', { className: 'ofm_badge throttled', title: hostHint }, hostHint)
+            : acquire(t('ext.install'))
+          : plugin.updateAvailable === true
+            ? acquire(t('ext.update'))
+            : h('span', { className: 'ofm_badge ok' }, t('ext.installed'))
+        const actions = h('div', { className: 'ofm_extfoot' },
+          h(Button, { onClick: () => setDetail(plugin) }, t('ext.detail')),
+          action)
+        if (record === undefined) {
+          return h('article', {
+            className: `ofm_card ofm_extcard ${plugin.type === 'channel' ? 'channel' : 'enhancement'}${hasCover ? ' hascover' : ''}`,
+            key: plugin.id, style: { '--i': String(index) },
+          }, h(ExtensionCover, { plugin }), head, blurb, tagRow, actions)
+        }
+        const fields = []
+        for (const field of record.config) {
+          if (field.type === 'toggle') {
+            fields.push(h('div', { className: 'ofm_row', key: field.key, style: { gap: 8 } },
+              h('span', { className: 'ofm_note', style: { minWidth: 90 } }, field.label),
+              h(Switch, {
+                checked: record.values?.[field.key] === true, label: field.label,
+                onChange: () => act('/extensions/config', { id: plugin.id, values: { [field.key]: !(record.values?.[field.key] === true) } }),
+              })))
+          } else if (field.type === 'select') {
+            // The manifest's option list is the whole truth: render it, save the
+            // pick the moment it changes.
+            const options = field.options ?? []
+            const current = String(record.values?.[field.key] ?? (options.includes(String(field.default)) ? field.default : options[0] ?? ''))
+            fields.push(h('div', { className: 'ofm_row', key: field.key, style: { gap: 8 } },
+              h('span', { className: 'ofm_note', style: { minWidth: 90 } }, field.label),
+              h('select', {
+                className: 'ofm_input', value: current, style: { minWidth: 140 },
+                onChange: event => {
+                  if (event.target.value !== current) act('/extensions/config', { id: plugin.id, values: { [field.key]: event.target.value } })
+                },
+              }, options.map(option => h('option', { key: option, value: option }, option)))))
+          } else {
+            const numeric = field.type === 'number'
+            fields.push(h('div', { className: 'ofm_row', key: field.key, style: { gap: 8 } },
+              h('span', { className: 'ofm_note', style: { minWidth: 90 } }, field.label),
+              h('input', {
+                className: 'ofm_input', type: field.type === 'password' ? 'password' : numeric ? 'number' : 'text', style: { minWidth: 140 },
+                defaultValue: record.values?.[field.key] ?? '', placeholder: field.type === 'password' ? t('ext.secretPlaceholder') : '',
+                onBlur: event => {
+                  const raw = event.target.value
+                  if (numeric && raw === '') return // untouched, not a zero
+                  const next = numeric ? Number(raw) : raw
+                  if (next !== (record.values?.[field.key] ?? '')) {
+                    act('/extensions/config', { id: plugin.id, values: { [field.key]: next } })
+                  }
+                },
+              })))
+          }
+        }
+        for (const key of record.permissions.secrets) {
+          const hint = record.secrets.find(row => row.key === key)?.hint ?? ''
+          fields.push(h('div', { className: 'ofm_row', key, style: { gap: 8 } },
+            h('span', { className: 'ofm_note', style: { minWidth: 90 } }, key),
+            h('input', {
+              className: 'ofm_input', type: 'password', style: { minWidth: 140 }, placeholder: t('ext.secretPlaceholder'),
+              onBlur: event => {
+                if (event.target.value !== '') {
+                  act('/extensions/secret', { id: plugin.id, key, value: event.target.value })
+                  event.target.value = ''
+                }
+              },
+            }),
+            h('span', { className: 'ofm_note' }, hint)))
+        }
+        const selfTest = selfTests[plugin.id]
+        const controls = h('div', { className: 'ofm_row' },
+          record.selfTestAvailable === true
+            ? h(Button, { disabled: busy || selfTest?.busy === true, busy: selfTest?.busy === true, onClick: () => runSelfTest(plugin.id) }, t('ext.selfTest'))
+            : null,
+          h(Button, { disabled: busy, busy, onClick: () => act('/extensions/toggle', { id: plugin.id, enabled: !(record.enabled === true) }) },
+            record.enabled === true ? t('ext.disable') : t('ext.enable')),
+          h(Button, {
+            danger: true, disabled: busy, busy,
+            onClick: () => { if (window.confirm(t('ext.confirmRemove').replace('{name}', plugin.name))) act('/extensions/uninstall', { id: plugin.id }) },
+          }, t('ext.uninstall')),
+          record.state !== 'ready' && record.enabled === true
+            ? h('span', { className: 'ofm_badge throttled', title: record.error }, t('ext.notRunning'))
+            : null,
+          selfTest !== undefined && selfTest.busy !== true
+            ? selfTest.ok === true
+              ? h('span', { className: 'ofm_badge ok', title: selfTest.message }, t('ext.selfTestOk'))
+              : h('span', { className: 'ofm_badge throttled', title: selfTest.message }, t('ext.selfTestFail'))
+            : null)
+        return h('article', {
+          className: `ofm_card ofm_extcard ${plugin.type === 'channel' ? 'channel' : 'enhancement'}${hasCover ? ' hascover' : ''}`,
+          key: plugin.id, style: { '--i': String(index) },
+        },
+          h(ExtensionCover, { plugin }), head, blurb, tagRow, actions,
+          /* 可更新的卡片多一行：最新一条更新说明 + soak 状态。一个「有更新」
+             徽标不解释为什么值得装，这一行解释。 */
+          plugin.updateAvailable === true
+            ? h('p', { className: 'ofm_soakline' }, [
+              (plugin.changelog ?? [])[0] ?? '',
+              (plugin.changelog ?? []).length > 0 ? ' · ' : '',
+              soakHint(plugin),
+            ].join('')) : null,
+          fields.length > 0 ? h('div', { className: 'ofm_sec', style: { gap: 4 } }, fields) : null,
+          controls)
+      }
+      return h('div', { className: 'ofm_page' },
+        h('header', { className: 'ofm_hero ofm_glass' },
+          h('div', { className: 'ofm_pagehead' },
+            h('div', { className: 'ofm_pagetitle' },
+              h('h2', null, t('ext.title')),
+              h('p', { className: 'ofm_pagesub' }, t('ext.sub'))),
+            h('div', { className: 'ofm_pills' },
+              h(Pill, { strong: true }, t('ext.count').replace('{n}', String(indexRows.length))),
+              h(Pill, null, t('ext.countByType').replace('{c}', String(channelCount)).replace('{e}', String(indexRows.length - channelCount))),
+              h(Button, {
+                disabled: busyId === '/extensions/registry/refresh', busy: busyId === '/extensions/registry/refresh',
+                onClick: () => act('/extensions/registry/refresh', undefined, false),
+              }, t('ext.refresh')))),
+          h('div', { className: 'ofm_seg', role: 'group', style: { alignSelf: 'flex-start' } },
+            [['discover', t('ext.tabDiscover')], ['installed', t('ext.tabInstalled')], ['security', t('ext.tabSecurity')]].map(([key, label]) =>
+              h('button', { key, type: 'button', 'aria-pressed': tab === key ? 'true' : 'false', onClick: () => setTab(key) }, label)))),
+        state.status === 'error' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, h('b', null, t('ext.empty')), h('div', null, state.error))) : null,
+        tab === 'discover' ? h(Fragment, null,
+          h('div', { className: 'ofm_row ofm_exttoolbar' },
+            h('div', { className: 'ofm_extsearch' },
+              h('input', {
+                ref: searchRef, className: 'ofm_input', type: 'search', placeholder: t('ext.search'),
+                value: query, 'aria-keyshortcuts': '/', onChange: event => setQuery(event.target.value),
+              }),
+              h('kbd', { className: 'ofm_kbd', title: t('ext.searchHint'), 'aria-hidden': 'true' }, '/')),
+            h('div', { className: 'ofm_seg', role: 'group', 'aria-label': t('ext.type') },
+              [['all', t('ext.all'), indexRows.length], ['channel', t('ext.channel'), channelCount], ['enhancement', t('ext.enhancement'), indexRows.length - channelCount]].map(([key, label, count]) =>
+                h('button', { key, type: 'button', 'aria-pressed': typeFilter === key ? 'true' : 'false', onClick: () => setTypeFilter(key) },
+                  label, h('span', { className: 'ofm_segcount' }, String(count))))),
+            h('div', { className: 'ofm_seg', role: 'group', 'aria-label': t('ext.sort') },
+              [['curated', t('ext.sortCurated')], ['newest', t('ext.sortNewest')], ['name', t('ext.sortName')]].map(([key, label]) =>
+                h('button', { key, type: 'button', 'aria-pressed': sortKey === key ? 'true' : 'false', onClick: () => setSortKey(key) }, label)))),
+          h('div', { className: 'ofm_row ofm_exttoolbar' },
+            h('span', { className: 'ofm_inlinehint', title: t('ext.autoUpdateHint').replace('{h}', String(state.registryMeta?.soakHours ?? 2)) },
+              h(Switch, {
+                label: t('ext.autoUpdate'), checked: state.autoUpdate === true, disabled: autoUpdateBusy,
+                onChange: () => { void toggleAutoUpdate() },
+              })),
+            sourceLabel(state.registryMeta) !== ''
+              ? h('span', { className: 'ofm_extsource', title: `${t('ext.source')}: ${state.registryMeta?.source ?? ''}` },
+                `${t('ext.source')} · ${sourceLabel(state.registryMeta)}`) : null,
+            tagFilter !== '' ? h('span', { className: 'ofm_note' }, `${t('ext.filterTag')}:`) : null,
+            tagFilter !== '' ? h('span', { className: 'ofm_tag' }, tagFilter) : null,
+            tagFilter !== '' ? h(Button, { onClick: () => setTagFilter('') }, t('ext.clearSearch')) : null),
+          !registry && state.status === 'ready' ? h('div', { className: 'ofm_callout' },
+            h('div', null,
+              h('b', null, t('ext.empty')),
+              h('div', null, state.registryError !== undefined && state.registryError !== '' ? state.registryError : t('ext.indexHint')))) : null,
+          !registry && state.status === 'loading'
+            ? h('div', { className: 'ofm_grid ofm_extgrid' },
+              [0, 1, 2, 3, 4, 5].map(index => h('div', {
+                className: 'ofm_extskel', key: String(index), 'aria-hidden': 'true', style: { '--i': String(index) },
+              }, h('i', { style: { width: '42%' } }), h('i', { style: { width: '68%' } }),
+                h('i', { style: { width: '86%' } }), h('i', { style: { width: '55%' } }))))
+            : h('div', { className: 'ofm_grid ofm_extgrid' }, discover.map((plugin, index) => cardFor(plugin, index, true))),
+          discover.length === 0 && registry !== null && state.status === 'ready' ? h('div', { className: 'ofm_extempty' },
+            h('p', { className: 'ofm_note' }, t('ext.discoverEmpty')),
+            (query.trim() !== '' || typeFilter !== 'all' || tagFilter !== '')
+              ? h(Button, { onClick: () => { setQuery(''); setTypeFilter('all'); setTagFilter(''); searchRef.current?.focus?.() } }, t('ext.clearSearch'))
+              : h('a', { className: 'ofm_linkbtn', href: 'https://github.com/Ebony-Vinyl/ofm-extensions', target: '_blank', rel: 'noopener noreferrer' }, t('ext.openRepo'))) : null)
+        : tab === 'installed' ? h(Fragment, null,
+          h('div', { className: 'ofm_row ofm_exttoolbar' },
+            updates.length > 0 ? h('span', { className: 'ofm_badge region-blocked' }, t('ext.updateCount').replace('{n}', String(updates.length))) : null,
+            updates.length > 0 ? h(Button, { kind: 'primary', disabled: updatingAll, busy: updatingAll, onClick: updateAll },
+              updatingAll && updateProgress !== null
+                ? t('ext.updateProgress').replace('{i}', String(updateProgress.done)).replace('{n}', String(updateProgress.total))
+                : t('ext.updateAll')) : null,
+            h(Button, { onClick: exportShelf, disabled: installed.length === 0, title: t('ext.shelfTitle') }, t('ext.exportShelf')),
+            h('label', { className: 'ofm_importlabel', title: t('ext.shelfTitle') },
+              h('input', {
+                type: 'file', accept: 'application/json,.json', hidden: true,
+                onChange: event => { const file = event.target.files?.[0]; if (file !== undefined) void importShelf(file); event.target.value = '' },
+              }),
+              h(Button, { disabled: busyId !== '' }, t('ext.importShelf')))),
+          installed.length === 0 ? h('p', { className: 'ofm_note' }, t('ext.installedEmpty'))
+            : h('div', { className: 'ofm_grid ofm_extgrid' }, installedSorted.map((record, index) => cardFor({
+              ...record, summary: record.description,
+              tags: registryById.get(record.id)?.tags ?? [],
+              publishedAt: registryById.get(record.id)?.publishedAt ?? record.installedAt,
+              updateAvailable: registryById.get(record.id)?.updateAvailable === true,
+              changelog: registryById.get(record.id)?.changelog ?? [],
+              cover: registryById.get(record.id)?.cover,
+              installed: true,
+            }, index))),
+          installed.length > 0 ? h(Section, { title: t('ext.auditTitle') },
+            (state.audit ?? []).length > 0
+              ? h('div', { className: 'ofm_audrows' },
+                state.audit.slice().reverse().slice(0, 12).map((entry, index) => h('div', { className: 'ofm_audrow', key: `${entry.at}-${index}` },
+                  h('span', { className: 'ofm_audat' }, new Date(entry.at).toLocaleString(t.locale)),
+                  h('b', null, auditLabel(entry.action)),
+                  h('code', null, entry.id),
+                  entry.version !== undefined ? h('span', { className: 'ofm_note' }, `v${entry.version}`) : null,
+                  entry.enabled !== undefined ? h('span', { className: 'ofm_note' }, entry.enabled === true ? t('ext.enable') : t('ext.disable')) : null)))
+              : h('p', { className: 'ofm_note' }, t('ext.auditEmpty'))) : null)
+        : h('div', { className: 'ofm_panel' },
+          h('div', { className: 'ofm_paneltitle' }, t('ext.security')),
+          h('p', { className: 'ofm_note', style: { lineHeight: 1.7 } }, t('ext.securityBody')),
+          h('p', { className: 'ofm_note', style: { lineHeight: 1.7 } }, t('ext.securityBody2')),
+          typeof state.registry?.generatedAt === 'string' && state.registry.generatedAt !== ''
+            ? h('p', { className: 'ofm_note', style: { lineHeight: 1.7 } }, t('ext.indexFresh').replace('{at}', new Date(state.registry.generatedAt).toLocaleString(t.locale)))
+            : null,
+          h('div', { className: 'ofm_row' },
+            h('a', { className: 'ofm_linkbtn', href: `https://github.com/${'Ebony-Vinyl'}/ofm-extensions`, target: '_blank', rel: 'noopener noreferrer' }, t('ext.openRepo')))),
+        detail !== undefined ? h(ExtensionDetail, { t, detail, busy: busyId === detail.id, onInstall: installFromDetail, onClose: () => setDetail(undefined) }) : null)
+    }
+
+    /* A type-tinted letter avatar stands in for the manifest's (still optional)
+       icon: every card gets a face even when the author shipped none. */
+    function extensionAvatar(plugin) {
+      const initial = String(plugin?.name ?? plugin?.id ?? '?').trim().charAt(0).toUpperCase()
+      return h('span', {
+        className: `ofm_extavatar ${plugin?.type === 'channel' ? 'channel' : 'enhancement'}`,
+        'aria-hidden': 'true',
+      }, initial === '' ? '·' : initial)
+    }
+
+    /* The card's cover banner. The bytes ride the host's own /extensions/cover
+       route (digest-verified server-side, cached on disk); when the author
+       shipped none — or the fetch fails — the card simply renders without one.
+       The fallback state is per-card so one bad image never blanks the grid. */
+    function ExtensionCover({ plugin }) {
+      const [failed, setFailed] = useState(false)
+      if (plugin?.cover === null || plugin?.cover === undefined || failed) return null
+      return h('div', { className: 'ofm_extcover' },
+        h('img', {
+          src: `${API}/extensions/cover?id=${encodeURIComponent(plugin.id)}`,
+          alt: '', loading: 'lazy', decoding: 'async',
+          // 淡入：字节到位前不占住卡片顶部的视觉重量，一张慢图不撕开骨架。
+          onLoad: event => event.currentTarget.classList.add('ofm_loaded'),
+          onError: () => setFailed(true),
+        }))
+    }
+
+    /* The detail drawer portals to BODY, exactly like the disclaimer and
+       announcement modals: page containers are z-index:1 stacking contexts
+       while the nav card is z-index:30, so an inline fixed scrim would slide
+       under the nav card and get clipped in the desktop host. */
+    function ExtensionDetail({ t, detail, busy, onInstall, onClose }) {
+      const host = useMemo(() => {
+        const node = document.createElement('div')
+        node.setAttribute('data-ofm-extension-detail-root', 'true')
+        document.body.appendChild(node)
+        return node
+      }, [])
+      useEffect(() => () => { if (host.parentNode !== null) host.parentNode.removeChild(host) }, [host])
+      const dialogRef = useRef(null)
+      useEffect(() => {
+        dialogRef.current?.focus()
+        const onKey = event => { if (event.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [onClose])
+      const origins = detail.permissions?.network ?? []
+      const modelCount = detail.models?.length ?? detail.modelCount
+      const repositoryHost = (() => {
+        try { return new URL(detail.repository).host } catch { return '' }
+      })()
+      const meta = [
+        [t('ext.type'), detail.type === 'channel' ? t('ext.channel') : t('ext.enhancement')],
+        [t('ext.license'), detail.license || '—'],
+        [t('ext.published'), String(detail.publishedAt ?? '').slice(0, 10) || '—'],
+        [t('ext.models'), typeof modelCount === 'number' && modelCount > 0 ? String(modelCount) : '—'],
+        ...(repositoryHost !== '' ? [[t('ext.repository'), repositoryHost]] : []),
+      ]
+      const canAcquire = (detail.installed !== true || detail.updateAvailable === true) && detail.installable !== false
+      return ReactDOM.createPortal(h('div', { className: 'ofm_scrim', onClick: onClose },
+        h('div', {
+          className: 'ofm_ann ofm_extdetail', role: 'dialog', 'aria-modal': 'true', 'aria-label': detail.name,
+          tabIndex: -1, ref: dialogRef, onClick: event => event.stopPropagation(),
+        },
+          h(ExtensionCover, { plugin: detail }),
+          h('div', { className: 'ofm_annhead ofm_exthead' },
+            extensionAvatar(detail),
+            h('div', { className: 'ofm_exttitle' },
+              h('h3', { className: 'ofm_anntitle' }, detail.name),
+              h('p', { className: 'ofm_annsub' }, `${detail.id} · v${detail.version} · ${detail.author || ''}`))),
+          h('div', { className: 'ofm_annbody' },
+            h('p', null, detail.summary || detail.description || ''),
+            (detail.tags ?? []).length > 0 ? h('div', { className: 'ofm_tags' }, detail.tags.map(tag => h('span', { className: 'ofm_tag', key: tag }, tag))) : null,
+            detail.replaces ? h('div', { className: 'ofm_tags' }, h('span', { className: 'ofm_replacetag' }, t('ext.replaces').replace('{name}', detail.replaces))) : null,
+            detail.installed !== true ? h('p', { className: 'ofm_note' }, t('ext.notInstalledHint')) : null,
+            detail.installable === false ? h('p', { className: 'ofm_note' }, t('ext.requiresHost').replace('{v}', detail.minHost ?? '')) : null,
+            (detail.hooks ?? []).length > 0 ? h('div', { className: 'ofm_row', style: { gap: 6, alignItems: 'center' } },
+              h('span', { className: 'ofm_note' }, t('ext.hooks')),
+              detail.hooks.map(hookName => h('code', { key: hookName }, hookName))) : null,
+            h('div', { className: 'ofm_kv' }, meta.map(([label, value]) => h('div', { className: 'ofm_kvc', key: label },
+              h('b', null, value), h('span', null, label)))),
+            /* 渠道插件的模型货架：装之前就知道它接进哪些模型，而不只是个数。 */
+            (detail.models ?? []).length > 0 ? h('div', { className: 'ofm_modelshelf' },
+              detail.models.slice(0, 14).map(model => h('span', {
+                className: 'ofm_modelchip', key: model.id, title: `${model.id}${model.wire ? ` · ${model.wire}` : ''}`,
+              }, model.name ?? model.id)),
+              detail.models.length > 14 ? h('span', { className: 'ofm_note' }, `+${detail.models.length - 14}`) : null) : null,
+            (detail.changelog ?? []).length > 0 ? h('div', { className: 'ofm_sec' },
+              h('b', { style: { fontSize: 12.5 } }, t('ext.changelog')),
+              h('ul', { className: 'ofm_changelog' }, detail.changelog.map((row, index) =>
+                h('li', { key: index }, row)))) : null,
+            h('div', { className: 'ofm_sec' },
+              h('b', { style: { fontSize: 12.5 } }, t('ext.permissions')),
+              h('p', { className: 'ofm_note' }, t('ext.permNetwork').replace('{n}', String(origins.length))),
+              origins.length > 0
+                ? h('div', { className: 'ofm_extorigins' }, origins.map(origin => h('code', { key: origin }, origin)))
+                : h('p', { className: 'ofm_note' }, t('ext.originEmpty')),
+              h('p', { className: 'ofm_note' }, t('ext.permSecrets').replace('{n}', String(detail.permissions?.secrets?.length ?? 0))),
+              h('p', { className: 'ofm_note' }, `${t('ext.storage')}: ${detail.permissions?.storage === true ? t('ext.storageOn') : t('ext.storageOff')}`))),
+          h('div', { className: 'ofm_annfoot' },
+            detail.installed === true && detail.updateAvailable !== true ? h('span', { className: 'ofm_badge available' }, t('ext.installed')) : null,
+            h('span', { className: 'spacer' }),
+            typeof detail.sourceUrl === 'string' && detail.sourceUrl !== '' ? h('a', { className: 'ofm_linkbtn', href: detail.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, t('ext.viewSource')) : null,
+            detail.homepage ? h('a', { className: 'ofm_linkbtn', href: detail.homepage, target: '_blank', rel: 'noopener noreferrer' }, t('ext.openHomepage')) : null,
+            detail.repository && detail.repository !== detail.homepage ? h('a', { className: 'ofm_linkbtn', href: detail.repository, target: '_blank', rel: 'noopener noreferrer' }, t('ext.openRepository')) : null,
+            canAcquire ? h(Button, {
+              kind: 'primary', disabled: busy === true, busy: busy === true,
+              onClick: () => onInstall?.(detail.id),
+            }, busy === true ? t('ext.installing') : detail.installed === true ? t('ext.update') : t('ext.install')) : null,
+            h(Button, { onClick: onClose }, t('ext.close'))))), host)
     }
 
     function EacPage(props) {
@@ -6709,6 +9129,45 @@ window.__ModuleLoader__.load({
       return host
     }
 
+    /**
+     * The disclaimer: what this build does not offer, and whose responsibility
+     * a third-party channel is.
+     *
+     * Shown once on the first settings visit (and whenever the copy version
+     * moves), then reopenable from the footer link so a user who dismissed it
+     * can read it again. It never blocks the model lanes — acknowledging is a
+     * settings write, not a gate on inference.
+     */
+    function Disclaimer(props) {
+      const { t, onClose } = props
+      const [busy, setBusy] = useState(false)
+      const copy = props.copy
+      const dismiss = async () => {
+        if (busy) return
+        setBusy(true)
+        try { await post('/disclaimer/ack') } catch { /* ack is best effort */ }
+        onClose()
+      }
+      const host = announcementPortalHost()
+      useEffect(() => () => {
+        if (host.parentNode !== null) host.parentNode.removeChild(host)
+      }, [host])
+      return ReactDOM.createPortal(h('div', { className: 'ofm_scrim' },
+        h('div', { className: 'ofm_ann ofm_disclaimer', role: 'dialog', 'aria-modal': 'true', 'aria-label': copy.title },
+          h('div', { className: 'ofm_annhead' },
+            h('h2', { className: 'ofm_anntitle' }, copy.title),
+            h('p', { className: 'ofm_annsub' }, copy.subtitle)),
+          h('div', { className: 'ofm_annbody' },
+            h('p', null, copy.intro),
+            copy.sections.map(section => h('section', { key: section.id, className: 'ofm_disclaimersec' },
+              h('h3', null, section.heading),
+              h('p', null, section.body)))),
+          h('div', { className: 'ofm_annfoot' },
+            h('span', { className: 'ofm_note' }, t('disclaimer.version').replace('{n}', copy.version)),
+            h('span', { className: 'spacer' }),
+            h(Button, { kind: 'primary', disabled: busy, onClick: dismiss }, busy ? t('disclaimer.saving') : copy.accept)))), host)
+    }
+
     function Announcement(props) {
       const { t, complete, openSection, page, setPage, summary, acknowledged } = props
       useEffect(() => { if (acknowledged) complete() }, [acknowledged, complete])
@@ -6718,16 +9177,16 @@ window.__ModuleLoader__.load({
          `document.elementFromPoint` over the next-page button returned BODY — the
          dialog could not be clicked at all. The full-viewport scrim already
          swallows every pointer event aimed at the app behind it. */
+      const host = acknowledged ? null : announcementPortalHost()
+      useEffect(() => () => {
+        if (host && host.parentNode !== null) host.parentNode.removeChild(host)
+      }, [host])
       if (acknowledged) return null
       const last = page === PAGES.length - 1
       const finish = async () => {
         try { await post(`/announcement/ack?version=${encodeURIComponent(summary?.announcementVersion ?? '')}`) } catch { /* ack is best effort */ }
         complete()
       }
-      const host = announcementPortalHost()
-      useEffect(() => () => {
-        if (host.parentNode !== null) host.parentNode.removeChild(host)
-      }, [host])
       return ReactDOM.createPortal(h('div', { className: 'ofm_scrim' },
         h('div', { className: 'ofm_ann', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('title') },
           h('div', { className: 'ofm_annhead' },
@@ -6791,6 +9250,36 @@ window.__ModuleLoader__.load({
       } catch { return 'en' }
     }
 
+    /**
+     * Decide whether this page announces the last hot reload.
+     *
+     * The server acknowledgement is authoritative because it survives a new
+     * origin: another port, another hostname, or the desktop shell's random
+     * port all have an empty localStorage. The cache only suppresses a repeat
+     * toast in the same origin; an unconfirmed server acknowledgement must
+     * still be retried if its previous write failed or has not landed yet.
+     */
+    function reloadNoticePlan(meta, cached) {
+      const at = Number(meta?.reloadedAt ?? 0)
+      if (!Number.isFinite(at) || at <= 0) return { at: 0, show: false }
+      const seen = Number(meta?.reloadNoticeSeen ?? 0)
+      if (seen === at) return { at, show: false }
+      if (cached !== undefined && cached !== null && String(at) === String(cached)) return { at, show: false }
+      return { at, show: true }
+    }
+
+    /** Show the toast at most once, and retry any missing server acknowledgement. */
+    async function announceReloadNotice(meta, cached, { show, ack, remember }) {
+      const plan = reloadNoticePlan(meta, cached)
+      if (plan.at <= 0) return { ...plan, shown: false }
+      remember(plan.at)
+      if (plan.show) show(plan)
+      if (Number(meta?.reloadNoticeSeen ?? 0) !== plan.at) {
+        try { await ack(plan.at) } catch { /* retry on the next check without repeating the toast */ }
+      }
+      return { ...plan, shown: plan.show }
+    }
+
     function apply(ctx) {
       const t = ctx.locale.bind(NS)
       ctx.effect(() => ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }), 'our-free-model: dictionaries')
@@ -6847,10 +9336,14 @@ window.__ModuleLoader__.load({
             for (const item of data.items ?? []) {
               osNotify(t('toast.annTitle'), item.title)
               if (item.level === 'urgent') {
+                if (urgentShownIds.has(item.id)) continue
+                urgentShownIds.add(item.id)
                 showUrgentModal({
                   title: `${t('news.urgentTitle')} · ${item.title}`,
                   html: item.html ?? '',
                   confirmLabel: t('news.gotIt'),
+                  holdMs: (item.holdSeconds ?? 0) * 1000,
+                  holdHint: t('news.holdHint'),
                   onClose: () => { void post('/announcements/ack', { id: item.id }).catch(() => {}) },
                 })
               } else {
@@ -6881,6 +9374,26 @@ window.__ModuleLoader__.load({
             window.dispatchEvent(new CustomEvent('ofm:hello', { detail: data }))
           })
         }
+        // 升级场景：公告在页面关闭期间到达（插件重启后的首轮轮询），到达推送
+        // 没有任何观看者。打开流之前补一次已读检查——最新一条未确认的 urgent
+        // 照样弹层，关闭即 ack。显示过的一律不重复（本次页面生命周期内）。
+        void (async () => {
+          try {
+            const view = await api('/announcements')
+            const candidates = (view?.items ?? []).filter(item => item.level === 'urgent' && item.acked !== true && urgentShownIds.has(item.id) === false)
+            const item = candidates.sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))[0]
+            if (item === undefined || disposed === true) return
+            urgentShownIds.add(item.id)
+            showUrgentModal({
+              title: `${t('news.urgentTitle')} · ${item.title}`,
+              html: item.html ?? '',
+              confirmLabel: t('news.gotIt'),
+              holdMs: (item.holdSeconds ?? 0) * 1000,
+              holdHint: t('news.holdHint'),
+              onClose: () => { void post('/announcements/ack', { id: item.id }).catch(() => {}) },
+            })
+          } catch { /* the modal is best effort; the center still lists it */ }
+        })()
         open()
         return () => {
           disposed = true
@@ -6890,23 +9403,23 @@ window.__ModuleLoader__.load({
       }, 'our-free-model: push subscription')
 
       // A hot reload or in-app upgrade swaps this bundle while the page stays
-      // open. The only durable marker across that swap is localStorage, so the
-      // successor announces what happened exactly once.
+      // open. The server records the acknowledgement, so the successor
+      // announces what happened exactly once across every origin.
       ctx.effect(() => {
         void (async () => {
           try {
             const meta = await api('/meta')
-            const at = Number(meta?.reloadedAt ?? 0)
-            if (at <= 0) return
-            let seen = ''
-            try { seen = window.localStorage?.getItem('ofm.reloadedAt') ?? '' } catch { /* storage unavailable */ }
-            if (String(at) === seen) return
-            try { window.localStorage?.setItem('ofm.reloadedAt', String(at)) } catch { /* ignore */ }
-            showToast({
-              title: meta.version !== '' ? `Our Free Model ${meta.version}` : 'Our Free Model',
-              body: t('reload.done').replace('{n}', String(meta.reloadCount ?? 0)),
-              actions: [{ label: t('reload.refresh'), onClick: () => { try { window.location.reload() } catch { /* top-level navigation refused */ } } }],
-              holdMs: 12000,
+            let cached = ''
+            try { cached = window.localStorage?.getItem('ofm.reloadedAt') ?? '' } catch { /* storage unavailable */ }
+            await announceReloadNotice(meta, cached, {
+              show: () => showToast({
+                title: meta.version !== '' ? `Our Free Model ${meta.version}` : 'Our Free Model',
+                body: t('reload.done').replace('{n}', String(meta.reloadCount ?? 0)),
+                actions: [{ label: t('reload.refresh'), onClick: () => { try { window.location.reload() } catch { /* top-level navigation refused */ } } }],
+                holdMs: 12000,
+              }),
+              ack: at => post('/reload-notice/ack', { at }),
+              remember: at => { try { window.localStorage?.setItem('ofm.reloadedAt', String(at)) } catch { /* ignore */ } },
             })
           } catch { /* backend absent */ }
         })()
@@ -6968,7 +9481,7 @@ window.__ModuleLoader__.load({
     exports.inject = inject
     exports.name = 'our-free-model'
     // Headless test seams use the same stub React as scripts/client-lint.mjs.
-    exports.__test = { parseSafeHtml, safeUrl, sanitizeStyle, htmlToDom, buildHeatCells, Heatmap, ChannelsPage, UpgradePanel, useEacLogin, EacAuth, PicksPage, RecoCard, DICT, useChannelRpc, Shell, CSS }
+    exports.__test = { parseSafeHtml, safeUrl, sanitizeStyle, htmlToDom, buildHeatCells, Heatmap, ChannelsPage, UpgradePanel, useEacLogin, EacAuth, PicksPage, RecoCard, FeedbackPage, DICT, useChannelRpc, Shell, SubscriptionsPage, Disclaimer, CSS, reloadNoticePlan, announceReloadNotice }
     return module.exports
   },
 })

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type Keyboa
 import { CircleAlert, Network, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { providers } from 'ofm-provider-list'
 import { shared } from 'ofm-shared-client'
-import { Button, Card, Input } from './ui'
+import { Button, Card, ConfirmDialog, Input } from './ui'
 import {
   CREDIT_LABELS, CREDIT_MODES, REGIONS, REGION_LABELS,
   activeFilterCount, countLabel, filterChannels, matchesChannel,
@@ -86,6 +86,16 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
   const timeSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [busy, setBusy] = useState(false)
   const [enabling, setEnabling] = useState(false)
+  // 共享渠道卡片（client.js）的删除确认原本走 window.confirm；Tauri 的
+  // WKWebView 不实现原生 confirm（调用恒为 false 且不弹窗），删除会静默
+  // 失效。这里注册页内确认弹层（window.__ofmConfirm），共享构建已改用它；
+  // 弹层语义与原生一致：确认 = true，取消 / Esc / 遮罩 = false。
+  const [confirmRequest, setConfirmRequest] = useState<{ message: string; resolve: (value: boolean) => void } | null>(null)
+  useEffect(() => {
+    (window as unknown as { __ofmConfirm?: (message: string) => Promise<boolean> }).__ofmConfirm =
+      (message: string) => new Promise<boolean>(resolve => setConfirmRequest({ message, resolve }))
+    return () => { delete (window as unknown as { __ofmConfirm?: unknown }).__ofmConfirm }
+  }, [])
   const mounted = useRef(false)
   const sequence = useRef(0)
   const detailHeading = useRef<HTMLHeadingElement>(null)
@@ -424,6 +434,10 @@ export function ChannelBrowser({ rpc, summary }: { rpc: Rpc; summary: Summary & 
             </div>
           </> : <Card className="channel-empty"><Network size={24} /><h2>选择一个渠道</h2><p>在左侧列表点选渠道，账号与额度管理会显示在这里。</p></Card>}
       </div>
+      <ConfirmDialog open={confirmRequest !== null} danger title="确认移除"
+        body={confirmRequest?.message ?? ''} confirmText="移除" cancelText="取消"
+        onConfirm={() => { confirmRequest?.resolve(true); setConfirmRequest(null) }}
+        onCancel={() => { confirmRequest?.resolve(false); setConfirmRequest(null) }} />
     </div>
   </>
 }

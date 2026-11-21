@@ -14,11 +14,6 @@
  * - **重置（reset）**：不做任何网络请求，直接清除标记。用于用户已知额度
  *   已恢复、只想清掉显示的情况。
  *
- * 与 e2e 探针（tests/e2e/buddy-ratelimit-probe.e2e.spec.ts）的关系：两者都
- * 发真实请求判定限流，但 e2e 用于人工排查、本模块供设置页按钮调用。为避免
- * 逻辑漂移，这里直接复用**真实适配器**（BuddyAdapter / CodeArtsAdapter）走
- * 完整请求链路，而不是各自手写 HTTP。
- *
  * 两点关键设计：
  *
  * 1. **不传 accountPool 给适配器**。适配器只在拿到 accountPool 时才会切换
@@ -29,25 +24,29 @@
  *    `getAvailableAccount`（自动选择，只认启用账号）。
  */
 
+import { isSupportedProvider } from './channel-pack-store.js'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { createUserMessage, LlmError } from '@deepseek-ai/dsh-llm'
-import { BuddyAdapter } from './buddy-adapter.js'
 import { LobsteraiAdapter } from './lobsterai-adapter.js'
 import { QoderAdapter } from './qoder-adapter.js'
 import { ClineAdapter } from './cline-adapter.js'
 import { ZcodeAdapter } from './zcode-adapter.js'
 import { TraeAdapter } from './trae-adapter.js'
-import { CodeArtsAdapter, isRateLimited, parseRateLimitError } from './llm-adapter.js'
-import { productById } from './product.js'
+import { isRateLimited, parseRateLimitError } from './rate-limit.js'
 import { lobsteraiProductById } from './lobsterai-product.js'
 import { qoderProductById } from './qoder-product.js'
 import { clineProductById } from './cline-product.js'
 import { zcodeProductById } from './zcode-product.js'
 import { GeminiAdapter } from './gemini-adapter.js'
+import { LoomyAdapter } from './loomy-adapter.js'
 import { GEMINI, GEMINI_DEFAULT_PROJECT, GEMINI_SESSION_LANE_SMOKE } from './gemini.js'
+import { BuddyAdapter } from './buddy-adapter.js'
+import { CodeArtsAdapter } from './llm-adapter.js'
+import { productById } from './product.js'
 import { QwenworkAdapter } from './qwenwork-adapter.js'
 import { QWENWORK } from './qwenwork-product.js'
 import type { BuddyCredential } from './buddy.js'
+import { LOOMY } from './loomy-product.js'
 import type { LobsteraiCredential } from './lobsterai.js'
 import type { QoderCredential } from './qoder.js'
 import type { ClineCredential } from './cline.js'
@@ -55,6 +54,7 @@ import type { ZcodeCredential } from './zcode.js'
 import type { TraeCredential } from './trae.js'
 import type { GeminiCredential } from './gemini.js'
 import type { QwenworkCredential } from './qwenwork.js'
+import type { LoomyCredential } from './loomy.js'
 import type {
   CodeArtsCredential,
   ProbeAccountResult,
@@ -67,9 +67,6 @@ import type {
 
 /**
  * TRAE 的 provider id。
- *
- * 单独提为常量而不是内联字面量：本文件已有两处「新增 provider 漏加分派」的
- * 缺陷（workbuddy、trae），把它写成具名常量便于检索与统一改动。
  */
 const TRAE_PROVIDER_ID = 'trae'
 
@@ -80,15 +77,15 @@ const TRAE_PROVIDER_ID = 'trae'
  * 避免签名与实现漂移（本文件已**四次**因「分派表没跟上新增 provider」出缺陷）。
  */
 type ProbeCredential =
-  | CodeArtsCredential
-  | BuddyCredential
   | LobsteraiCredential
   | QoderCredential
   | ClineCredential
   | ZcodeCredential
   | TraeCredential
   | GeminiCredential
+  | LoomyCredential
   | QwenworkCredential
+  | CodeArtsCredential
 
 /** 探测请求的提示语（与 e2e 探针保持一致，最大化可比性）。 */
 const PROBE_PROMPT = '只回答两个字：收到'
@@ -98,43 +95,34 @@ const PROBE_PROMPT = '只回答两个字：收到'
  *
  * ⚠️ **不可省略，也刻意不随产品切换**（真实缺陷，用户报障）。
  *
- * WorkBuddy 国际版网关（`www.workbuddy.ai`）**强制要求 `messages[0]` 是
- * `role:'system'`**，否则返回 HTTP 400 + `code 11128`
- * `"first message is not system prompt"`，且 `displayMsg` 把它**伪装成安全
- * 策略拦截**（「请求被安全策略拦截，请稍后重试或联系支持」）—— 与真实的限流/
- * 可用性毫无关系。
- *
- * 早期 `probeWithAdapter` 只传 `messages`、不传 `options.system`，而适配器仅在
- * `options.system` 非空时才 `unshift` system（见 `buddy-adapter.ts`），于是
- * wire 上首条就是 user。后果：WorkBuddy 面板的「重测 / 重测所有」**恒不可用**
- * ——既拿不到「已恢复」也拿不到「仍受限」，只有一句误导性的安全策略报错。
- *
  * 实测（2026-09-25，同一凭据各发一次最小请求）：
- *
- * | 端点 | 无 system | 有 system |
- * |---|---|---|
- * | `www.workbuddy.ai`（WorkBuddy） | **400 + 11128** | 200 正常 |
- * | `copilot.tencent.com`（CodeBuddy） | 200 正常 | 200 正常 |
- *
- * 即**只有 WorkBuddy 网关**有此硬性要求，但这里**无条件**给所有 provider 都带
- * 上：① 判据不该依赖「另一个产品碰巧不校验」这种易变的外部事实；② 探测本身
- * 与 system 内容无关，带上它对结论无影响；③ 分支特判会让将来新增的 provider
- * 再次踩同一个坑。
- *
- * 内容取最小可用值（对齐 `tests/e2e/buddy-pool-probe.e2e.spec.ts` 与
- * `scripts/verify-max-tokens.mjs` 里已被验证可用的同一句）。
  */
 const PROBE_SYSTEM = 'You are a helpful assistant.'
 
 /**
  * 单次探测的超时（毫秒）。
- *
- * CodeArts 适配器在排队时会以 10 秒间隔重试 chat 请求、最长 30 分钟
- * （QUEUE_MAX_ATTEMPTS）。设置页按钮显然不能等那么久，因此这里用
- * AbortSignal 给每次探测设硬上限：超时即判定"未能确认恢复"，保留标记。
- * 宁可保守留标记，也不要因为等太久让 UI 卡死。
  */
 const PROBE_TIMEOUT_MS = 120_000
+
+/**
+ * 「测试」候选链最多试几个模型。
+ *
+ * 只测目录第一个模型会把「目录首个是自动路由占位模型」误报成「账号不可用」：
+ * TRAE 的目录第一个是 `doubao-for-auto`，实测回 `3003 model service is
+ * unavailable`，而同样凭据下前 12 个模型里有 10 个是通的（#681）。
+ */
+const PROBE_CANDIDATES_MAX = 4
+
+/** 候选链里单次尝试的超时。 */
+const PROBE_ATTEMPT_TIMEOUT_MS = 20_000
+
+/**
+ * 候选链的总预算。
+ *
+ * 客户端给 `account.test` 的 RPC 超时是 90s，4 次尝试必须留在里面，否则
+ * 「测试」会以超时收场 —— 那比一次明确的失败更难排查。
+ */
+const PROBE_TOTAL_BUDGET_MS = 80_000
 
 /**
  * 重测/重置所需的最小账号池接口。
@@ -153,9 +141,6 @@ export interface ProbePool {
   clearModelRateLimits(accountId: string, modelIds?: readonly string[]): Promise<number>
   /**
    * 写入/更新某账号某模型的限流重置时刻。
-   *
-   * [patch-codearts-probe-ratelimit] 重测发现「仍受限」时需要它把上游给的
-   * **新**时刻写回，否则存储停在旧值、UI 不再显示限流。
    */
   updateModelRateLimit(accountId: string, modelId: string, resetAtMs: number): Promise<void>
 }
@@ -177,7 +162,7 @@ export interface ProbeDeps {
  */
 function isRateLimitFailure(error: unknown): boolean {
   if (error instanceof LlmError) {
-    // buddy/codearts 用字面量 'QUOTA_EXCEEDED'，harness 常量 QUOTA_EXCEEDED_CODE
+
     // 是 'QUOTA'——两者都认，避免因词汇差异把限流误判成"未知错误"。
     if (error.code === 'RATE_LIMIT' || error.code === 'QUOTA_EXCEEDED' || error.code === 'QUOTA') return true
   }
@@ -192,6 +177,10 @@ async function probeWithAdapter(
   modelId: string,
   timeoutMs: number,
 ): Promise<ProbeModelResult> {
+  if (!isSupportedProvider(entry.provider)) throw new Error('provider-unsupported: 不支持此渠道')
+  // 客户端要显示耗时，而它此前一直读 `value.ms` —— 服务端从没返回过这个字段，
+  // 于是界面永远显示「连接正常（— ms）」（#681）。
+  const startedAt = Date.now()
   const signal = AbortSignal.timeout(timeoutMs)
   const ref = credentialRef(entry.credentialRef)
 
@@ -203,24 +192,23 @@ async function probeWithAdapter(
   // 其他并发会话），凭据真的过期就让它以 AUTH 失败并如实上报。
   //
   // **七条产品线各自选适配器**，顺序不能颠倒也不能漏判：
-  // - CodeBuddy 系（buddy / workbuddy）→ BuddyAdapter，按各自 product 发请求；
+
   // - LobsterAI → LobsteraiAdapter（自己的端点与头族）；
   // - Qoder 系（qoder / qodercn）→ QoderAdapter（WASM 加密体 + 签名头族）；
   // - Cline → ClineAdapter（WorkOS 凭据 + 自己的端点）；
   // - ZCode（智谱）→ ZcodeAdapter（Anthropic Messages 体 + 阿里云 captcha 参数）；
   // - TRAE → TraeAdapter（SOLO 格式请求体 + Cloud-IDE-JWT 头族）；
-  // - 其余（codearts）→ CodeArtsAdapter（华为云 HMAC 签名）。
+
   //
   // ⚠️ **这个分派表已四次因「新增 provider 没同步」而出缺陷**，改它前先读完：
   //
-  // 1. 初版只判断 `provider === 'buddy'` → workbuddy 落入 else，用华为云
-  //    HMAC 签名去发 WorkBuddy 凭据而必然失败；
+
   // 2. 加了 lobsterai 分支后**仍漏掉 trae** → TRAE 账号同样落入 else，
-  //    用 CodeArts 签名发 TRAE 请求而必然失败（2026-09-25 排查 workbuddy
+
   //    缺陷时发现，实测 `productById('trae')` 与 `lobsteraiProductById('trae')`
   //    均为 undefined）；
   // 3. 加了 trae 分支后**仍漏掉 qoder / qodercn / cline** → 三者同样落入
-  //    else，被交给 CodeArtsAdapter 用华为云 HMAC 签名去发 Qoder / Cline
+
   //    凭据。它们的「重测 / 重置」按钮**确实会渲染**（`RATE_LIMIT_CAPABILITIES`
   //    对未登记的 provider 默认视为有限流，当时只有 loomy 显式登记为 false），
   //    且 Qoder 的额度受限**每次都会**写 `modelRateLimits`（按 UTC+8 当日
@@ -264,6 +252,7 @@ async function probeWithAdapter(
     | GeminiAdapter
     | QwenworkAdapter
     | CodeArtsAdapter
+    | LoomyAdapter
   if (buddyProduct !== undefined) {
     adapter = new BuddyAdapter({
       credentialRef: ref,
@@ -306,8 +295,7 @@ async function probeWithAdapter(
     // 这一项），故**一旦上游索要验证**，这里的适配器就**自建**一个常驻浏览器
     // （上游不要验证时压根不 mint，也就不会拉）。若宿主里已有 `index.ts`
     // 注入的那台（`zcode.mintCaptcha`），短时会并存两台（约 200MB/台）。
-    // 这仍然远好于本缺陷的形态 —— 落 else 会被交给**华为云 HMAC 签名**的
-    // `CodeArtsAdapter` 去发 zcode 凭据，探测必然失败，而 zcode 的额度标记
+
     // （UTC+8 当日 24:00）会一直清不掉。
     // 后续若要消除这层浪费，应给 `ProbeDeps` 加一条 `mintCaptcha` 透传，
     // 与 `index.ts` 的 `zcode.mintCaptcha` 共用同一台常驻浏览器。
@@ -316,6 +304,23 @@ async function probeWithAdapter(
       resolveCredential: async () => credential as ZcodeCredential,
       refresh: async () => {},
       product: zcodeProduct,
+    })
+  } else if (entry.provider === LOOMY.id) {
+    // Loomy（讯飞）→ LoomyAdapter。
+    //
+    // 它此前**没有分支**，于是「测试」必然落到 else 抛
+    // `Unsupported probe adapter: loomy`，而客户端又把原因读成空串，用户看到的
+    // 是一句「测试失败：」后面什么都没有（#681）。
+    //
+    // 探测场景下 `accountPool` / `fetchRemoteModels` 都可缺省：`loadModels()`
+    // 会退回 `product.fallbackModels`，`providerCatalogVisible` 在
+    // `accountPool === undefined` 时直接返回 true。`refresh` 同样置空 ——
+    // Loomy 没有 refresh 端点，凭据真过期就让它以 AUTH 失败如实上报。
+    adapter = new LoomyAdapter({
+      credentialRef: ref,
+      resolveCredential: async () => credential as LoomyCredential,
+      refresh: async () => {},
+      product: LOOMY,
     })
   } else if (entry.provider === TRAE_PROVIDER_ID) {
     // TRAE 只有一个产品（`TRAE` 常量），没有 productById 式的查表，
@@ -330,7 +335,7 @@ async function probeWithAdapter(
     //
     // ⚠️ 与 zcode 同因：GeminiAdapter 的限流/额度路径**会写** `modelRateLimits`
     //（见 `gemini-adapter.ts` 的 `updateModelRateLimit` 调用），故必须有分支。
-    // 落 else 会被交给**华为云 HMAC 签名**的 CodeArtsAdapter 去发 Google 凭据，
+
     // 探测必然失败，而账号卡片上的「重测」永远清不掉那个标记。
     //
     // 探测只发一次最小纯文本请求，不涉及图片/工具，故除 product 与 lane 外
@@ -390,7 +395,7 @@ async function probeWithAdapter(
         content: [{ type: 'text', text: PROBE_PROMPT }],
         source: { kind: 'user' },
       })],
-      // ⚠️ **必须传 system**，否则 WorkBuddy 网关返回 400 + code 11128
+
       // 「first message is not system prompt」（伪装成安全策略拦截），
       // 使重测恒不可用。详见 PROBE_SYSTEM 的注释。
       system: PROBE_SYSTEM,
@@ -399,11 +404,11 @@ async function probeWithAdapter(
       // 消费整个流即可：能正常结束就说明服务端接受并完成了这次请求
       //（未被限流）。即使正文为空（少数模型只回 finish）也不算限流。
     }
-    return { modelId, ok: true }
+    return { modelId, ok: true, ms: Date.now() - startedAt }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (isRateLimitFailure(error)) {
-      // [patch-codearts-probe-ratelimit] 上游的重置时刻是**滚动**的：每次撞限流都会
+
       // 把它往后推。这里必须把它解析出来一并回传，否则调用方只能保留存储里的旧值，
       // 旧值过期后 UI 就不再渲染「限额重置」（表现为"重测说仍受限、卡片却没有"）。
       // 解析失败（文案无时间）时不带该字段，调用方按「无法确认」处理、保留原标记。
@@ -413,9 +418,10 @@ async function probeWithAdapter(
         ok: false,
         message: `仍受限：${message}`,
         ...(parsed !== null ? { resetTimeMs: parsed.resetTimeMs } : {}),
+        ms: Date.now() - startedAt,
       }
     }
-    return { modelId, ok: false, message: `无法确认：${message}` }
+    return { modelId, ok: false, message: `无法确认：${message}`, ms: Date.now() - startedAt }
   }
 }
 
@@ -465,7 +471,7 @@ export async function retestAccount(
   if (result.cleared.length > 0) {
     await pool.clearModelRateLimits(accountId, result.cleared)
   }
-  // [patch-codearts-probe-ratelimit] 对「仍受限且上游给出了新重置时刻」的模型，
+
   // 把**新时刻**写回存储。不写回的话，存储会一直停在第一次撞限流的旧时刻；
   // 旧时刻过期后 UI 不再渲染「限额重置」（卡片空白），而账号实际仍在受限，
   // 选号逻辑也会误判为可用。上游时刻是滚动的，每次重测都可能往后推。
@@ -505,10 +511,6 @@ export async function retestAllAccounts(
  *
  * ## 为什么标记优先于目录
  *
- * 用户点「测试」最常见的动机是「这个账号显示着限流标记，它到底恢复了没有」，
- * 而那个标记指向的模型正是他关心的。取目录第一个（如 CodeBuddy 的
- * `glm-5.2`）会测一个与标记无关的模型 —— 结果既不能清标记、也不能解释标记。
- *
  * ## 为什么没有目录时返回空串而不是猜一个
  *
  * 猜错的模型名会得到 404，把「账号不可用」与「模型名不对」两件事混成同一条
@@ -526,6 +528,76 @@ export function pickTestModel(
   const marked = Object.keys(entry.modelRateLimits ?? {})[0]
   if (marked !== undefined) return marked
   return catalogIds[0] ?? ''
+}
+
+/**
+ * 挑出「测试」要依次尝试的模型 id（纯函数，无 IO）。
+ *
+ * 优先级：调用方显式指定（**只测它**）> 已有的限流标记 > 全量目录顺序，
+ * 去重后截断到 {@link PROBE_CANDIDATES_MAX}。
+ *
+ * ## 为什么要一串而不是一个
+ *
+ * `catalogIds[0]` 不一定可调用：TRAE 的目录第一个是 `doubao-for-auto`
+ * （`solo_coder` 自动路由占位模型），实测回 `3003 model service is
+ * unavailable`，而同凭据下前 12 个模型里 10 个是通的。只测第一个会把
+ * 「账号好好的」报成「账号不可用」（#681）。
+ */
+export function pickTestModels(
+  entry: ProviderAccountEntry,
+  catalogIds: readonly string[],
+  requested?: string,
+  max: number = PROBE_CANDIDATES_MAX,
+): string[] {
+  // 显式指定即「我只想知道这个模型通不通」，不要自作主张换成别的。
+  if (typeof requested === 'string' && requested !== '') return [requested]
+  const seen = new Set<string>()
+  const picked: string[] = []
+  for (const id of [...Object.keys(entry.modelRateLimits ?? {}), ...catalogIds]) {
+    if (id === '' || seen.has(id)) continue
+    seen.add(id)
+    picked.push(id)
+    if (picked.length >= max) break
+  }
+  return picked
+}
+
+/**
+ * 「测试」单个账号，按候选链逐个试，**第一个成功即停**。
+ *
+ * 返回的 `value` 是**第一次**尝试的结果（全失败时也用它），`tried` 列出
+ * 实际试过的每一个，`ms` 是整条链的总耗时 —— 也就是用户实际等了多久。
+ *
+ * 预算：单次 20s，整条链 80s。客户端给这个 RPC 的超时是 90s，超出就会以
+ * 「超时」收场，那比一次明确的失败更难排查。
+ */
+export async function testAccountCandidates(
+  pool: ProbePool,
+  accountId: string,
+  modelIds: readonly string[],
+  deps: ProbeDeps = {},
+): Promise<RpcTestAccountResponse> {
+  const startedAt = Date.now()
+  const tried: { modelId: string; ok: boolean; message?: string }[] = []
+  let value: RpcTestAccountResponse | undefined
+  for (const [index, modelId] of modelIds.entries()) {
+    const remaining = PROBE_TOTAL_BUDGET_MS - (Date.now() - startedAt)
+    if (remaining <= 0) break
+    // 最后一个候选拿走剩余预算：只有一个候选时不该被 20s 截断。
+    const timeoutMs = index === modelIds.length - 1 ? remaining : Math.min(remaining, PROBE_ATTEMPT_TIMEOUT_MS)
+    const outcome = await testAccount(pool, accountId, modelId, { ...deps, timeoutMs })
+    tried.push({ modelId: outcome.modelId, ok: outcome.ok, ...outcome.message === undefined ? {} : { message: outcome.message } })
+    value ??= outcome
+    if (outcome.ok) {
+      value = outcome
+      break
+    }
+  }
+  return {
+    ...value ?? { accountId, modelId: modelIds[0] ?? '', ok: false, message: '没有可测试的模型' },
+    ms: Date.now() - startedAt,
+    tried,
+  }
 }
 
 /**
