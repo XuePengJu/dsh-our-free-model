@@ -10,8 +10,14 @@ import { publicModelRows as snapshotModelRows } from '../../src/core/completion.
 import { recordTurn } from '../../src/store.js'
 import { recordAttempt } from '../../src/core/attempts.js'
 import { createModelRuntime, createRuntimeStores } from '../../src/core/runtime.js'
+import { ROUTE_MAIN, ROUTE_REGION } from '../../src/adapter.js'
+import { modelAvailability } from '../../src/model-test.js'
+import { STATE } from '../../src/probe.js'
+import { buildModelVisibility, isModelHidden } from '../../src/store.js'
+import { publicModelRows as publicCoreModelRows } from '../../src/core/completion.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from '../../src/forward.js'
 import { isLoopbackHost } from '../../src/trust.js'
+import { setFreeLaneProxies, setFreeLaneMaxTries } from '../../src/egress.js'
 import { createManagement } from './management.mjs'
 import { createStandaloneEac } from './eac.mjs'
 import { createChannelRuntime } from './channels/runtime.mjs'
@@ -191,6 +197,27 @@ export async function startStandalone({
     relayRequestedPort = undefined
     await Promise.all([current?.close(), target?.close()])
   }
+  /**
+   * Apply the stored exit pool to the egress layer.
+   *
+   * The pool is module-level state in `src/egress.js`, not a store this service
+   * owns, so it has to be pushed after every settings write and once at startup.
+   * A stored entry that no longer parses is dropped rather than failing the boot:
+   * the lane then falls back to the global outlet.
+   */
+  function applyFreeLaneExits() {
+    const lane = stores.settings.get().freeLane ?? {}
+    const proxies = Array.isArray(lane.proxies) ? lane.proxies : []
+    const legacy = String(lane.proxyUrl ?? '').trim()
+    const effective = proxies.length > 0 ? proxies : (legacy === '' ? [] : [legacy])
+    try {
+      setFreeLaneProxies(effective)
+      setFreeLaneMaxTries(lane.maxTries)
+    } catch (error) {
+      logger.warn?.(`our-free-model standalone: a lane exit address is invalid (${error?.message ?? error}); the lane keeps its current exits`)
+      try { setFreeLaneProxies([]) } catch { /* nothing left to clear */ }
+    }
+  }
   function reconcileRelay() {
     relayChanges = relayChanges.then(async () => {
       const value = stores.settings.get()
@@ -300,8 +327,15 @@ export async function startStandalone({
       sealedCredential: eac.credential,
       subscriptionRuntime: combinedSubscriptionRuntime,
       extensionRuntime: extensions,
+      // ⚠️ 不传 accountChannelRuntime（fork 架构）：上游 2.9 把账号渠道行接进
+      // core.catalog；fork 的服务层在 realRows() 里自己拼渠道行，两边都拼会让
+      // 每个账号渠道模型在目录里出现两次。fork 的分派仍走 channels.handles
+      // 分流（见下方 complete 与 realRows 的注释）。
     })
-    channels = await createChannelRuntime({ dataDir, logger, stats: stores.stats })
+    channels = await createChannelRuntime({
+      dataDir, logger, stats: stores.stats,
+      onCatalogChanged: () => runtime?.syncAggregateCatalog(),
+    })
     const core = runtime
     // 渠道行与组合行在 service 层组装：核心目录只认识免费/Kilo/EAC/聚合车道，
     // 而模型组（combo）的成员可以来自账号渠道——那类成员只有渠道 Worker 能推理。
@@ -657,6 +691,10 @@ export async function startStandalone({
         lan: lanState(),
       }),
       onSettingsChanged: async () => {
+        // The free lane's exit pool is module-level state in the egress layer, so
+        // it has to be re-applied after every write — the settings route only
+        // validates and stores.
+        applyFreeLaneExits()
         if (!refreshInFlight) scheduleRefresh()
         await reconcileRelay()
       },
@@ -704,6 +742,7 @@ export async function startStandalone({
       if (settings.get().autoUpdateExtensions === true) void extensions.autoUpdate().catch(() => {})
     }, 6 * 60 * 60 * 1000)
     registryTimer.unref?.()
+    applyFreeLaneExits()
     await reconcileRelay()
 
     function scheduleRefresh() {
@@ -731,6 +770,12 @@ export async function startStandalone({
       product: PRODUCT, version: VERSION, dataDir,
       url: `http://${host === '::1' ? '[::1]' : host}:${listener.port}`,
       managementUrl: `http://${host === '::1' ? '[::1]' : host}:${listener.port}/${management.bootstrapFragment}`,
+      // Available only to an owner holding this in-process service object.
+      // HTTP clients still have exactly the existing authentication surface.
+      createManagementBootstrap() {
+        if (stopped) throw new Error('Standalone service is stopping')
+        return `http://${host === '::1' ? '[::1]' : host}:${listener.port}/${management.mintBootstrap()}`
+      },
       port: listener.port,
       keyFile: path.join(dataDir, 'settings.json'),
       runtime, channels, ready,

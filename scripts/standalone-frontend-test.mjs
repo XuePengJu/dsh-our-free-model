@@ -193,6 +193,7 @@ const savedSettings = {
   enabled: true, exposeRegionModels: true, streamRecovery: true, standaloneProbe: false,
   hideFreeModels: false, hideEacModels: false,
   defaultMaxTokens: 32768, probeIntervalMinutes: 15,
+  freeLane: { maxTries: 3 },
 }
 const cleanDraft = settingsDraft(savedSettings)
 assert.equal(settingsChanged(cleanDraft, savedSettings), false)
@@ -232,6 +233,7 @@ assert.deepEqual(savedSettings, {
   enabled: true, exposeRegionModels: true, streamRecovery: true, standaloneProbe: false,
   hideFreeModels: false, hideEacModels: false,
   defaultMaxTokens: 32768, probeIntervalMinutes: 15,
+  freeLane: { maxTries: 3 },
 }, '草稿操作不能改动输入配置')
 await verifySettingsHost()
 await verifyModelOperation()

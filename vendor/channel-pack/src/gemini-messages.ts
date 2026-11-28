@@ -41,6 +41,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { collectHarnessSystem, normalizeHarnessMessages } from './message-shape.js'
 import { readWithIdleTimeout, resolveToolPairing } from './sse.js'
 import type { GeminiInlineImage, GeminiModelSpec } from './gemini.js'
+import { compatibleHarnessIdentity } from './harness-identity.js'
 import {
   deriveGeminiSessionId,
   GEMINI_DEFAULT_PROJECT,
@@ -314,8 +315,8 @@ export function translateGeminiRequest(options: TranslateGeminiRequestOptions): 
     sessionId,
   }
 
-  const systemText = [...new Set([options.system, collectHarnessSystem(normalized)]
-    .filter((text): text is string => typeof text === 'string' && text !== ''))].join('\n\n')
+  const systemText = compatibleHarnessIdentity([...new Set([options.system, collectHarnessSystem(normalized)]
+    .filter((text): text is string => typeof text === 'string' && text !== ''))].join('\n\n'))
   if (systemText !== '') {
     request.systemInstruction = { role: 'system', parts: [{ text: systemText }] }
   }

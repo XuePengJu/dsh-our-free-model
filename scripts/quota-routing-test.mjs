@@ -63,7 +63,7 @@ check('nested groups preserve capacities, ordered leaf routing and deduplicate s
   const rows = buildComboCatalog(definitions, models)
   const outer = rows.find(row => row.id === 'combo:outer')
   assert.equal(outer.contextWindow, 1000)
-  assert.equal(outer.vision, false)
+  assert.equal(outer.vision, true, 'a nested chain advertises images when an eligible leaf supports them')
   assert.deepEqual(comboChain(outer, [...models, ...rows]).map(row => row.id), ['third', 'second', 'first', 'fourth'])
 })
 check('nested cycles and every dependent group fail closed without recursion or advertisement', () => {

@@ -189,7 +189,7 @@ test('buildWorkbuddyEntryFromModel: a bare reasoning flag writes no ladder', () 
   }
 })
 
-test('buildWorkbuddyEntries: enabled combos only, capacities are the intersection', () => {
+test('buildWorkbuddyEntries: enabled combos only, token capacities are the intersection', () => {
   const entries = buildWorkbuddyEntries({
     combos: [
       { id: 'combo:chain', name: 'chain', models: ['a', 'vision-model'], strategy: 'fallback', stickyLimit: 1, enabled: true },
@@ -202,7 +202,9 @@ test('buildWorkbuddyEntries: enabled combos only, capacities are the intersectio
   const [entry] = entries
   assert.equal(entry.id, 'combo:chain')
   assert.equal(entry.name, 'chain')
-  assert.equal(entry.supportsImages, false) // a 不是视觉模型 → 交集为 false
+  // upstream 2.9 起 combo 的 vision 语义改为「任一成员支持即广播」（适配器在
+  // 分派时按 needsVision 逐成员过滤，见 src/adapter.js），token 容量仍是交集。
+  assert.equal(entry.supportsImages, true) // vision-model 是视觉模型 → 广播 vision
   assert.equal(entry.maxInputTokens, 65536) // min(65536, 65536)
   assert.equal(entry.maxOutputTokens, 8192)
 })

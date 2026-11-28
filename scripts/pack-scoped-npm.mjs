@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { scopedManifest, scopedNameOf, transformRegistrationFile } from './publish-scoped.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const destination = path.resolve(process.argv[2] ?? '.')
@@ -21,21 +22,13 @@ try {
 
   const manifest = path.join(staging, 'package.json')
   const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'))
-  const bare = pkg.name
-  pkg.name = `@ebony-vinyl/${bare}`
-  delete pkg.private
-  fs.writeFileSync(manifest, JSON.stringify(pkg, null, 2) + '\n')
+  const scoped = scopedNameOf(pkg)
+  fs.writeFileSync(manifest, JSON.stringify(scopedManifest(pkg, scoped), null, 2) + '\n')
 
-  for (const [file, field] of [
-    ['client.js', '  id: '],
-    ['cordis.patch.yml', '      name: '],
-    ['src/updater.js', 'const PACKAGE_NAME = '],
-  ]) {
+  for (const file of ['client.js', 'cordis.patch.yml', 'src/updater.js']) {
     const target = path.join(staging, file)
     const text = fs.readFileSync(target, 'utf8')
-    const original = `${field}'${bare}'`
-    if (!text.includes(original)) throw new Error(`包名位置不存在：${file}`)
-    fs.writeFileSync(target, text.replace(original, `${field}'${pkg.name}'`))
+    fs.writeFileSync(target, transformRegistrationFile(file, text, pkg.name, scoped))
   }
 
   const [packed] = JSON.parse(npm(staging, '--pack-destination', destination))

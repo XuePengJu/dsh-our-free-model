@@ -374,6 +374,8 @@ export interface StartedGeminiLoginFlow {
   result: Promise<GeminiCredential>
   /** 关闭回调服务器；**幂等**。 */
   close: () => Promise<void>
+  /** 手动提交带匹配 state 的完整回调 URL 或查询串。 */
+  submit: (raw: string) => { message: string }
 }
 
 /** `startGeminiOAuthFlow` 的选项。 */
@@ -467,32 +469,95 @@ export async function startGeminiOAuthFlow(
     rejectCode = reject
   })
 
+  let delivered = false
+  let closed = false
+  const lifetime = new AbortController()
+  const deliverCode = (code: string): boolean => {
+    if (delivered || closed) return false
+    delivered = true
+    resolveCode(code)
+    return true
+  }
+  const failCode = (error: Error): void => {
+    if (delivered) return
+    delivered = true
+    rejectCode(error)
+  }
+
   const handler: CallbackHandler = (req, res) => {
     const url = new URL(req.url ?? '/', `http://${GEMINI_REDIRECT_HOST}`)
     if (url.pathname !== GEMINI_CALLBACK_PATH) {
       res.writeHead(404).end('Not found')
       return
     }
+    if (closed || delivered) {
+      res.writeHead(409).end('Login is no longer pending')
+      return
+    }
+    if (url.searchParams.getAll('state').length !== 1 || url.searchParams.get('state') !== state) {
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('state 校验失败')
+      return
+    }
     const failure = url.searchParams.get('error')
     if (failure !== null && failure !== '') {
       const description = url.searchParams.get('error_description') ?? ''
       res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end(`授权被拒绝: ${failure}`)
-      rejectCode(new GeminiLoginCancelledError(description === '' ? failure : `${failure}: ${description}`))
-      return
-    }
-    if (url.searchParams.get('state') !== state) {
-      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('state 校验失败')
-      rejectCode(new Error('state 校验失败，可能是伪造的回调'))
+      failCode(new GeminiLoginCancelledError(description === '' ? failure : `${failure}: ${description}`))
       return
     }
     const code = url.searchParams.get('code')
     if (code === null || code === '') {
       res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('缺少 authorization code')
-      rejectCode(new Error('回调缺少 authorization code'))
       return
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(GEMINI_CALLBACK_HTML)
-    resolveCode(code)
+    deliverCode(code)
+  }
+
+  const submitCallback = (raw: string): { message: string } => {
+    const text = typeof raw === 'string' ? raw.trim() : ''
+    if (closed || delivered) throw new Error('这次登录已结束或已提交过回调，请重新添加账号')
+    if (text === '' || text.length > 16384) throw new Error('请提交带 code 和 state 的完整回调链接或查询串')
+    let code = ''
+    let callbackState: string | null = null
+    let failure: string | null = null
+    let description = ''
+    const readParams = (params: URLSearchParams) => {
+      if (params.getAll('state').length !== 1 || params.getAll('code').length > 1 || params.getAll('error').length > 1) {
+        throw new Error('回调参数必须包含唯一的 state、code 或 error')
+      }
+      code = params.get('code') ?? ''
+      callbackState = params.get('state')
+      failure = params.get('error')
+      description = params.get('error_description') ?? ''
+    }
+    if (/^https?:\/\//i.test(text)) {
+      let parsed: URL
+      try {
+        parsed = new URL(text)
+      } catch {
+        throw new Error('回调链接无法解析，请复制浏览器地址栏里的完整 URL')
+      }
+      if (parsed.origin !== new URL(redirectUri).origin || parsed.pathname !== GEMINI_CALLBACK_PATH
+        || parsed.username !== '' || parsed.password !== '' || parsed.hash !== '') {
+        throw new Error('请复制当前登录会话的完整 localhost 回调链接')
+      }
+      readParams(parsed.searchParams)
+    } else if (text.includes('=')) {
+      readParams(new URLSearchParams(text.startsWith('?') ? text.slice(1) : text))
+    } else {
+      throw new Error('不能提交纯授权码；请复制包含 state 的完整回调链接或查询串')
+    }
+    if (callbackState !== state) {
+      throw new Error('回调链接里的 state 与当前登录会话不一致，请复制当前授权的完整回调链接')
+    }
+    if (failure !== null && failure !== '') {
+      failCode(new GeminiLoginCancelledError(description === '' ? failure : `${failure}: ${description}`))
+      throw new Error('Google 返回授权失败：' + failure + (description === '' ? '' : ' — ' + description))
+    }
+    if (code === '') throw new Error('回调链接里没有 code 参数')
+    if (!deliverCode(code)) throw new Error('这次登录已经提交过回调，请回面板重新点「添加账号」')
+    return { message: '已提交回调链接，正在用授权码换 token' }
   }
 
   const preferred = options.callbackPort ?? 0
@@ -500,10 +565,12 @@ export async function startGeminiOAuthFlow(
   const redirectUri = `http://${GEMINI_REDIRECT_HOST}:${port}${GEMINI_CALLBACK_PATH}`
   const loginUrl = buildGeminiAuthUrl({ state, redirectUri })
 
-  let closed = false
   const close = async (): Promise<void> => {
     if (closed) return
     closed = true
+    const error = new GeminiLoginCancelledError('Gemini 登录已取消')
+    failCode(error)
+    lifetime.abort(error)
     await Promise.all(
       servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
     )
@@ -511,18 +578,20 @@ export async function startGeminiOAuthFlow(
 
   const fetcher = options.fetcher ?? fetch
   const timeoutMs = options.timeoutMs ?? GEMINI_AUTH_FLOW_TIMEOUT_MS
+  let expiryTimer: ReturnType<typeof setTimeout>
 
   const result = Promise.race([
     codePromise,
     new Promise<never>((_, reject) => {
-      const timer = setTimeout(
+      expiryTimer = setTimeout(
         () => reject(new GeminiLoginExpiredError()),
         timeoutMs,
       )
-      timer.unref?.()
+      expiryTimer.unref?.()
     }),
   ]).then(async (code) => {
-    const grant = await exchangeGeminiCode(code, redirectUri, { fetcher })
+    const grant = await exchangeGeminiCode(code, redirectUri, { fetcher, signal: lifetime.signal })
+    if (closed) throw new GeminiLoginCancelledError('Gemini 登录已取消')
     // `credentialFromGeminiGrant` 已从 `id_token` 解出 sub/email（授权 URL 带
     // `openid`，令牌响应必然带 id_token）—— 正常情况下这里**不再发 userinfo**。
     const credential = credentialFromGeminiGrant(grant)
@@ -530,8 +599,10 @@ export async function startGeminiOAuthFlow(
     // 兜底：id_token 缺席或解不出身份时才补一次 userinfo。
     const user = await fetchGeminiUserInfo(credential.access_token, {
       fetcher,
+      signal: lifetime.signal,
       onFailure: options.onIdentityFailure,
     })
+    if (closed) throw new GeminiLoginCancelledError('Gemini 登录已取消')
     if (credential.sub === undefined && user.sub !== undefined) credential.sub = user.sub
     if (credential.email === undefined && user.email !== undefined) credential.email = user.email
     return credential
@@ -539,7 +610,7 @@ export async function startGeminiOAuthFlow(
 
   // 先挂空处理器：结果可能在调用方 await 之前就落定（用户授权极快或立刻超时），
   // 那一段窗口里 Node 会把它当成未处理拒绝并打印告警。
-  result.catch(() => {}).finally(() => { void close() })
+  result.catch(() => {}).finally(() => { clearTimeout(expiryTimer); void close() })
 
-  return { loginUrl, result, close }
+  return { loginUrl, result, close, submit: submitCallback }
 }

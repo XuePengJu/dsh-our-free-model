@@ -28,6 +28,12 @@ export const PACK_MARKERS = [
   'toolCalls.length === 0) continue',
   'createChannelFetch',
   'ChannelNetworkError',
+  // ZCode 每日额度领取链（2026-11-25）：预览要带 Authorization、平台键取
+  // `platform-arch`、captcha 浏览器要能跳过无效候选且不把「启动器交棒」当崩溃。
+  'zcodePlatformKey',
+  'probeBrowserVersion',
+  'launcherExited',
+  'browserCdp?.send',
 ]
 
 /** Occurrences of every marker in `text`. */

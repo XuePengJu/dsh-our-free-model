@@ -129,6 +129,71 @@ async function drive(answers, model) {
 const noThinking = chunks => chunks.every(chunk => chunk.type !== 'reasoning-delta'
   && !(chunk.type === 'block-end' && chunk.block?.type === 'reasoning'))
 
+await check('image requests skip only explicit text-only candidates, including nested tool results (#551)', async () => {
+  const members = [
+    { id: 'text', vision: false }, { id: 'unknown' }, { id: 'vision', vision: true },
+  ]
+  async function selected(content, candidates = members) {
+    const attempted = [], turns = [], chunks = []
+    const chain = { id: 'combo:images', name: 'images', combo: candidates.map(row => row.id), strategy: 'fallback' }
+    const adapter = new FreeModelAdapter({ recordTurn: row => turns.push(row) })
+    adapter.runSingle = async function * (_options, row) {
+      attempted.push(row.id)
+      yield { type: 'text-delta', text: 'OK' }
+      return { ok: true }
+    }
+    for await (const chunk of adapter.runCombo({ messages: [{ role: 'user', content }] }, chain, { settings: {}, catalog: candidates })) chunks.push(chunk)
+    return { attempted, turns, chunks }
+  }
+  for (const content of [
+    [{ type: 'image', attachment: {} }],
+    [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }],
+    [{ type: 'input_image', image_url: 'data:image/png;base64,AA==' }],
+    [{ type: 'tool_result', content: [{ type: 'image', attachment: {} }] }],
+  ]) {
+    assert.deepEqual((await selected(content)).attempted, ['unknown'], 'unknown vision remains eligible')
+    assert.deepEqual((await selected(content, [members[0], members[2]])).attempted, ['vision'])
+  }
+  for (const content of ['plain text', [{ type: 'text', text: 'image_url is only prose' }], [{ type: 'image', offloaded: true }]]) {
+    assert.deepEqual((await selected(content)).attempted, ['text'], 'text and offloaded images retain normal candidate order')
+  }
+  const empty = await selected([{ type: 'image', attachment: {} }], [members[0]])
+  assert.deepEqual(empty.attempted, [])
+  assert.equal(empty.turns[0].attempts, 0)
+  assert.match(empty.chunks[0].reason.failure.message, /no image-capable candidate/)
+  assert.equal(empty.chunks[0].reason.failure.code, 'CLIENT_ERROR')
+})
+
+await check('the real host projection retains an image until the mixed combo selects its vision member (#551)', async () => {
+  const { LlmRuntime } = await import('@deepseek-ai/dsh-llm')
+  const members = [
+    { id: 'host-text', vision: false, contextWindow: 100000, maxOutput: 1000 },
+    { id: 'host-vision', vision: true, contextWindow: 100000, maxOutput: 1000 },
+  ]
+  const [combo] = buildComboCatalog([{ id: 'combo:host-image', name: 'host images', models: members.map(row => row.id),
+    enabled: true, strategy: 'fallback', stickyLimit: 1 }], members)
+  const snapshot = { catalog: [...members, combo], settings: {}, membership: { [ROUTE_MAIN]: [combo.id] } }
+  const attempted = []
+  const adapter = new FreeModelAdapter({ state: () => snapshot })
+  adapter.runSingle = async function* (options, entry) {
+    attempted.push({ id: entry.id, messages: options.messages })
+    yield { type: 'text-delta', index: 0, text: 'OK' }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+    return { ok: true }
+  }
+  const registration = { provider: { id: ROUTE_MAIN }, adapter }
+  const host = { registration: () => registration, normalizeModelInfo: (_registration, _model, result) => result,
+    resolveCallWithInfo: options => ({ config: options }), forAdapter: options => options }
+  const image = { type: 'image', attachment: { attachmentId: 'fixture', mediaType: 'image/png', bytes: 1,
+    width: 1, height: 1, url: 'data:image/png;base64,AA==' } }
+  const chunks = []
+  for await (const chunk of LlmRuntime.prototype.adapterStream.call(host, { provider: ROUTE_MAIN, model: combo.id,
+    messages: [{ id: 'host-image-message', role: 'user', content: [image] }] })) chunks.push(chunk)
+  assert.deepEqual(attempted.map(row => row.id), ['host-vision'])
+  assert.deepEqual(attempted[0].messages[0].content, [image])
+  assert.equal(chunks.at(-1).reason.kind, 'stop')
+})
+
 await check('non-Latin chain names survive normalization and a JSON settings round trip (#379)', () => {
   const names = [CHINESE_NAME, '\u5148\u514d\u8d39\u540e\u534f\u4ed8', '\u65e5\u672c\u8a9e', '\ud83d\ude80']
   const rows = normalizeCombos(names.map(name => ({ name, models: MODELS.slice(0, 2) })))
@@ -146,7 +211,7 @@ await check('non-Latin chain names survive normalization and a JSON settings rou
   assert.equal(comboId('  '), '', 'an empty name still has no identity')
 })
 
-await check('mixed-lane chains retain composite member ids and advertise the capability intersection (#372)', () => {
+await check('mixed-lane chains retain source ids and token intersection with image-aware routing (#372/#551)', () => {
   const members = [
     { id: 'free-model', channel: 'free', vision: true, contextWindow: 131072, maxOutput: 16384 },
     { id: 'open_router/google/gemma:free', channel: 'aggregate', vision: false, contextWindow: 1000000, maxOutput: 32768 },
@@ -155,7 +220,7 @@ await check('mixed-lane chains retain composite member ids and advertise the cap
   const [entry] = buildComboCatalog(normalized, members)
   assert.equal(entry.contextWindow, 131072)
   assert.equal(entry.maxOutput, 16384)
-  assert.equal(entry.vision, false)
+  assert.equal(entry.vision, true, 'the host must retain images for the eligible vision member')
   assert.deepEqual(entry.combo, members.map(row => row.id))
   assert.deepEqual(comboChain(entry, members).map(row => row.id), entry.combo)
 })

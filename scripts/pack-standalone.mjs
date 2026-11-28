@@ -41,8 +41,8 @@ const sourceFiles = [
     .map(name => `packages/standalone/channels/${name}.mjs`),
   'packages/standalone/web/index.html',
   'packages/standalone/web/assets.json',
-  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'deferred-response', 'disclaimer', 'eac', 'eac-login', 'eac-user', 'effort',
-    'egress', 'engine-payload', 'failure', 'forward', 'gemini', 'http', 'image-pricing', 'kilo', 'local-optimize',
+  ...['adapter', 'aggregate', 'aliases', 'anthropic', 'catalog', 'channel', 'combos', 'disclaimer', 'eac', 'eac-login', 'eac-user', 'effort',
+    'egress', 'engine-payload', 'forward', 'gemini', 'http', 'kilo', 'local-optimize',
     'loopback-fetch', 'magpie-engine', 'magpie-models', 'magpie-policy', 'messages', 'model-test', 'open-external', 'probe', 'recovery',
     'store', 'stream', 'subscriptions', 'subscription-completion', 'subscription-adapter', 'token-saver', 'trust', 'upstream', 'vault', 'vault-data', 'vault-anchor']
     .map(name => `src/${name}.js`),
@@ -64,10 +64,10 @@ const sourceFiles = [
   'src/route/classify.js',
   ...['index', 'inject', 'prompts'].map(name => `src/token-saver/${name}.js`),
   ...['index', 'constants', 'autodetect', 'applyFilter', 'hitLine', 'registry']
-    .map(name => `src/token-saver/rtk/${name}.js`),
+    .map(name => `src/token-saver/compact/${name}.js`),
   ...['buildOutput', 'dedupLog', 'find', 'gitDiff', 'gitLog', 'gitStatus', 'grep', 'ls',
     'readNumbered', 'searchList', 'smartTruncate', 'tree']
-    .map(name => `src/token-saver/rtk/filters/${name}.js`),
+    .map(name => `src/token-saver/compact/filters/${name}.js`),
   'vendor/channel-pack/qoder-auth-wasm.wasm',
   'vendor/channel-pack/qwenwork-auth-wasm.wasm',
   'vendor/channel-pack/LICENSE',

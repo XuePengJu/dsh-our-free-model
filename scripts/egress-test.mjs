@@ -337,6 +337,18 @@ async function main() {
   // 2 — config rendering carries the subscription, health-check and group.
   const yaml = renderMihomoConfig({ subscription: 'https://example.com/s/tok', mixedPort: 33001, apiPort: 33002, secret: 'shh', logFile: 'C:/x/m.log' })
   check(yaml.includes('type: http') && yaml.includes('https://example.com/s/tok'), 'provider carries the subscription url')
+  check(yaml.includes('    interval: 86400'), 'old settings retain the 24-hour subscription refresh default (#558)')
+  for (const interval of [60, 3600, 604800]) {
+    const custom = renderMihomoConfig({ subscription: 'https://example.com/sub', subscriptionIntervalSeconds: interval, mixedPort: 1, apiPort: 2, secret: 'fixture' })
+    check(custom.includes(`    interval: ${interval}\n    path:`), `subscription refresh accepts ${interval} seconds`)
+    check(custom.includes('      interval: 300'), 'subscription refresh does not change health checks')
+  }
+  for (const interval of [null, '3600', 0, 59, 604801, 60.5, NaN, Infinity, '60\nrules: []']) {
+    let rejected = false
+    try { renderMihomoConfig({ subscription: 'https://example.com/sub', subscriptionIntervalSeconds: interval, mixedPort: 1, apiPort: 2, secret: 'fixture' }) }
+    catch (error) { rejected = error instanceof RangeError }
+    check(rejected, `invalid refresh interval ${String(interval)} is rejected before config rendering`)
+  }
   check(yaml.includes('expected-status: 204') && yaml.includes('generate_204'), 'health-check prunes non-204 (429) nodes')
   check(yaml.includes('type: url-test') && yaml.includes('- MATCH,ofm-outlet'), 'group is url-test and rules route through it')
   check(yaml.includes('mixed-port: 33001') && yaml.includes('external-controller: 127.0.0.1:33002'), 'ports land in the config')

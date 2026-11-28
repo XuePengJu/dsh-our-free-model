@@ -6,11 +6,12 @@ export async function verifyChannelCreditsUi() {
   const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8')
     .replace('exports.__test = {', 'exports.__test = { ChannelCard, DICT,')
   const settle = () => new Promise(resolve => setImmediate(resolve))
-  function mount(provider, rpcImpl) {
+  function mount(provider, rpcImpl, storage = new Map()) {
     let bundle, cursor = 0, effects = []
     const cells = [], calls = [], errors = [], events = new Map()
     const window = {
       __ModuleLoader__: { load: value => { bundle = value } },
+      localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
       addEventListener: (name, callback) => events.set(name, callback),
       removeEventListener: name => events.delete(name),
     }
@@ -60,7 +61,7 @@ export async function verifyChannelCreditsUi() {
     const load = effects[0], subscribe = effects[2]
     const cleanup = load()
     subscribe()
-    return { calls, errors, cells, button, text, cleanup, events }
+    return { calls, errors, cells, button, text, cleanup, events, nodes: () => nodes(render()) }
   }
   const claimable = new Set(['lobsterai', 'qoder', 'qodercn', 'trae', 'loomy', 'minimax', 'zcode'])
   for (const provider of [...claimable, 'cline', 'raccoon', 'gemini']) {
@@ -164,4 +165,61 @@ export async function verifyChannelCreditsUi() {
   assert.ok(quota.text().includes('5 小时 80% · 每周 40%'), '不同配额窗口不能相加成积分')
   assert.ok(quota.text().includes('已查询 1 个账号'))
   quota.cleanup()
+
+  const preference = new Map()
+  const precisionRpc = async method => ({ accounts: method === 'credits.balances'
+    ? [{ accountId: 'one', balance: { total: 1999.75 } }, { accountId: 'two', balance: { total: 0 } }]
+    : method === 'account.list' ? accountRows : [] })
+  const precise = mount('minimax', precisionRpc, preference)
+  await settle()
+  assert.ok(precise.text().includes('2.0K'), 'compact display remains the default')
+  assert.equal(precise.button('显示完整余额').props['aria-pressed'], false)
+  precise.button('显示完整余额').props.onClick()
+  assert.equal(preference.get('ofm.credits.full'), 'true')
+  assert.ok(precise.text().includes('1,999.75'), 'full balance preserves grouping and fractional credits')
+  precise.button('账号').props.onClick()
+  await settle()
+  assert.ok(precise.text().includes('剩余积分 1,999.75'))
+  assert.ok(precise.text().includes('剩余积分 0'))
+  const reloaded = mount('minimax', precisionRpc, preference)
+  await settle()
+  assert.equal(reloaded.button('显示完整余额').props['aria-pressed'], true, 'full-balance choice survives remount')
+  assert.ok(reloaded.text().includes('1,999.75'))
+  reloaded.button('显示完整余额').props.onClick()
+  assert.ok(reloaded.text().includes('2.0K'))
+  precise.cleanup(); reloaded.cleanup()
+
+  let ordered = [...accountRows], releaseOrder
+  let holdOrder = true
+  const ordering = mount('minimax', async (method, payload) => {
+    if (method === 'account.list') return { accounts: [...ordered] }
+    if (method === 'account.reorder') {
+      if (holdOrder) await new Promise(resolve => { releaseOrder = resolve })
+      ordered = payload.orderedIds.map(id => ordered.find(row => row.id === id))
+      return {}
+    }
+    return { accounts: [] }
+  })
+  await settle()
+  ordering.button('账号').props.onClick()
+  await settle()
+  const accountNodes = () => ordering.nodes().filter(node => node.props.className?.split(' ').includes('ofm_acct'))
+  const labelsIn = row => JSON.stringify(row.children)
+  assert.equal(accountNodes().length, 2)
+  assert.ok(!labelsIn(accountNodes()[0]).includes('上移'), 'first account has no move-up action')
+  assert.ok(!labelsIn(accountNodes()[1]).includes('下移'), 'last account has no move-down action')
+  ordering.button('下移').props.onClick()
+  assert.deepEqual(ordering.calls.find(row => row.method === 'account.reorder').payload, { provider: 'minimax', orderedIds: ['two', 'one'] })
+  assert.ok(ordering.nodes().filter(node => node.type === 'button' && (node.children.includes('上移') || node.children.includes('下移'))).every(node => node.props.disabled), 'all reorder controls are disabled while saving')
+  releaseOrder()
+  await settle()
+  assert.ok(labelsIn(accountNodes()[0]).includes('账号二'), 'saved order is reloaded from the real RPC callback')
+  holdOrder = false
+  ordering.button('上移').props.onClick()
+  await settle()
+  assert.deepEqual(ordering.calls.filter(row => row.method === 'account.reorder').at(-1).payload.orderedIds, ['one', 'two'])
+  assert.ok(labelsIn(accountNodes()[0]).includes('账号一'))
+  assert.equal(ordering.errors.length, 0)
+  ordering.cleanup()
+  console.log('ok channel credit precision and account-order UI callbacks (#440/#935)')
 }

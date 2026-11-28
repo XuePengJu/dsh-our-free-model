@@ -5,7 +5,7 @@ import { chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/prom
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const revision = 'eef99e4bbebaf363840847dce4a33ee72eb37945'
+export const revision = '3bf298e70a5949c146d18a8f595ed89f5601b68f'
 const upstream = 'https://github.com/yetone/magpie.git'
 const version = `ofm-${revision.slice(0, 12)}`
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -58,6 +58,39 @@ async function licenseFiles(dir, prefix = '', depth = 0) {
   return found.sort()
 }
 
+/** Keep the auditable patch bytes in the NOTICE already included in packages. */
+export function magpiePatchNotice(name, bytes) {
+  const original = Buffer.from(bytes)
+  const text = original.toString('utf8')
+  if (!Buffer.from(text, 'utf8').equals(original)) throw new Error(`Patch is not UTF-8: ${name}`)
+  if (!text.endsWith('\n')) throw new Error(`Patch must end in a newline for a byte-exact NOTICE: ${name}`)
+  const fence = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map(match => match[0].length + 1)))
+  const sha256 = createHash('sha256').update(original).digest('hex')
+  const quoted = text.match(/[^\n]*\n/g).map(line => line === '\n' || line === '\r\n' ? `>${line}` : `> ${line}`).join('')
+  const extract = `node -e "const fs=require('node:fs');const s=fs.readFileSync('vendor/magpie/NOTICE.md','utf8');const m=s.match(/<!-- BEGIN OFM ENGINE PATCH ${name} -->\\n> (\\u0060+)diff\\n([\\s\\S]*?)> \\1\\n<!-- END OFM ENGINE PATCH ${name} -->/);if(!m)throw Error('patch not found');const b=Buffer.from(m[2].replace(/^> ?/gm,''),'utf8');fs.writeFileSync('${name}',b);console.log(require('node:crypto').createHash('sha256').update(b).digest('hex'));"`
+  return [
+    `### ${name}`,
+    '',
+    `Source: scripts/magpie-engine-patches/${name} in the OFM source repository.`,
+    `Applied on top of upstream revision ${revision}.`,
+    `Original UTF-8 bytes: ${original.length}; SHA-256: ${sha256}.`,
+    'The quoted diff adds only a reversible "> " prefix to each line (">" for an empty line).',
+    'Removing those prefixes recovers the original UTF-8 bytes, line endings and final newline.',
+    'Extract to the current directory and print its SHA-256 (run from the package root):',
+    '',
+    '```sh',
+    extract,
+    '```',
+    '',
+    `<!-- BEGIN OFM ENGINE PATCH ${name} -->`,
+    `> ${fence}diff`,
+  ].join('\n') + '\n' + quoted + [
+    `> ${fence}`,
+    `<!-- END OFM ENGINE PATCH ${name} -->`,
+    '',
+  ].join('\n')
+}
+
 async function main() {
   await mkdir(scratch, { recursive: true })
   if (!await exists(path.join(source, '.git', 'HEAD'))) {
@@ -88,6 +121,8 @@ async function main() {
     .filter(name => name.endsWith('.patch')).sort()
     .map(name => ({ name, file: path.join(patchDir, name) }))
   for (const patch of patches) {
+    patch.bytes = await readFile(patch.file)
+    patch.sha256 = createHash('sha256').update(patch.bytes).digest('hex')
     await run('git', ['apply', '--whitespace=nowarn', patch.file], source, false)
   }
   if (patches.length > 0) console.log(`build-magpie-engine: ${patches.length} patch(es) applied: ${patches.map(patch => patch.name).join(', ')}`)
@@ -97,7 +132,15 @@ async function main() {
   const temporary = path.join(scratch, executable)
   // Upstream's own Makefile releases with `-s -w`; the stripped binary also
   // keeps its gzip payload small enough for the legacy updater's 80-file cap.
-  const flags = ['-tags', 'nogui', '-trimpath', '-buildvcs=true', '-ldflags', `-s -w -X main.version=${version}`]
+  //
+  // `packedassets` is upstream's own release tag (Makefile's `build-release`):
+  // it embeds the web UI as one zip instead of ~1,400 loose files, which is
+  // where a large part of the release binary's size came from before. Without
+  // it the binary is several MiB larger and needs more shards than the legacy
+  // updater's 80-file cap allows.
+  await run('go', ['run', './build/assetpack', 'internal/gui/assets', 'internal/gui/assets.zip'], source, false)
+  const tags = 'nogui,packedassets'
+  const flags = ['-tags', tags, '-trimpath', '-buildvcs=true', '-ldflags', `-s -w -X main.version=${version}`]
   await run('go', ['build', ...flags, '-o', temporary, '.'], source, false)
   const buildInfo = await run('go', ['version', '-m', temporary])
   if (!buildInfo.includes(`vcs.revision=${revision}`)) {
@@ -115,7 +158,7 @@ async function main() {
   for await (const chunk of createReadStream(temporary)) digest.update(chunk)
   const sha256 = digest.digest('hex')
   const modules = []
-  const listed = await run('go', ['list', '-deps', '-tags', 'nogui', '-f',
+  const listed = await run('go', ['list', '-deps', '-tags', tags, '-f',
     '{{if .Module}}{{.Module.Path}}|{{.Module.Version}}|{{.Module.Dir}}{{end}}', '.'])
   const notices = [
     '# Magpie engine notices',
@@ -130,11 +173,13 @@ async function main() {
       'sync that finds an empty catalog skips the write instead of emptying the',
       "agent's own model list — a provider-less engine must never wipe a wired",
       "agent's picker. Everything else is built without upstream modifications",
-      'using the nogui tag, which excludes the native desktop shell and retains',
-      'the complete embedded web UI and built-in plugins.',
+      "using upstream's own release tags (nogui,packedassets): nogui excludes the native",
+      'desktop shell, packedassets embeds the web UI as upstream ships it, and both',
+      'retain the complete embedded web UI and built-in plugins.',
     ] : [
-      'Built without upstream modifications using the nogui tag. This excludes the native',
-      'desktop shell and retains the complete embedded web UI and built-in plugins.',
+      "Built without upstream modifications using upstream's own release tags",
+      '(nogui,packedassets). This excludes the native desktop shell and retains the',
+      'complete embedded web UI and built-in plugins.',
     ]),
     'The owner disables automatic binary updates; upgrades go through this builder.',
     'The upstream MIT license is reproduced in LICENSE. Go dependency license and',
@@ -142,6 +187,13 @@ async function main() {
     'The Go runtime license is included as well. Build inputs and hashes are in engine.json.',
     '',
   ]
+  if (patches.length > 0) {
+    notices.push('## Local engine patch sources', '',
+      'These local modifications are shipped here so an installed package can be audited',
+      'without obtaining the development-only scripts directory. Their original byte hashes',
+      'must match the patch records in engine.json.', '')
+    for (const patch of patches) notices.push(magpiePatchNotice(patch.name, patch.bytes), '')
+  }
   for (const row of [...new Set(listed.split(/\r?\n/).filter(Boolean))].sort()) {
     const [name, moduleVersion, dir] = row.split('|')
     if (name === 'github.com/yetone/magpie') continue
@@ -167,12 +219,7 @@ async function main() {
   if (process.platform !== 'win32') await chmod(target, 0o755)
   let previous = {}
   try { previous = JSON.parse(await readFile(path.join(vendor, 'engine.json'), 'utf8')) } catch {}
-  const patchDigests = []
-  for (const patch of patches) {
-    const digest = createHash('sha256')
-    digest.update(await readFile(patch.file))
-    patchDigests.push({ name: patch.name, sha256: digest.digest('hex') })
-  }
+  const patchDigests = patches.map(patch => ({ name: patch.name, sha256: patch.sha256 }))
   const metadata = {
     schemaVersion: 1, name: 'magpie', upstream, revision, version, license: 'MIT',
     build: { command: ['go', 'build', ...flags, '.'], go: await run('go', ['version']) },

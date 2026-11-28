@@ -42,16 +42,16 @@ try {
     assert.equal(modelAvailability(model, stores.availability.get(), true).availability, 'available')
     checks++
   }
-  for (const [model, invalidReply, reason] of [
+  for (const [model, invalidReply, reason, expectedCode = CODE.server] of [
     [chat, chatReply('content_filter'), 'content_filter'],
     [chat, chatReply('safety'), 'safety'],
     [chat, chatReply('provider_unknown_stop'), 'provider_unknown_stop'],
     [messages, messagesReply('refusal'), 'refusal'],
     [responses, responsesReply('content_filter'), 'content_filter'],
-    [responses, responsesReply('incomplete', 'content_filter'), null],
+    [responses, responsesReply('incomplete', 'content_filter'), null, 'CONTENT_BLOCKED'],
   ]) {
     reply = invalidReply
-    await assert.rejects(runtime.testModel(model), error => error.code === CODE.server && (!reason || error.message.includes(reason)))
+    await assert.rejects(runtime.testModel(model), error => error.code === expectedCode && (!reason || error.message.includes(reason)))
     const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'availability.json'), 'utf8'))
     assert.equal(saved.manualResults[model].state, 'unknown')
     assert.equal(saved.manualResults[model].ttftMs, undefined)

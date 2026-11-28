@@ -36,7 +36,18 @@ const sourceRoot = new URL('../vendor/channel-pack/src/', import.meta.url).href
 const llmKernel = `data:text/javascript,${encodeURIComponent(`
 export * from ${JSON.stringify(kernel)}
 export class LlmError extends Error {
-  constructor(message, code, options) { super(message, options); this.code = code; this.status = options?.status }
+  constructor(message, code, options) {
+    super(message, options)
+    this.code = code
+    this.status = options?.status
+    // 与真实 dsh-llm 的 LlmError 对齐：渠道适配器会从 failure 上读
+    // providerRetryAfterMs（429 的 Retry-After 冷却时长）。
+    this.failure = Object.freeze({
+      message, code,
+      ...(options?.status === undefined ? {} : { status: options.status }),
+      ...(options?.providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs: options.providerRetryAfterMs }),
+    })
+  }
 }
 let nextMessage = 0
 export function createUserMessage(value) { return { id: 'fixture-message-' + ++nextMessage, ...value } }
@@ -219,7 +230,13 @@ try {
   await ctx.accountPool.removeAccount('automatic-loomy')
   creds.delete('AUTO_LOOMY_FIXTURE')
   console.log(`ok  ${sourceMode ? 'source modules' : 'generated pack'}: 10 providers, no OpenCode registration/warmup, historical data retained, account RPCs refused`)
-  if (sourceMode) await verifySourceRegressions({ ctx, adapters, call, creds })
+  if (sourceMode) {
+    const { verifyGeminiManualRpc } = await import('./gemini-manual-rpc-test.mjs')
+    await verifyGeminiManualRpc(call)
+    const { verifyChannelCompatibility } = await import('./channel-compatibility-test.mjs')
+    await verifyChannelCompatibility({ adapters, outletState })
+    await verifySourceRegressions({ ctx, adapters, call, creds })
+  }
   await verifyChannelCreditsRpc({ ctx, call, creds, adapters, outletState })
   console.log('ok  实际渠道 RPC：七渠道仅账号池凭据即可查余额，ZCode 账号池回退及缺凭据反馈')
 
@@ -345,6 +362,88 @@ try {
   fs.rmSync(scratch, { recursive: true, force: true })
 }
 
+/**
+ * #850：上游「账号暂时无法使用相关服务」的临时风控停用。
+ *
+ * 验收口径（对齐 issue 提的四条）：
+ * 1. 200 + 流内错误帧的停用文案必须判成 `suspended`（2.8.9 落成 `client`，继续换号）；
+ * 2. `suspended` 与 `banned` 都不换号（换号会把同源账号一起打进风控）；
+ * 3. `suspended` 要落徽章，且恢复时刻取正文的「预计于 … (UTC+08:00) 恢复」，
+ *    不能退化成 1 小时兜底；
+ * 4. 判据是**共现**：缺主体/归因/后果的相似文案仍走旧的 `client` 行为。
+ */
+async function verifyLobsteraiSuspendedAccount() {
+  const errors = await import('../vendor/channel-pack/src/lobsterai-errors.ts')
+  const notice = '账号暂时无法使用相关服务，预计于 2026-11-18 11:08:21 (UTC+08:00) 恢复。'
+    + '请通过有道龙虾官方客户端或官网使用服务，勿通过第三方反向代理或插件转接、'
+    + '共享本账号的服务额度。再次出现异常使用可能导致永久停用。'
+
+  assert.equal(errors.classifyLobsteraiStreamError(notice), 'suspended', '#850 200+流内停用必须判 suspended')
+  assert.equal(errors.classifyLobsteraiError(200, notice), 'suspended', 'HTTP 200 走关键词分支也认得')
+  assert.equal(errors.classifyLobsteraiError(403, notice), 'suspended', '同一段文案换状态码也认得')
+  assert.equal(errors.classifyLobsteraiError(0, notice), 'suspended', '状态码未知（0）也认得')
+
+  assert.equal(errors.shouldRotateLobsteraiAccount('suspended'), false, '停用账号不再换号')
+  assert.equal(errors.shouldRotateLobsteraiAccount('banned'), false, '403 封号同样不换号')
+  assert.equal(errors.recordsLobsteraiRateLimit('suspended'), true, '解封时刻要落成徽章')
+  assert.equal(errors.recordsLobsteraiRateLimit('client'), false, '普通 client 不留徽章')
+
+  assert.equal(
+    errors.parseLobsteraiSuspendedResetAt(notice), 1794971301000,
+    '恢复时刻取正文（2026-11-18 11:08:21 UTC+08:00）',
+  )
+  // 抽不到时刻就返回 null 交给调用方兜底，绝不伪造一个时刻
+  assert.equal(errors.parseLobsteraiSuspendedResetAt('账号暂时无法使用相关服务，预计于稍后恢复'), null)
+
+  // 误判防护：缺任一层语义都不认，否则一次服务抖动就能让整个账号池停摆
+  for (const text of [
+    '服务暂时不可用，请稍后重试',
+    '该模型暂时无法使用相关服务',
+    '账号暂时无法使用相关服务，请稍后再试',
+    '不同账号共享本账号的服务额度时请谨慎',
+    '异常使用频率过高，请稍后再试',
+  ]) {
+    assert.equal(errors.classifyLobsteraiStreamError(text), 'client', `误判防护应保持 client: ${text}`)
+  }
+
+  // 既有分类不能被新判据挤掉
+  assert.equal(errors.classifyLobsteraiError(403, '账号存在异常行为，已被限制使用'), 'banned')
+  assert.equal(errors.classifyLobsteraiError(429, ''), 'soft-rate')
+  assert.equal(errors.classifyLobsteraiError(200, '免费额度已用完，请升级套餐'), 'hard-credit')
+  assert.equal(errors.shouldRotateLobsteraiAccount('hard-credit'), true, '额度耗尽仍应换号')
+  const { LobsteraiAdapter } = await import('../vendor/channel-pack/src/lobsterai-adapter.ts')
+  let requests = 0
+  const limits = []
+  const account = { id: 'first' }
+  const adapter = new LobsteraiAdapter({
+    resolveCredential: async () => ({ access_token: 'fixture' }),
+    resolveClientVersion: async () => '1.0',
+    refresh: () => assert.fail('unexpected refresh'),
+    accountPool: {
+      findAccountIdByCredential: async () => account.id,
+      findAccount: () => account,
+      getAvailableAccount: () => assert.fail('unexpected rotation to second account'),
+      updateModelRateLimit: async (...args) => {
+        limits.push(args)
+        if (args[3]) account.suspendedUntil = args[2]
+      },
+    },
+    fetchImpl: async () => {
+      requests++
+      const message = notice.replace('2026-11-18', '2099-11-18')
+      return new Response('data: ' + JSON.stringify({ error: { message } }) + '\n\n')
+    },
+  })
+  for (const model of ['deepseek-flash', 'another-model']) {
+    await assert.rejects(async () => {
+      for await (const chunk of adapter.stream({ model, messages: [] })) assert.fail(JSON.stringify(chunk))
+    }, { code: 'PERMISSION' })
+  }
+  assert.equal(requests, 1)
+  assert.deepEqual(limits, [['first', 'deepseek-flash', Date.parse('2099-11-18T11:08:21+08:00'), true]])
+  console.log('ok  lobsterai #850: 200+流内停用判 suspended、不换号、恢复时刻可解析，普通文案不误判')
+}
+
 async function verifySourceRegressions({ ctx, adapters, call, creds }) {
   const { verifyChannelQueueRotation } = await import('./channel-queue-rotation-test.mjs')
   await verifyChannelQueueRotation()
@@ -352,6 +451,7 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
   await verifyChannelPrFixes()
   await verifyLoopResumeEvents()
   await verifyGatewayToolCallFrames()
+  await verifyLobsteraiSuspendedAccount()
 
   // ── #681：探测分派表、候选链与耗时回传 ─────────────────────────────────
   //
@@ -426,6 +526,32 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
     const { QoderAdapter } = await import('../vendor/channel-pack/src/qoder-adapter.ts')
     const { QoderEncryptedInfer } = await import('../vendor/channel-pack/src/qoder-wasm.ts')
     const { QODER_CN } = await import('../vendor/channel-pack/src/qoder-product.ts')
+    // Exercise ownership after WASM has returned a result, including a failed read.
+    const released = []
+    const readError = new Error('fixture header read failed')
+    const resultPointer = 42
+    const glue = {
+      withStrings: () => resultPointer,
+      exports: {
+        requestresult_headers: () => { throw readError },
+        __wbg_requestresult_free: ptr => released.push(ptr),
+      },
+    }
+    const metadata = { client_type: 'test', business_product: 'test', business_type: 'test', scene: 'test' }
+    const ask = { modelKey: 'fixture', userText: 'offline' }
+    const failingClient = new QoderEncryptedInfer(glue, 1, metadata, 'localhost')
+    assert.throws(() => failingClient.prepareInfer(ask), error => error === readError)
+    assert.deepEqual(released, [resultPointer])
+
+    const offlineClient = await QoderEncryptedInfer.create({
+      user: { uid: 'fixture', securityOauthToken: 'fixture' }, machineId: 'fixture', metadata, host: 'localhost',
+    })
+    try {
+      for (let round = 0; round < 3; round++) assert.ok(offlineClient.prepareInfer(ask).body.length > 0)
+    } finally {
+      offlineClient.dispose()
+    }
+    console.log('ok  qoder WASM results are released on read failure and repeated local requests succeed')
     const originalCreate = QoderEncryptedInfer.create
     const originalEnvTimeout = process.env.DSH_QODER_QUEUE_TIMEOUT_MS
     const credential = token => ({
@@ -444,7 +570,7 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
     }
 
     // 模拟不同账号的请求签名输入，专注验证重试状态机；不访问 Qoder 或消耗真实额度。
-    QoderEncryptedInfer.create = async () => ({ prepareInfer: () => ({ url: 'fixture:', headers: {}, body: '{}' }) })
+    QoderEncryptedInfer.create = async () => ({ dispose() {}, prepareInfer: () => ({ url: 'fixture:', headers: {}, body: '{}' }) })
     const run = async ({
       kind, candidates = ['b'], responseForAttempt, abortOnSleep = false,
       addCandidateAfterLookup = false, product, queueTimeoutMs, allowRefresh = false,
@@ -512,6 +638,7 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
       }
       // 把 token 写进测试请求，便于断言每次发送实际使用了哪个账号。
       QoderEncryptedInfer.create = async ({ user }) => ({
+        dispose() {},
         prepareInfer: () => ({ url: 'fixture:', headers: {}, body: user.securityOauthToken }),
       })
       let error
@@ -558,7 +685,7 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
             sent.push([options.model, request.body])
             return request.body.endsWith('-new') ? answerSse('bound-ok') : Response.json({ code: 105, message: 'expired' }, { status: 401 })
           }
-          QoderEncryptedInfer.create = async ({ user }) => ({ prepareInfer: () => ({ url: 'fixture:', headers: {}, body: user.securityOauthToken }) })
+          QoderEncryptedInfer.create = async ({ user }) => ({ dispose() {}, prepareInfer: () => ({ url: 'fixture:', headers: {}, body: user.securityOauthToken }) })
           await Promise.all(['a', 'b'].map(id => collect(adapter.stream({ ...qoderOptions, model: `fixture-${id}` }))))
           assert.deepEqual(sent.filter(([model]) => model === 'fixture-a').map(([, token]) => token), ['token-a', 'token-a-new'])
           assert.deepEqual(sent.filter(([model]) => model === 'fixture-b').map(([, token]) => token), expiredB ? ['token-b-new'] : ['token-b', 'token-b-new'])
@@ -885,14 +1012,28 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
     const cutArgs = await collect(consume(response(frame({ tool_calls: [
       { index: 0, id: 'call-1', function: { name: 'read', arguments: '{"pattern": "un' } },
     ] }, 'tool_calls'))))
-    assert.equal(cutArgs.at(-1).reason.kind, 'max-tokens', `${provider}: an unclosed string is still a cut`)
+    assert.equal(cutArgs.at(-1).reason.kind, provider === 'trae' ? 'error' : 'max-tokens', `${provider}: a completed malformed tool is not a token limit`)
+    if (provider === 'trae') assert.equal(cutArgs.at(-1).reason.failure.code, 'TOOL_ARGUMENTS_INVALID')
     // A negative depth is the lost-prefix fragment (`"path.txt"}` — both
     // quotes present, the opening `{` lost) — still a cut, it belongs on the
     // proven retry path.
     const lostPrefix = await collect(consume(response(frame({ tool_calls: [
       { index: 0, id: 'call-1', function: { name: 'read', arguments: '"some/path.txt"}' } },
     ] }, 'tool_calls'))))
-    assert.equal(lostPrefix.at(-1).reason.kind, 'max-tokens', `${provider}: a lost-prefix fragment is still a cut`)
+    assert.equal(lostPrefix.at(-1).reason.kind, provider === 'trae' ? 'error' : 'max-tokens', `${provider}: completed malformed arguments retain their real cause`)
+    if (provider === 'trae') {
+      for (const args of ['{"workflow":{"node":1}', '{"workflow":{}</workflow><\uff5c\uff5cDSML\uff5c\uff5c parameter name="inputs">{}']) {
+        const make = finish => response(frame({ tool_calls: [{ index: 0, id: 'bad', function: { name: 'run', arguments: args } }] }, finish))
+        const malformed = await collect(consume(make('tool_calls')))
+        assert.equal(malformed.at(-1).reason.failure?.code, 'TOOL_ARGUMENTS_INVALID', '#745: a completed brace/markup error has its own failure')
+        assert.equal((await collect(consume(make('length')))).at(-1).reason.kind, 'max-tokens', '#745: explicit provider length remains authoritative')
+        assert.equal(assemble(malformed).find(block => block.type === 'tool-call')?.arguments, args, '#745: diagnostics never rewrite tool arguments')
+      }
+      const literalTags = '{"prompt":"keep <workflow> and <DSML> as literal text"}'
+      const legal = await collect(consume(response(frame({ tool_calls: [{ index: 0, id: 'legal', function: { name: 'run', arguments: literalTags } }] }, 'tool_calls'))))
+      assert.equal(legal.at(-1).reason.kind, 'tool-calls')
+      assert.equal(assemble(legal).find(block => block.type === 'tool-call')?.arguments, literalTags)
+    }
     const callDelta = { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'read', arguments: '{}' } }] }
     for (const rows of [
       [frame({ content: ' \n', ...callDelta }, 'tool_calls')],
@@ -908,6 +1049,173 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
     assert.equal(thinkingBlocks.some(block => block.type === 'text' && block.text.trim() === ''), false)
     const splitProse = await collect(consume(response(frame({ content: ' \n' }, null), frame({ content: 'answer' }))))
     assert.equal(assemble(splitProse).find(block => block.type === 'text').text, ' \nanswer')
+    if (provider === 'trae') {
+      // Issue #910: the upstream can close the body after a text event without
+      // ever sending `event: done`. That is a cut, not a normal answer.
+      const eofNoDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"partial answer"}\n\n',
+      )))
+      assert.equal(eofNoDone.at(-1).reason.kind, 'max-tokens', 'trae: EOF without done is a cut')
+      assert.ok(eofNoDone.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'partial answer'), 'trae: a cut keeps its text block')
+      // A real `event: done` still proves completion.
+      const eofDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"partial answer"}\n\n'
+        + 'event: done\ndata: {"finish_reason":"stop"}\n\n',
+      )))
+      assert.equal(eofDone.at(-1).reason.kind, 'stop', 'trae: done remains a normal stop')
+      // A complete JSON `done` without its trailing blank line is still a
+      // normal completion; the EOF path only rejects incomplete done data.
+      const residualDoneStop = await collect(consume(new Response(
+        'event: output\ndata: {"response":"complete answer"}\n\n'
+        + 'event: done\ndata: {"finish_reason":"stop"}',
+      )))
+      assert.equal(residualDoneStop.at(-1).reason.kind, 'stop', 'trae: a complete residual done remains stop')
+      assert.ok(residualDoneStop.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'complete answer'), 'trae: a complete residual done keeps the text')
+      // A bare `done` separated by a real blank line keeps its old semantics.
+      const bareDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"bare done answer"}\n\n'
+        + 'event: done\n\n',
+      )))
+      assert.equal(bareDone.at(-1).reason.kind, 'stop', 'trae: a blank-line separated bare done remains stop')
+      // The last event may arrive without its trailing blank line; it must still
+      // be parsed and dispatched instead of being dropped with the buffer.
+      const residualText = await collect(consume(new Response(
+        'event: output\ndata: {"response":"hello "}\n\n'
+        + 'event: output\ndata: {"response":"tail"}',
+      )))
+      assert.equal(assemble(residualText).find(block => block.type === 'text')?.text, 'hello tail',
+        'trae: a final event without a blank line is kept')
+      assert.equal(residualText.at(-1).reason.kind, 'max-tokens', 'trae: the residual text event still ends in a cut')
+      // A `done` whose JSON is cut mid-object must not prove completion.
+      const halfDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"cut before done json"}\n\n'
+        + 'event: done\ndata: {"finish_reason":"st',
+      )))
+      assert.equal(halfDone.at(-1).reason.kind, 'max-tokens', 'trae: a half done JSON is a cut')
+      assert.ok(halfDone.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'cut before done json'), 'trae: a half done JSON keeps the text')
+      // A bare `done` without a real blank line and without data cannot prove
+      // completion either; only the normal blank-line path accepts it.
+      const eofBareDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"cut before bare done"}\n\n'
+        + 'event: done',
+      )))
+      assert.equal(eofBareDone.at(-1).reason.kind, 'max-tokens', 'trae: an EOF bare done without data is a cut')
+      assert.ok(eofBareDone.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'cut before bare done'), 'trae: an EOF bare done keeps the text')
+      // `null` is parseable JSON but is not an object. The tail check must run
+      // before the shared parser, which would throw while reading its fields.
+      const nullDone = await collect(consume(new Response(
+        'event: output\ndata: {"response":"cut before null done"}\n\n'
+        + 'event: done\ndata: null',
+      )))
+      assert.equal(nullDone.at(-1).reason.kind, 'max-tokens', 'trae: a null done data is a cut')
+      assert.ok(nullDone.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'cut before null done'), 'trae: a null done keeps the text')
+      // With no content block, the same invalid tail done remains an empty
+      // response rather than a crash or a max-tokens cut.
+      const metadataNullDone = await collect(consume(new Response(
+        'event: metadata\ndata: {"conversation_id":"fixture"}\n\n'
+        + 'event: done\ndata: null',
+      )))
+      assert.equal(metadataNullDone.at(-1).reason.kind, 'error', 'trae: metadata plus a null done is an empty response')
+      assert.equal(metadataNullDone.at(-1).reason.failure.code, 'EMPTY_RESPONSE')
+      // The shared parser must ignore a null payload instead of dereferencing
+      // it. An EOF-tail output after text keeps the text and reports the cut.
+      const nullOutputTail = await collect(consume(new Response(
+        'event: output\ndata: {"response":"before null output"}\n\n'
+        + 'event: output\ndata: null',
+      )))
+      assert.equal(nullOutputTail.at(-1).reason.kind, 'max-tokens', 'trae: a null output tail is a cut')
+      assert.ok(nullOutputTail.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'before null output'), 'trae: a null output tail keeps the text')
+      // No prior content: the same null output stays an empty response.
+      const nullOutputOnly = await collect(consume(new Response(
+        'event: output\ndata: null',
+      )))
+      assert.equal(nullOutputOnly.at(-1).reason.kind, 'error', 'trae: a lone null output is an empty response')
+      assert.equal(nullOutputOnly.at(-1).reason.failure.code, 'EMPTY_RESPONSE')
+      // A null error payload is ignored by the shared parser and leaves the
+      // existing empty-response semantics intact.
+      const nullError = await collect(consume(new Response(
+        'event: error\ndata: null',
+      )))
+      assert.equal(nullError.at(-1).reason.kind, 'error', 'trae: a null error payload is not thrown')
+      assert.equal(nullError.at(-1).reason.failure.code, 'EMPTY_RESPONSE')
+      // A real blank line means the normal (non-EOF) path; it must use the
+      // same guard and finish normally.
+      const nullOutputFramed = await collect(consume(new Response(
+        'event: output\ndata: {"response":"before framed null"}\n\n'
+        + 'event: output\ndata: null\n\n'
+        + 'event: done\ndata: {"finish_reason":"stop"}\n\n',
+      )))
+      assert.equal(nullOutputFramed.at(-1).reason.kind, 'stop', 'trae: a framed null output does not throw')
+      assert.ok(nullOutputFramed.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'before framed null'), 'trae: a framed null output keeps the text')
+      // A null entry inside tool_calls must not abort the stream. An EOF tail
+      // with only that entry is still a cut and keeps the earlier text.
+      const nullToolTail = await collect(consume(new Response(
+        'event: output\ndata: {"response":"before null tool"}\n\n'
+        + 'event: output\ndata: {"tool_calls":[null]}',
+      )))
+      assert.equal(nullToolTail.at(-1).reason.kind, 'max-tokens', 'trae: a null tool entry in the EOF tail is a cut')
+      assert.ok(nullToolTail.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'before null tool'), 'trae: a null tool tail keeps the text')
+      assert.equal(nullToolTail.some(row => row.type === 'block-end' && row.block.type === 'tool-call'), false)
+      // The valid sibling in the same frame must survive the null entry.
+      const mixedTool = { index: 4, id: 'audit_call', function: { name: 'inspect', arguments: '{"query":"\u96ea"}' } }
+      const mixedToolTail = await collect(consume(new Response(
+        'event: output\ndata: {"response":"before mixed tools"}\n\n'
+        + 'event: output\ndata: ' + JSON.stringify({ tool_calls: [null, mixedTool] }),
+      )))
+      assert.equal(mixedToolTail.at(-1).reason.kind, 'max-tokens', 'trae: a mixed null/valid tool tail is a cut')
+      assert.ok(mixedToolTail.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'before mixed tools'), 'trae: mixed tool tail keeps the text')
+      const mixedToolBlocks = mixedToolTail.filter(row => row.type === 'block-end' && row.block.type === 'tool-call')
+        .map(row => row.block)
+      assert.equal(mixedToolBlocks.length, 1, 'trae: the valid tool survives a null sibling')
+      assert.deepEqual({ id: mixedToolBlocks[0].id, name: mixedToolBlocks[0].name, arguments: mixedToolBlocks[0].arguments },
+        { id: 'audit_call', name: 'inspect', arguments: '{"query":"\u96ea"}' })
+      // A normally separated null-only tool frame must also be harmless.
+      const framedNullTool = await collect(consume(new Response(
+        'event: output\ndata: {"response":"before framed null tool"}\n\n'
+        + 'event: output\ndata: {"tool_calls":[null]}\n\n'
+        + 'event: done\ndata: {"finish_reason":"stop"}\n\n',
+      )))
+      assert.equal(framedNullTool.at(-1).reason.kind, 'stop', 'trae: a framed null tool entry does not throw')
+      assert.ok(framedNullTool.some(row => row.type === 'block-end'
+        && row.block.type === 'text' && row.block.text === 'before framed null tool'), 'trae: framed null tool keeps the text')
+      assert.equal(framedNullTool.some(row => row.type === 'block-end' && row.block.type === 'tool-call'), false)
+      // The residual event can be split across reads, including a multi-byte
+      // character; the decoder must not lose or corrupt it at EOF.
+      const splitBytes = new TextEncoder().encode('event: output\ndata: {"response":"\u5206\u7247"}')
+      const splitAt = splitBytes.length - 3
+      const splitTail = await collect(consume(new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(splitBytes.slice(0, splitAt))
+          controller.enqueue(splitBytes.slice(splitAt))
+          controller.close()
+        },
+      }))))
+      assert.equal(assemble(splitTail).find(block => block.type === 'text')?.text, '\u5206\u7247',
+        'trae: a split residual event is decoded whole')
+      assert.equal(splitTail.at(-1).reason.kind, 'max-tokens', 'trae: a split residual event still reports the cut')
+      // A residual `done` must be parsed too: without it the tool call below
+      // would be reported as max-tokens (no finish reason) instead of tool-calls.
+      const residualDone = await collect(consume(new Response(
+        'event: output\ndata: {"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read","arguments":"{}"}}]}\n\n'
+        + 'event: done\ndata: {"finish_reason":"tool_calls"}',
+      )))
+      assert.equal(residualDone.at(-1).reason.kind, 'tool-calls', 'trae: a residual done sets the finish reason')
+      // Only metadata (no content block) is still an empty response, not a cut.
+      const metadataOnly = await collect(consume(new Response(
+        'event: metadata\ndata: {"conversation_id":"fixture"}\n\n',
+      )))
+      assert.equal(metadataOnly.at(-1).reason.kind, 'error', 'trae: metadata-only EOF is not a cut')
+      assert.equal(metadataOnly.at(-1).reason.failure.code, 'EMPTY_RESPONSE')
+    }
     console.log(`ok  source ${provider}: real host invariant/assembler, whitespace stop/tools/reasoning and preserved prose`)
   }
 
@@ -999,6 +1307,18 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
         return true
       })
     }
+    await ctx.accountPool.clearModelRateLimits('audit-raccoon-a')
+    await ctx.accountPool.clearModelRateLimits('audit-raccoon-b')
+    const shortCooldown = Date.now() + 20_000
+    await ctx.accountPool.updateModelRateLimit('audit-raccoon-a', options.model, shortCooldown)
+    await ctx.accountPool.updateModelRateLimit('audit-raccoon-b', options.model, shortCooldown)
+    await assert.rejects(collect(adapters.get('raccoon').stream({ ...options, provider: 'raccoon' })), error => {
+      assert.equal(error.code, 'RATE_LIMIT', 'a short cooldown stays retryable')
+      assert.equal(error.failure?.status, 429)
+      assert.ok(error.failure?.providerRetryAfterMs > 0 && error.failure.providerRetryAfterMs <= 20_000)
+      assert.match(error.message, /短时限流/)
+      return true
+    })
     await ctx.accountPool.clearModelRateLimits('audit-raccoon-b')
     const refreshes = [], sends = []
     auditFetch = async (input, init) => {
@@ -1056,6 +1376,190 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
     globalThis.fetch = originalFetch
     await ctx.accountPool.setPermanentLocked('loomy', false)
     for (const { accountId, ref } of added) { await ctx.accountPool.removeAccount(accountId); creds.delete(ref) }
+  }
+
+  // ── #752：探测遇到上游 5xx / 非 JSON 时不能把整轮判成 UNKNOWN ─────────
+  //
+  // 真实缺陷：`probeCredential` 把 502 HTML 抛成普通 Error，`refresh()` 原样
+  // 上抛，adapter 的 stream 在「取凭据」阶段就失败 —— 宿主归类 UNKNOWN 且不重试。
+  // 同一时段的 chat 502 本来会按 SERVER 重试 5 次。这里锁死三条：
+  //   1. 探测 502 HTML 重试 3 次后，聊天仍会真的发出，并按 chat 自己的路径失败；
+  //   2. 200 + 100002 仍是 RefreshTokenExpiredError（不重试、不降级）；
+  //   3. 第一次 502、第二次 200 能重试成功。
+  {
+    const defaultRef = 'LOOMY_ACCESS_TOKEN'
+    const savedDefault = creds.get(defaultRef)
+    const savedAudit = auditFetch
+    const probeFixture = (ref, token) => {
+      creds.set(ref, { value: JSON.stringify({
+        access_token: token, userid: '123456789012345678', phone: '13800138000',
+        expires_at: String(Date.now() - 1000),
+      }) })
+    }
+    try {
+      assert.equal(ctx.accountPool.listAccountsByProvider('loomy').length, 0,
+        '#752 fixture uses the default Loomy credential, so no pool account may divert selection')
+
+      // 1. 502 HTML：3 次探测都失败后，本轮必须继续走到 chat。
+      probeFixture(defaultRef, 'probe-502-token')
+      let probeCalls = 0, chatCalls = 0
+      auditFetch = async (input, init) => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return new Response('<html><body>502 Bad Gateway</body></html>', {
+            status: 502, headers: { 'content-type': 'text/html' },
+          })
+        }
+        if (url.endsWith('/models')) return Response.json({ code: '000000', data: [] })
+        if (url.endsWith('/chat/completions')) {
+          chatCalls++
+          assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer probe-502-token',
+            'the chat keeps using the existing credential instead of inventing a renewed one')
+          return new Response('upstream chat unavailable', { status: 502 })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      let failure
+      try { await collect(adapters.get('loomy').stream({ ...options, provider: 'loomy' })) }
+      catch (error) { failure = error }
+      assert.ok(failure, 'the chat request itself still fails on the upstream 502')
+      assert.equal(failure.code, 'SERVER', 'the failure is the chat request\'s own retryable 5xx, not the probe error')
+      assert.notEqual(failure.name, 'RefreshTokenExpiredError')
+      assert.equal(probeCalls, 3, 'transient probe failures are retried exactly three times')
+      assert.equal(chatCalls, 1, 'the chat request is still sent after the probe gives up')
+
+      // 1b. 同一账号紧接着再取一次凭据（排队重启的形态）：探测失败后的
+      //     短宽限必须直接复用旧凭据，不能把三次探测和刷新预算再打一遍。
+      probeCalls = 0
+      chatCalls = 0
+      auditFetch = async (input, init) => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return new Response('<html>502</html>', { status: 502, headers: { 'content-type': 'text/html' } })
+        }
+        if (url.endsWith('/chat/completions')) {
+          chatCalls++
+          assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer probe-502-token')
+          return new Response('still unavailable', { status: 502 })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      await assert.rejects(collect(adapters.get('loomy').stream({ ...options, provider: 'loomy' })))
+      assert.equal(probeCalls, 0, 'the same account does not probe again inside the grace window')
+      assert.equal(chatCalls, 1, 'the queued retry still gets a real chat request')
+
+      // 2. 200 + 100002：明确的登录失效仍然终态。
+      const expiredRef = 'LOOMY_PROBE_100002_FIXTURE'
+      probeFixture(expiredRef, 'probe-100002-token')
+      probeCalls = 0
+      auditFetch = async input => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return Response.json({ code: '100002', desc: '登录已失效' })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      await assert.rejects(
+        ctx.loomyAuth.refreshAccountCredential(expiredRef),
+        error => error.name === 'RefreshTokenExpiredError' && /重新登录/.test(error.message),
+      )
+      assert.equal(probeCalls, 1, 'a definitive 100002 is not retried')
+
+      // 2b. 混合状态：HTTP 429 的 JSON 体仍是 100002 时必须立即终止。
+      const mixedRef = 'LOOMY_PROBE_429_100002_FIXTURE'
+      probeFixture(mixedRef, 'probe-429-100002-token')
+      probeCalls = 0
+      auditFetch = async input => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return Response.json({ code: '100002', desc: '登录已失效' }, {
+            status: 429, headers: { 'content-type': 'application/json' },
+          })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      await assert.rejects(
+        ctx.loomyAuth.refreshAccountCredential(mixedRef),
+        error => error.name === 'RefreshTokenExpiredError',
+      )
+      assert.equal(probeCalls, 1, '100002 is terminal even when the transport status is 429')
+
+      // 3. 第一次 502、第二次 200：有限重试要真的救回来。
+      const recoveredRef = 'LOOMY_PROBE_RECOVERY_FIXTURE'
+      probeFixture(recoveredRef, 'probe-recovery-token')
+      probeCalls = 0
+      const startedAt = Date.now()
+      auditFetch = async input => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return probeCalls === 1
+            ? new Response('<html>502</html>', { status: 502 })
+            : Response.json({ code: '000000', data: { records: [] } })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      await ctx.loomyAuth.refreshAccountCredential(recoveredRef)
+      assert.equal(probeCalls, 2, 'the second probe attempt succeeds')
+      assert.ok(Date.now() - startedAt >= 150, 'the retry waits before the second attempt')
+
+      // 4. 取消信号必须终止探测；不能继续发后面的重试。
+      const abortRef = 'LOOMY_PROBE_ABORT_FIXTURE'
+      probeFixture(abortRef, 'probe-abort-token')
+      probeCalls = 0
+      let startedResolve
+      const started = new Promise(resolve => { startedResolve = resolve })
+      auditFetch = async (_input, init) => {
+        probeCalls++
+        startedResolve()
+        return await new Promise((_, reject) => {
+          const abort = () => reject(init.signal.reason)
+          if (init.signal.aborted) abort()
+          else init.signal.addEventListener('abort', abort, { once: true })
+        })
+      }
+      const controller = new AbortController()
+      const pendingProbe = ctx.loomyAuth.refreshAccountCredential(abortRef, undefined, undefined, controller.signal)
+      await started
+      controller.abort()
+      await assert.rejects(pendingProbe, error => error.name === 'AbortError')
+      assert.equal(probeCalls, 1, 'an aborted probe does not schedule the next two attempts')
+
+      // 5. chat 已经回 401 时，后续探测失败不能把认证失败遮成 502/SERVER。
+      probeFixture(defaultRef, 'probe-auth-mask-token')
+      probeCalls = 0
+      chatCalls = 0
+      auditFetch = async (input, init) => {
+        const url = String(input)
+        if (url.includes('/points/records')) {
+          probeCalls++
+          return new Response('<html>probe down</html>', { status: 502, headers: { 'content-type': 'text/html' } })
+        }
+        if (url.endsWith('/chat/completions')) {
+          chatCalls++
+          assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer probe-auth-mask-token')
+          return new Response('unauthorized', { status: 401, headers: { 'content-type': 'application/json' } })
+        }
+        throw new Error(`unexpected offline request: ${url}`)
+      }
+      await assert.rejects(collect(adapters.get('loomy').stream({ ...options, provider: 'loomy' })), error => {
+        assert.equal(error.code, 'AUTH')
+        assert.equal(error.failure?.status, 401)
+        return true
+      })
+      assert.equal(probeCalls, 3, 'the auth refresh still makes its bounded probe attempts')
+      assert.equal(chatCalls, 1, 'a failed auth probe does not replay the rejected chat once more')
+      console.log('ok  #752 loomy probe: transient faults defer to chat, 100002 remains terminal, queue/abort/auth stay bounded')
+    } finally {
+      auditFetch = savedAudit
+      if (savedDefault === undefined) creds.delete(defaultRef)
+      else creds.set(defaultRef, savedDefault)
+      for (const ref of ['LOOMY_PROBE_100002_FIXTURE', 'LOOMY_PROBE_429_100002_FIXTURE', 'LOOMY_PROBE_RECOVERY_FIXTURE', 'LOOMY_PROBE_ABORT_FIXTURE']) creds.delete(ref)
+    }
   }
 }
 

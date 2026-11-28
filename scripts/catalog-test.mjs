@@ -207,7 +207,7 @@ check('the seam is shipped', (pkg.files ?? []).includes('adapter'), true)
   check('a null entry is not an error', capabilityTagsOf(null), [])
   const tagged = buildCatalog(['deepseek-v4.1-flash-free', 'glm-5.3-flash-free'])
   check('every free-lane row carries a tags array', tagged.every(row => Array.isArray(row.tags)), true)
-  check('the 1M-window row is tagged long-context', tagged.find(row => row.id === 'deepseek-v4.1-flash-free').tags.includes('long-context'), true)
+  check('the safe 200K-window row is tagged long-context', tagged.find(row => row.id === 'deepseek-v4.1-flash-free').tags.includes('long-context'), true)
 }
 
 // ── the plugin still declares only what it cannot exist without ───────────────

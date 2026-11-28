@@ -44,7 +44,6 @@ replaceOnce(
     '    }',
   ].join('\n'),
 )
-replaceOnce('resolve(dirname(fileURLToPath(import.meta.url)), "qoder-auth-wasm.wasm")', 'fileURLToPath(new URL("../../../vendor/channel-pack/qoder-auth-wasm.wasm", import.meta.url))')
 // ⚠️ esbuild 会给第二个同名 import 加数字后缀（resolve2/dirname2/fileURLToPath2），
 // 重命名随版本漂移 —— 用正则一次替换而不是精确串匹配。
 {
@@ -60,6 +59,12 @@ replaceOnce('resolve(dirname(fileURLToPath(import.meta.url)), "qoder-auth-wasm.w
   )
 }
 replaceOnce('  const override = process.env.DSH_CODEARTS_CACHE_DIR;', '  const override = process.env.OFM_CODEARTS_CACHE_DIR;')
+const qoderWasmPaths = [...output.matchAll(/resolve\d*\(dirname\d*\((fileURLToPath\d*)\(import\.meta\.url\)\), "qoder-auth-wasm\.wasm"\)/g)]
+if (qoderWasmPaths.length !== 1 || output.split('"qoder-auth-wasm.wasm"').length !== 2) {
+  throw new Error('独立渠道生成位置不唯一或已改变：qoder-auth-wasm')
+}
+const qoderWasmPath = qoderWasmPaths[0]
+replaceOnce(qoderWasmPath[0], `${qoderWasmPath[1]}(new URL("../../../vendor/channel-pack/qoder-auth-wasm.wasm", import.meta.url))`)
 replaceOnce('export {\n  Config,', `export {
   toGenerateOptions, toResponsesGenerateOptions, normalizeReasoningEffort,
   responsesReasoningEffort, normalizeMaxTokens, responsesMaxOutputTokens,

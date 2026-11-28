@@ -74,7 +74,8 @@ function harness({ doc = {}, clock = utc8('2026-10-27', 16) } = {}) {
     claim: async provider => {
       state.claims.push(provider)
       // coversToday=false → 不记 lastDate，正好用来观察退避
-      return { ok: true, value: { summary: { claimed: 1, coversToday: false }, accounts: [] } }
+      return state.respond ? state.respond(provider)
+        : { ok: true, value: { summary: { claimed: 1, coversToday: false }, accounts: [] } }
     },
     delayMs: 0,
     tickMs: 1_000,
@@ -201,6 +202,69 @@ await check('渠道枚举异常也受退避保护，不因未落盘结果而反�
   timers.tick.fn()
   await settle()
   assert.equal(state.listCalls, 2)
+  checkin.stop()
+})
+
+await check('mixed providers retry Qoder after its refresh without repeating completed channels', async () => {
+  const { checkin, timers, state, stored } = harness({ clock: utc8('2026-10-27', 9) })
+  state.providers = ['fixture', 'qoder']
+  state.respond = provider => ({ ok: true, value: { summary: {
+    claimed: 0, alreadyClaimed: 1, failed: 0, inactive: 0, totalCredit: 0,
+    coversToday: provider === 'qoder' && state.clock < utc8('2026-10-27', 10) ? 0 : 1,
+  }, accounts: [] } })
+  checkin.start()
+  await settle()
+  assert.equal(checkin.state().ranToday, false)
+  assert.deepEqual(stored.providerDates, { fixture: '2026-10-27' })
+  assert.deepEqual(state.claims, ['fixture', 'qoder'])
+  state.clock = utc8('2026-10-27', 12)
+  timers.tick.fn()
+  await settle()
+  assert.deepEqual(state.claims, ['fixture', 'qoder', 'qoder'])
+  assert.equal(checkin.state().ranToday, true)
+  assert.equal(checkin.state().channels.length, 2, 'successful provider status is retained')
+  timers.tick.fn()
+  await settle()
+  assert.equal(state.claims.length, 3)
+  checkin.stop()
+})
+
+await check('partial coverage survives restart, while failed attempts retain useful status', async () => {
+  const first = harness({ clock: utc8('2026-10-27', 9) })
+  first.state.providers = ['fixture', 'qoder']
+  first.state.respond = provider => provider === 'qoder' ? { ok: false, error: { message: 'fixture offline' } }
+    : { ok: true, value: { summary: { claimed: 1, alreadyClaimed: 0, failed: 0, inactive: 0,
+      totalCredit: 1, coversToday: 1 }, accounts: [] } }
+  first.checkin.start()
+  await settle()
+  assert.equal(first.stored.lastDate, '')
+  assert.equal(first.stored.lastAt, utc8('2026-10-27', 9))
+  assert.equal(first.stored.channels.find(row => row.provider === 'qoder').text, '出错')
+  first.checkin.stop()
+  const next = harness({ doc: JSON.parse(JSON.stringify(first.stored)), clock: utc8('2026-10-27', 12) })
+  next.state.providers = ['fixture', 'qoder']
+  next.state.respond = () => ({ ok: true, value: { summary: { claimed: 1, alreadyClaimed: 0,
+    failed: 0, inactive: 0, totalCredit: 1, coversToday: 1 }, accounts: [] } })
+  next.checkin.start()
+  await settle()
+  assert.deepEqual(next.state.claims, ['qoder'])
+  assert.equal(next.checkin.state().ranToday, true)
+  next.state.clock = utc8('2026-10-28', 12)
+  next.timers.tick.fn()
+  await settle()
+  assert.deepEqual(next.state.claims, ['qoder', 'fixture', 'qoder'], 'a new billing day retries every provider')
+  next.checkin.stop()
+})
+
+await check('a provider with a failed account is not covered by another successful account', async () => {
+  const { checkin, state, stored } = harness()
+  state.respond = () => ({ ok: true, value: { summary: { claimed: 1, alreadyClaimed: 0,
+    failed: 1, inactive: 0, totalCredit: 1, coversToday: 1 }, accounts: [] } })
+  checkin.start()
+  await settle()
+  assert.equal(stored.lastDate, '')
+  assert.deepEqual(stored.providerDates, {})
+  assert.match(stored.lastResult, /失败/)
   checkin.stop()
 })
 

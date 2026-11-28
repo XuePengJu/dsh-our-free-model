@@ -8,6 +8,7 @@ import { once } from 'node:events'
 import { pathToFileURL } from 'node:url'
 import { stageDesktopService, repositoryRoot } from './prepare-desktop.mjs'
 
+const desktopVersion = JSON.parse(fs.readFileSync(new URL('../packages/desktop/package.json', import.meta.url), 'utf8')).version
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm desktop 测试 '))
 const serviceRoot = path.join(scratch, 'service')
 const dataDir = path.join(scratch, 'data')
@@ -71,6 +72,8 @@ try {
       fs.rmSync(orphan, { force: true })
     }
     fs.copyFileSync(process.execPath, path.join(scratch, process.platform === 'win32' ? 'node.exe' : 'node'))
+    assert.equal(JSON.parse(fs.readFileSync(path.join(serviceRoot, 'packages/standalone/package.json'), 'utf8')).version, desktopVersion,
+      '桌面包必须复制与安装程序相同版本的独立服务元数据')
     for (const file of ['src/providers/registry.json', 'src/core/runtime.js', 'src/combos.js', 'packages/standalone/web/assets.json',
       'packages/standalone/management.mjs', 'packages/standalone/channel-probe.mjs', 'packages/standalone/workbuddy-sync.mjs',
       'packages/standalone/channels/worker.mjs', 'vendor/channel-pack/qoder-auth-wasm.wasm',
@@ -100,6 +103,10 @@ try {
     assert.equal(response.status, 200)
     const summary = await fetch(`${url.origin}/api/management/summary`, { headers: { cookie: response.headers.get('set-cookie').split(';')[0] } })
     assert.equal(summary.status, 200)
+    assert.equal((await summary.json()).version, desktopVersion)
+    const health = await fetch(`${url.origin}/health`)
+    assert.equal(health.status, 200)
+    assert.equal((await health.json()).version, desktopVersion)
     const duplicate = await fetch(`${url.origin}/api/management/session`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ bootstrapToken: new URLSearchParams(url.hash.slice(1)).get('login') }) })
     assert.equal(duplicate.status, 401)
@@ -196,6 +203,30 @@ try {
       await recovered.stop()
     })
   }
+  await check('桌面图标为有效多尺寸 ICO，包含 16 至 256 像素图层', () => {
+    const icon = fs.readFileSync(path.join(repositoryRoot, 'packages/desktop/src-tauri/icons/icon.ico'))
+    assert.ok(icon.length >= 6, 'ICO 文件过短')
+    assert.equal(icon.readUInt16LE(0), 0, 'ICO 保留字段必须为 0')
+    assert.equal(icon.readUInt16LE(2), 1, 'ICO 类型必须为图标')
+    const count = icon.readUInt16LE(4)
+    assert.ok(count > 0, 'ICO 不得为空')
+    assert.ok(6 + count * 16 <= icon.length, 'ICO 目录超出文件长度')
+    const sizes = []
+    for (let index = 0; index < count; index++) {
+      const entry = 6 + index * 16
+      const width = icon.readUInt8(entry) || 256
+      const height = icon.readUInt8(entry + 1) || 256
+      const length = icon.readUInt32LE(entry + 8)
+      const offset = icon.readUInt32LE(entry + 12)
+      assert.equal(width, height, 'ICO 图层必须为正方形')
+      assert.ok(length > 0 && offset >= 6 + count * 16 && offset + length <= icon.length,
+        `ICO 图层 ${width}x${height} 的数据范围无效`)
+      sizes.push(`${width}x${height}`)
+    }
+    for (const size of ['16x16', '24x24', '32x32', '48x48', '64x64', '128x128', '256x256']) {
+      assert.ok(sizes.includes(size), `ICO 缺少 ${size} 图层，实际为 ${sizes.join(', ')}`)
+    }
+  })
   await check('桌面配置使用明确资源映射，启动不依赖系统 Node；标题栏 API 使用 v2', () => {
     const config = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'packages/desktop/src-tauri/tauri.conf.json')))
     assert.equal(config.bundle.resources['resources/service/'], 'service/')

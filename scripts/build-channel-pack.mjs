@@ -2,6 +2,7 @@
  * Bundle the vendored free-channel pack into one file.
  *
  *     node scripts/build-channel-pack.mjs
+ *     node scripts/build-channel-pack.mjs --check
  *
  * `vendor/channel-pack/src/**` is the tracked source of the absorbed plugin
  * (provenance in vendor/channel-pack/NOTICE.md). Shipping it as a tree would put
@@ -35,6 +36,12 @@ const packDir = path.join(root, 'vendor', 'channel-pack')
 const entry = path.join(packDir, 'src', 'index.ts')
 const outfile = path.join(packDir, 'pack.js')
 const staging = path.join(packDir, `pack.js.build-${process.pid}`)
+const args = process.argv.slice(2)
+if (args.some(arg => arg !== '--check') || args.length > 1) {
+  console.error('usage: node scripts/build-channel-pack.mjs [--check]')
+  process.exit(1)
+}
+const checkOnly = args.includes('--check')
 
 /** Remove the staged bundle without masking the error that sent us here. */
 function discardStaging() {
@@ -131,9 +138,18 @@ if (shipped !== null && process.env.OFM_PACK_GATE !== 'off') {
   }
 }
 
-// Only now does the artifact move: a failed check leaves the shipped file alone.
-renameSync(staging, outfile)
-console.log(`build-channel-pack: wrote ${path.relative(root, outfile)} (${(bytes / 1024 / 1024).toFixed(2)} MiB)`)
+if (checkOnly) {
+  discardStaging()
+  if (shipped !== built) {
+    console.error('build-channel-pack: pack.js differs from its source; run node scripts/build-channel-pack.mjs')
+    process.exit(1)
+  }
+  console.log('build-channel-pack: source and pack.js match; shipped artifact unchanged')
+} else {
+  // Only now does the artifact move: a failed check leaves the shipped file alone.
+  renameSync(staging, outfile)
+  console.log(`build-channel-pack: wrote ${path.relative(root, outfile)} (${(bytes / 1024 / 1024).toFixed(2)} MiB)`)
+}
 if (result.warnings.length > 0) {
   console.log(`build-channel-pack: ${result.warnings.length} warning(s)`)
 }

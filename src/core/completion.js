@@ -1,6 +1,6 @@
 import { ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
 import { toOpenAiUsage } from '../forward.js'
-import { carryFailure } from '../failure.js'
+import { carryFailure } from '../http.js'
 import { effortsFor, defaultEffortFor } from '../effort.js'
 import { flattenResponsesTools, flatNamespaceToolName, normalizeToolName } from '../messages.js'
 
@@ -15,7 +15,10 @@ export function routableModelIds(snapshot) {
 export function publicModelRows(snapshot) {
   const membership = routableModelIds(snapshot)
   return snapshot.catalog
-    .filter(entry => membership.has(entry.id))
+    // Native account providers already advertise their own direct models. The
+    // source-qualified bridge ids are for combo members, avoiding duplicate
+    // picker groups and ambiguous ids shared with another lane.
+    .filter(entry => membership.has(entry.id) && entry.accountChannel !== true)
     .map(entry => {
       const efforts = effortsFor(entry, undefined, snapshot.settings.defaultMaxTokens)
       return {
