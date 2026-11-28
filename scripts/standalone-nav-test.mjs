@@ -58,7 +58,7 @@ check('pageIdsFor appends plugin pages to the core whitelist', () => {
 
 check('the sidebar renders plugin pages from the summary, not a hardcoded list', () => {
   assert.match(shell, /pluginPages: PluginPage\[\] = \[\]/)
-  assert.match(shell, /label: '插件'/)
+  assert.match(shell, /label: t\('nav\.pluginsGroup'\)/)
   assert.match(shell, /items: pluginPages\.map\(entry => \(\{ id: entry\.id, name: entry\.title, icon: pageIcon\(entry\.icon\) \}\)\)/)
 })
 
@@ -71,6 +71,15 @@ check('App navigates against the derived list', () => {
 check('App resolves a plugin page to the sandbox host', () => {
   assert.match(app, /pluginPage = pluginPages\.find\(entry => entry\.id === page\)/)
   assert.match(app, /<PluginPage page=\{pluginPage\} onNotice=\{setNotice\} \/>/)
+})
+
+check('the retired feedback entry is not in the core sidebar', () => {
+  const block = /const CORE_NAVIGATION: NavGroup\[\] = \[([\s\S]*?)\n\]/.exec(shell)
+  assert.ok(block, 'CORE_NAVIGATION must be a literal array')
+  assert.equal(block[1].includes("id: 'feedback'"), false, 'feedback must not be in the core sidebar')
+  assert.match(shell, /export const FEEDBACK_ENABLED = false/)
+  assert.match(shell, /FEEDBACK_ENABLED\s*\?\s*\[\{ id: 'feedback'/) // page stays behind the switch
+  assert.match(app, /page === 'feedback' && FEEDBACK_ENABLED/) // route cannot outlive the entry
 })
 
 console.log(`\nok ${checks}/${checks} navigation invariants hold`)

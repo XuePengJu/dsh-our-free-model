@@ -92,6 +92,8 @@ function mount(provider, options = {}) {
   const rpc = async (method, payload) => {
     calls.push({ method, payload })
     if (method === 'account.create') return options.create?.(payload) ?? { accountId: 'fixture-account' }
+    if (method === 'account.completeLogin') return options.complete?.(payload) ?? {}
+    if (method === 'account.delete') return options.remove?.(payload) ?? {}
     if (method === 'credits.balances') return options.balance?.() ?? { accounts: [] }
     return { accounts: [] }
   }
@@ -461,3 +463,62 @@ for (const firstCompletesFirst of [true, false]) {
   assert.equal(app.timeouts.size, 0)
 }
 console.log('ok  slow same-transport status requests still publish while polling overlaps')
+
+{
+  const pending = deferred(), app = harness()
+  const context = { connection: { rpc: { async call(_path, _pack, request) {
+    return { ok: true, value: request.method === 'provider.status' ? await pending.promise : { autoCheckin: { enabled: false } } }
+  } } } }
+  const t = Object.assign(key => app.api.DICT.en[key] ?? key, { locale: 'en' })
+  const render = () => app.render(() => app.api.ChannelsPage({ ctx: context, t, summary: { channels: { state: 'ready' } } }))
+  const ids = () => nodes(render()).filter(node => node.type === app.api.ChannelCard).map(node => node.props.channel.id)
+  const registry = ids()
+  assert.ok(registry.length > 3)
+  assert.deepEqual(ids(), registry, 'loading preserves registry order')
+  const connected = registry.slice(-2)
+  pending.resolve({ statuses: {
+    [connected[0]]: { accounts: { total: 1, enabled: 1 } },
+    [connected[1]]: { accounts: { total: 2, enabled: 2 } },
+    [registry[0]]: { closed: true, accounts: { total: 1, enabled: 1 } },
+  } })
+  await settle()
+  assert.deepEqual(ids(), [...connected, ...registry.filter(id => !connected.includes(id))], 'connected rows lead while each group keeps registry order (#535)')
+  const filter = nodes(render()).find(node => node.type === 'select')
+  filter.props.onChange({ target: { value: 'connected' } })
+  assert.deepEqual(ids(), connected, 'filtering retains connected order')
+  app.unmount()
+}
+console.log('ok  connected-first channel ordering stays stable through loading and filtering')
+
+for (const ending of ['cancel', 'unmount']) {
+  const pending = deferred(), tab = makePopup()
+  const app = mount('gemini', {
+    open: () => tab,
+    create: () => ({ accountId: 'fixture-gemini', loginUrl: URL_FIXTURE }),
+    complete: () => pending.promise,
+  })
+  await app.add()
+  const input = () => nodes(app.render()).find(node => node.type === 'input' && node.props['aria-label'] === 'Submit callback URL')
+  assert.ok(input(), 'manual callback belongs to the Gemini login dialog')
+  assert.equal(app.button('Submit callback URL').props.disabled, true)
+  input().props.onChange({ target: { value: 'http://localhost:1234/oauth-callback?code=fixture&state=matching' } })
+  const click = app.button('Submit callback URL').props.onClick
+  click(); click()
+  assert.equal(app.calls.filter(row => row.method === 'account.completeLogin').length, 1, 'duplicate submit callbacks share a synchronous pending guard')
+  assert.ok(nodes(app.render()).some(node => node.type === 'button' && node.props['aria-busy'] === 'true'))
+  if (ending === 'cancel') {
+    app.button('Cancel').props.onClick()
+    assert.deepEqual(app.calls.find(row => row.method === 'account.delete').payload, { accountId: 'fixture-gemini' }, 'cancel also closes the pending server flow')
+    app.render()
+    pending.reject(new Error('stale callback failure'))
+    await settle()
+    assert.ok(!JSON.stringify(app.render()).includes('stale callback failure'))
+    app.unmount()
+  } else {
+    app.unmount()
+    pending.resolve({})
+    await settle()
+    assert.equal(app.lateWrites, 0, 'a late manual callback completion cannot write after unmount')
+  }
+}
+console.log('ok  Gemini manual callback UI guards duplicates, cancels server login and fences late completions')

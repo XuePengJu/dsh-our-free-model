@@ -15,7 +15,27 @@ const stop = () => {
   })
   return closing
 }
-input.on('line', line => { if (line === 'shutdown') void stop() })
+// A parent that has gone away cannot receive another response; close the
+// service cleanly instead of crashing on an unhandled stdout EPIPE.
+process.stdout.on('error', () => { void stop() })
+input.on('line', line => {
+  if (line === 'shutdown') { void stop(); return }
+  if (parentGone || closing || line.length > 1024) return
+  let request
+  try { request = JSON.parse(line) } catch { return }
+  if (request?.protocol !== 'ofm-desktop-command/v1' || request.command !== 'bootstrap' ||
+      typeof request.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(request.requestId)) return
+  const response = { protocol: 'ofm-desktop-bootstrap/v1', requestId: request.requestId,
+    product: service?.product, pid: process.pid, port: service?.port }
+  try {
+    if (!service) throw new Error('Not ready')
+    response.managementUrl = service.createManagementBootstrap()
+  } catch {
+    // Correlation IDs are bounded above; never echo errors, keys, or input.
+    response.code = service ? 'BOOTSTRAP_FAILED' : 'NOT_READY'
+  }
+  process.stdout.write(JSON.stringify(response) + '\n')
+})
 input.on('close', () => { void stop() })
 process.once('SIGINT', stop)
 process.once('SIGTERM', stop)

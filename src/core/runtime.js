@@ -1,10 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
-import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
+import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION, accountChannelCatalog } from '../adapter.js'
+import { buildCatalog, buildEacCatalog, buildKiloCatalog, catalogFamilyKeys, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
-import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from '../store.js'
+import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, buildModelVisibility, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from '../store.js'
 import { recordAttempt } from './attempts.js'
 import { STATE, detectEgress, probeCatalog } from '../probe.js'
 import { CODE, UpstreamError, getJson } from '../http.js'
@@ -28,6 +28,30 @@ const FALLBACK_CATALOG = buildCatalog([
  * `Retry-After`, the lane assumes this window rather than re-asking.
  */
 const LANE_QUOTA_DEFAULT_MS = 6 * 60 * 60 * 1000
+
+/**
+ * How long a breaker may refuse traffic on one `Retry-After`'s word.
+ *
+ * The header is attacker-adjacent data: it arrives from the upstream, but also
+ * from any CDN, WAF or proxy in front of it, and `Date.now() + retryAfter` was
+ * taken at face value. Measured 2026-11-22: one 429 carrying `Retry-After:
+ * 70411` opened a 19.6-hour window on an exit that answered 200 seventeen
+ * minutes later — and because the gate sits in front of every request, that
+ * lock was self-fulfilling for the rest of the day.
+ *
+ * 30 minutes is the same ceiling `src/route/classify.js` already applies to
+ * this exact header (`MAX_PROVIDER_COOLDOWN_MS`). Being wrong here is cheap:
+ * the worst case is one refused request that finds the wall still standing and
+ * re-opens the window. Being wrong the other way costs the user a day.
+ */
+const LANE_QUOTA_MAX_MS = 30 * 60 * 1000
+
+/** Clamp an upstream-requested window into `(0, LANE_QUOTA_MAX_MS]`. */
+function laneWindowFor(retryAfterMs) {
+  const asked = Number(retryAfterMs)
+  if (!Number.isFinite(asked) || asked <= 0) return LANE_QUOTA_DEFAULT_MS
+  return Math.min(Math.trunc(asked), LANE_QUOTA_MAX_MS)
+}
 
 /** 路径由产品入口决定；核心不解析 DSH_HOME，也不发现宿主服务。 */
 export function createRuntimeStores({ dataDir, logger = console }) {
@@ -75,19 +99,30 @@ export function createModelRuntime({
   onSealedUnavailable = () => {},
   onTopology = () => {},
   subscriptionRuntime,
+  accountChannelRuntime,
   extensionRuntime = null,
 }) {
   let catalog = materializeCatalog(catalogStore.get().entries ?? [])
-  let sealedCatalog = sealedCredential() === null ? [] : buildEacCatalog(catalogStore.get().sealIds ?? [])
+  // Keep directory capability rows across restarts, while accepting the bare
+  // ids cached by older versions and rejecting their old stringification bug.
+  let sealedCatalog = sealedCredential() === null ? [] : buildEacCatalog(
+    (catalogStore.get().sealIds ?? []).filter(row => {
+      const id = typeof row === 'string' ? row : row?.id
+      return typeof id === 'string' && id !== '' && !id.includes('[object ')
+    }),
+  )
   let kiloCatalog = reviveKiloCatalog(catalogStore.get().kiloRows)
   /** The aggregate lane: one row per enabled provider/model the user configured.
    *  Derived from settings, not from a listing, so it is rebuilt on every merge. */
   let aggregateCatalog = []
+  let accountEntries = accountChannelCatalog(accountChannelRuntime)
   let subscriptionEntries = []
   /** The virtual rows a combo contributes; rebuilt last, after every real lane. */
   let comboCatalog = []
   /** The extension lane: rows served by installed, enabled channel extensions. */
   let extensionCatalog = []
+  /** The directory-confirmed full ids that may share a hidden-model family. */
+  let familyKeysById = new Map()
   /** The free lane's own roster: the base every other lane is merged onto. */
   let freeCatalog = catalog
   let egress = availability.get().egress ?? null
@@ -115,9 +150,11 @@ export function createModelRuntime({
     const laneStandsDown = entry => replacedLane === 'kilo' && isKiloEntry(entry)
     const seen = new Set()
     const merged = []
-    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog, ...extensionCatalog, ...subscriptionEntries]) {
-      if (entry === null || entry === undefined || seen.has(entry.id)) continue
-      if (laneStandsDown(entry)) continue
+    const candidates = []
+    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog, ...extensionCatalog, ...subscriptionEntries, ...accountEntries]) {
+      if (entry === null || entry === undefined || laneStandsDown(entry)) continue
+      candidates.push(entry)
+      if (seen.has(entry.id)) continue
       seen.add(entry.id)
       merged.push(entry)
     }
@@ -125,30 +162,38 @@ export function createModelRuntime({
     comboCatalog = buildComboCatalog(combos, merged)
     pruneRotation(combos)
     for (const entry of comboCatalog) {
+      candidates.push(entry)
       if (seen.has(entry.id)) continue
       seen.add(entry.id)
       merged.push(entry)
     }
+    familyKeysById = catalogFamilyKeys(candidates)
     catalog = merged
   }
   const mergeCatalogs = () => {
     aggregateCatalog = buildAggregateCatalog(settings.get().aggregate ?? {})
     subscriptionEntries = subscriptionCatalog(subscriptionRuntime)
+    accountEntries = accountChannelCatalog(accountChannelRuntime)
     extensionCatalog = extensionRuntime === null ? [] : extensionRuntime.catalog ?? []
     rebuildCatalog()
   }
   mergeCatalogs()
-  const state = () => ({
-    catalog,
-    membership: computeMembership(catalog, availability.get(), settings.get()),
-    settings: settings.get(),
-    attributionUserAgent,
-    lane: laneRow(),
-    routing: {
-      quota: subscriptionRuntime?.routingQuota?.() ?? {},
-      usage: Object.fromEntries(catalog.map(row => [row.id, stats.get().models?.[row.id]?.calls ?? 0])),
-    },
-  })
+  const state = () => {
+    const settingsSnapshot = settings.get()
+    const visibility = buildModelVisibility(settingsSnapshot, familyKeysById)
+    return {
+      catalog,
+      membership: computeMembership(catalog, availability.get(), settingsSnapshot, visibility),
+      settings: settingsSnapshot,
+      visibility,
+      attributionUserAgent,
+      lane: laneRow(),
+      routing: {
+        quota: subscriptionRuntime?.routingQuota?.() ?? {},
+        usage: Object.fromEntries(catalog.map(row => [row.id, stats.get().models?.[row.id]?.calls ?? 0])),
+      },
+    }
+  }
   const emitTopology = () => { if (!disposed) onTopology() }
 
   // ── the free lane's quota breaker and passive availability (#708/#767) ──────
@@ -178,10 +223,19 @@ export function createModelRuntime({
     if (!lane || lane.state === 'ok' || lane.state === undefined) return { ok: true }
     if (lane.state === 'quota') {
       if (!Number.isFinite(lane.retryAt) || lane.retryAt <= Date.now()) return { ok: true }
-      return { ok: false, state: 'quota', retryAt: lane.retryAt, message: lane.message ?? '' }
+      // Clamp on read as well as on write. A window recorded by an older build
+      // (or by this one before the cap existed) is already on disk, and the cap
+      // is worthless if it only governs new verdicts: measured 2026-11-22, one
+      // such row refused every request for 19.6 hours while the upstream was
+      // answering 200. `at` is when the verdict was taken, so the effective
+      // deadline is at most `LANE_QUOTA_MAX_MS` after it.
+      const recorded = Number.isFinite(lane.at) ? lane.at : lane.retryAt
+      const retryAt = Math.min(lane.retryAt, recorded + LANE_QUOTA_MAX_MS)
+      if (retryAt <= Date.now()) return { ok: true }
+      return { ok: false, state: 'quota', retryAt, since: lane.at, message: lane.message ?? '' }
     }
     if (lane.state === 'locked') {
-      return { ok: false, state: 'locked', message: lane.message ?? '' }
+      return { ok: false, state: 'locked', since: lane.at, message: lane.message ?? '' }
     }
     return { ok: true }
   }
@@ -213,10 +267,7 @@ export function createModelRuntime({
     }
     const code = error?.code
     if (code === CODE.quota) {
-      const retryAfter = Number(error?.providerRetryAfterMs)
-      const retryAt = Number.isFinite(retryAfter) && retryAfter > 0
-        ? Date.now() + retryAfter
-        : Date.now() + LANE_QUOTA_DEFAULT_MS
+      const retryAt = Date.now() + laneWindowFor(error?.providerRetryAfterMs)
       setLaneState('quota', { retryAt, message: String(error?.message ?? 'free usage limit reached').slice(0, 300) })
       recordPassiveResult(entry.id, STATE.throttled)
       return
@@ -233,6 +284,7 @@ export function createModelRuntime({
     state,
     resolveImage,
     subscriptionRuntime,
+    accountChannelRuntime,
     sealedCredential,
     extensionRuntime,
     recordUsage: record => {
@@ -318,6 +370,11 @@ export function createModelRuntime({
     if (disposed) return { catalog, sources }
     sources.kilo = { ok: await refreshKiloRoster(), count: kiloCatalog.length }
     if (disposed) return { catalog, sources }
+    if (typeof accountChannelRuntime?.refresh === 'function') {
+      try { await accountChannelRuntime.refresh() }
+      catch (error) { logger.warn?.(`our-free-model: account catalog refresh failed (${error?.message ?? error})`) }
+    }
+    if (disposed) return { catalog, sources }
     mergeCatalogs()
     if (probe) await refreshAvailability(force)
     emitTopology()
@@ -332,15 +389,17 @@ export function createModelRuntime({
       return { ok: true, count: 0, skipped: true }
     }
     try {
-      const ids = parseListing(await fetchSealedListing(credential, { signal: lifetime.signal }))
+      // Preserve per-model context/output/image metadata, including in the
+      // persisted cache; reducing this to ids loses capabilities after reboot.
+      const rows = parseListing(await fetchSealedListing(credential, { signal: lifetime.signal }))
       if (disposed) return
       // 独立应用授权变更时，旧账号正在返回的清单不得覆盖新状态。
       if (Object.hasOwn(credential, 'userToken') && sealedCredential()?.userToken !== credential.userToken) return { ok: false, count: sealedCatalog.length, skipped: true }
-      if (ids.length > 0) {
-        sealedCatalog = buildEacCatalog(ids)
-        catalogStore.update({ sealIds: sealedCatalog.map(entry => entry.id) })
+      if (rows.length > 0) {
+        sealedCatalog = buildEacCatalog(rows)
+        catalogStore.update({ sealIds: rows })
       }
-      return { ok: ids.length > 0, count: sealedCatalog.length }
+      return { ok: rows.length > 0, count: sealedCatalog.length }
     } catch (error) {
       if (disposed) return
       if (Object.hasOwn(credential, 'userToken') && sealedCredential()?.userToken !== credential.userToken) return { ok: false, count: sealedCatalog.length, skipped: true }
@@ -544,9 +603,11 @@ export function createModelRuntime({
       state: () => {
         const snapshot = state()
         // Hiding advertisements must not invalidate requests using a saved id.
-        return { ...snapshot, membership: computeMembership(snapshot.catalog, availability.get(), {
+        const forwardSettings = {
           ...snapshot.settings, hiddenModelIds: [], hideFreeModels: false, hideEacModels: false,
-        }) }
+        }
+        return { ...snapshot, membership: computeMembership(snapshot.catalog, availability.get(), forwardSettings,
+          buildModelVisibility(forwardSettings, snapshot.visibility.familyKeysById)) }
       },
     }),
     publicModelRows: () => publicModelRows(state()),
@@ -581,7 +642,8 @@ function materializeCatalog(ids) {
   return rebuilt.length > 0 ? rebuilt : FALLBACK_CATALOG
 }
 
-export function computeMembership(catalog, availabilitySnapshot, settings) {
+export function computeMembership(catalog, availabilitySnapshot, settings, visibility) {
+  const visibilityIndex = visibility ?? buildModelVisibility(settings, catalogFamilyKeys(catalog))
   const expose = settings?.exposeRegionModels !== false
   const verdictOf = entry => modelAvailability(entry.id, availabilitySnapshot, Boolean(entry.channel)).availability
   const probeable = catalog.filter(entry => !entry.channel)
@@ -591,7 +653,7 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
   const main = []
   const region = []
   for (const entry of usable) {
-    if (isModelHidden(entry, settings)) continue
+    if (isModelHidden(entry, settings, visibilityIndex)) continue
     const verdict = verdictOf(entry)
     if (verdict !== STATE.regionBlocked) main.push(entry.id)
     else if (expose) region.push(entry.id)

@@ -12,6 +12,9 @@ use std::{
 pub struct ServiceProcess {
     child: Child,
     data_dir: PathBuf,
+    input: Option<mpsc::SyncSender<String>>,
+    responses: mpsc::Receiver<serde_json::Value>,
+    next_request_id: u64,
     pub management_url: String,
 }
 
@@ -25,6 +28,13 @@ fn ready_address(value: &serde_json::Value, pid: u32) -> Result<String, String> 
         }
         .into());
     }
+    if value["protocol"] != "ofm-desktop-ready/v1" {
+        return Err("Unexpected service handshake".into());
+    }
+    management_address(value, pid)
+}
+
+fn management_address(value: &serde_json::Value, pid: u32) -> Result<String, String> {
     let address = value["managementUrl"]
         .as_str()
         .ok_or("服务握手缺少管理地址")?;
@@ -33,8 +43,7 @@ fn ready_address(value: &serde_json::Value, pid: u32) -> Result<String, String> 
         .fragment()
         .and_then(|fragment| fragment.strip_prefix("login="))
         .ok_or("服务握手缺少登录入口")?;
-    if value["protocol"] != "ofm-desktop-ready/v1"
-        || value["product"] != "our-free-model-standalone"
+    if value["product"] != "our-free-model-standalone"
         || value["pid"].as_u64() != Some(pid as u64)
         || value["port"].as_u64() != url.port_or_known_default().map(u64::from)
         || url.port_or_known_default() == Some(0)
@@ -52,6 +61,22 @@ fn ready_address(value: &serde_json::Value, pid: u32) -> Result<String, String> 
         return Err("服务握手校验失败".into());
     }
     Ok(address.to_owned())
+}
+
+fn bootstrap_address(
+    value: &serde_json::Value,
+    pid: u32,
+    port: u16,
+    request_id: &str,
+) -> Result<String, String> {
+    if value["protocol"] != "ofm-desktop-bootstrap/v1"
+        || value["requestId"].as_str() != Some(request_id)
+        || value["port"].as_u64() != Some(u64::from(port))
+        || value.get("code").is_some()
+    {
+        return Err("Invalid desktop bootstrap response".into());
+    }
+    management_address(value, pid)
 }
 
 impl ServiceProcess {
@@ -79,14 +104,29 @@ impl ServiceProcess {
             .stderr(Stdio::null());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
-        let child = command.spawn().map_err(|_| "无法启动内置 Node 服务")?;
+        let mut child = command.spawn().map_err(|_| "无法启动内置 Node 服务")?;
+        let output = child.stdout.take().ok_or("无法读取服务握手")?;
+        let mut input = child.stdin.take().ok_or("Cannot open desktop service input")?;
+        let (input_sender, input_receiver) = mpsc::sync_channel::<String>(1);
+        // Keep a stalled child from blocking the UI/exit path in a pipe write.
+        // Dropping the sender closes stdin after queued work; stop() still has
+        // its existing bounded kill/wait fallback if the child never reads.
+        std::thread::spawn(move || {
+            for message in input_receiver {
+                if input.write_all(message.as_bytes()).and_then(|_| input.flush()).is_err() { break; }
+            }
+        });
+        // Only one owner can request a bootstrap at a time (&mut self under
+        // ServiceState's mutex). Bound queued responses and keep draining logs.
+        let (sender, receiver) = mpsc::sync_channel(16);
         let mut process = Self {
             child,
             data_dir: data_dir.to_owned(),
+            input: Some(input_sender),
+            responses: receiver,
+            next_request_id: 0,
             management_url: String::new(),
         };
-        let output = process.child.stdout.take().ok_or("无法读取服务握手")?;
-        let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             // 持续读完管道，避免握手之后的第三方日志堵塞服务；日志不会进入页面。
             for line in BufReader::new(output).lines().map_while(Result::ok) {
@@ -96,17 +136,21 @@ impl ServiceProcess {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
                     if matches!(
                         value["protocol"].as_str(),
-                        Some("ofm-desktop-ready/v1" | "ofm-desktop-error/v1")
+                        Some("ofm-desktop-ready/v1" | "ofm-desktop-error/v1" | "ofm-desktop-bootstrap/v1")
                     ) {
-                        let _ = sender.send(value);
+                        let _ = sender.try_send(value);
                     }
                 }
             }
         });
         let deadline = Instant::now() + Duration::from_secs(30);
         let result = loop {
-            match receiver.recv_timeout(Duration::from_millis(100)) {
-                Ok(value) => break ready_address(&value, process.child.id()),
+            match process.responses.recv_timeout(Duration::from_millis(100)) {
+                Ok(value) if value["protocol"] == "ofm-desktop-ready/v1"
+                    || value["protocol"] == "ofm-desktop-error/v1" => {
+                    break ready_address(&value, process.child.id())
+                }
+                Ok(_) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     break Err("服务进程未完成启动握手".into())
                 }
@@ -128,10 +172,60 @@ impl ServiceProcess {
         Ok(process)
     }
 
+    pub fn bootstrap(&mut self) -> Result<String, String> {
+        self.bootstrap_with_timeout(Duration::from_secs(5))
+    }
+
+    fn bootstrap_with_timeout(&mut self, timeout: Duration) -> Result<String, String> {
+        if self.child.try_wait().map_err(|_| "Cannot check desktop service")?.is_some() {
+            return Err("Desktop service has exited".into());
+        }
+        let port = self.management_url.parse::<tauri::Url>()
+            .ok().and_then(|url| url.port_or_known_default())
+            .ok_or("Invalid desktop service port")?;
+        self.next_request_id = self.next_request_id.checked_add(1)
+            .ok_or("Desktop request IDs exhausted")?;
+        let request_id = self.next_request_id.to_string();
+        let request = serde_json::json!({ "protocol": "ofm-desktop-command/v1",
+            "command": "bootstrap", "requestId": request_id });
+        self.input.as_ref().ok_or("Desktop service input is closed")?
+            .try_send(format!("{request}\n"))
+            .map_err(|_| "Cannot request desktop login")?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() { return Err("Desktop login request timed out".into()); }
+            match self.responses.recv_timeout(remaining.min(Duration::from_millis(100))) {
+                Ok(value) if value["protocol"] == "ofm-desktop-bootstrap/v1"
+                    && value["requestId"].as_str() == Some(request_id.as_str()) => {
+                    let address = bootstrap_address(&value, self.child.id(), port, &request_id)?;
+                    // A fragment-only navigation can keep the old document
+                    // alive, but the management UI exchanges login fragments
+                    // only on mount. Vary a non-secret query to force a new
+                    // document without rebuilding or exposing a page bridge.
+                    let mut navigation: tauri::Url = address.parse()
+                        .map_err(|_| "Invalid desktop login navigation")?;
+                    navigation.set_query(Some(&format!("desktop-open={request_id}")));
+                    let address = navigation.to_string();
+                    self.management_url = address.clone();
+                    return Ok(address);
+                }
+                // Late responses from timed-out requests must not satisfy a
+                // later request or navigate to an already replaced token.
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err("Desktop service output is closed".into());
+                }
+            }
+            if self.child.try_wait().map_err(|_| "Cannot check desktop service")?.is_some() {
+                return Err("Desktop service has exited".into());
+            }
+        }
+    }
+
     pub fn stop(&mut self) {
-        if let Some(mut input) = self.child.stdin.take() {
-            let _ = input.write_all(b"shutdown\n");
-            let _ = input.flush();
+        if let Some(input) = self.input.take() {
+            let _ = input.try_send("shutdown\n".into());
         }
         let deadline = Instant::now() + Duration::from_secs(8);
         let stopped = loop {
@@ -200,6 +294,65 @@ mod tests {
             wrong["managementUrl"] = url.into();
             assert!(ready_address(&wrong, 42).is_err());
         }
+    }
+
+    #[test]
+    fn bootstrap_is_bound_to_request_child_and_original_port() {
+        let mut value = ready();
+        value["protocol"] = "ofm-desktop-bootstrap/v1".into();
+        value["requestId"] = "7".into();
+        assert!(bootstrap_address(&value, 42, 12345, "7").is_ok());
+        assert!(bootstrap_address(&value, 43, 12345, "7").is_err());
+        assert!(bootstrap_address(&value, 42, 18900, "7").is_err());
+        assert!(bootstrap_address(&value, 42, 12345, "6").is_err());
+        for patch in [
+            serde_json::json!({ "requestId": 7 }),
+            serde_json::json!({ "protocol": "ofm-desktop-ready/v1" }),
+            serde_json::json!({ "code": "BOOTSTRAP_FAILED" }),
+            serde_json::json!({ "product": "other" }),
+            serde_json::json!({ "managementUrl": format!("http://localhost:12345/#login={}", "a".repeat(43)) }),
+            serde_json::json!({ "managementUrl": format!("http://127.0.0.1:18900/#login={}", "a".repeat(43)) }),
+            serde_json::json!({ "managementUrl": format!("http://127.0.0.1:12345/?unexpected=1#login={}", "a".repeat(43)) }),
+        ] {
+            let mut wrong = value.clone();
+            for (key, item) in patch.as_object().unwrap() { wrong[key] = item.clone(); }
+            assert!(bootstrap_address(&wrong, 42, 12345, "7").is_err());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn bootstrap_ignores_late_response_after_timeout_and_detects_child_exit() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let directory = std::env::temp_dir().join(format!("ofm-bootstrap-{}-{unique}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let host = directory.join("service host.mjs");
+        fs::write(&host, r#"
+            import readline from 'node:readline';
+            const message = (protocol, requestId, token) => JSON.stringify({protocol, requestId, product:'our-free-model-standalone',pid:process.pid,port:12345,managementUrl:'http://127.0.0.1:12345/#login='+token.repeat(43)})+'\n';
+            process.stdout.write(message('ofm-desktop-ready/v1', undefined, 'a'));
+            const input = readline.createInterface({ input:process.stdin });
+            input.on('close', () => process.exit(0));
+            input.on('line', line => {
+                if (line === 'shutdown') process.exit(0);
+                const request = JSON.parse(line);
+                if (request.requestId === '3') process.exit(0);
+                setTimeout(() => process.stdout.write(message('ofm-desktop-bootstrap/v1', request.requestId, request.requestId === '1' ? 'a' : 'b')), request.requestId === '1' ? 100 : 140);
+            });
+        "#).unwrap();
+        let node = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/runtime/node.exe");
+        let mut process = ServiceProcess::start(&node, &host, &directory.join("data")).unwrap();
+        assert!(process.bootstrap_with_timeout(Duration::from_millis(20)).is_err());
+        let next = process.bootstrap_with_timeout(Duration::from_secs(2)).unwrap();
+        assert!(next.ends_with(&format!("#login={}", "b".repeat(43))));
+        assert_eq!(next.parse::<tauri::Url>().unwrap().query(), Some("desktop-open=2"));
+        assert_eq!(process.management_url, next);
+        let started = Instant::now();
+        assert!(process.bootstrap_with_timeout(Duration::from_secs(2)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(2));
+        process.stop();
+        drop(process);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[cfg(windows)]

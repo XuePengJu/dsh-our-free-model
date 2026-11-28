@@ -41,7 +41,7 @@ check('the console imports the plugin center and the page host', () => {
 })
 
 check('the sidebar appends plugin pages to the derived whitelist', () => {
-  assert.match(shell, /label: '插件'/)
+  assert.match(shell, /label: t\('nav\.pluginsGroup'\)/)
   assert.match(shell, /pluginPages\.map\(entry => \(\{ id: entry\.id, name: entry\.title, icon: pageIcon\(entry\.icon\) \}\)\)/)
   assert.match(shell, /export function pageIdsFor/)
 })

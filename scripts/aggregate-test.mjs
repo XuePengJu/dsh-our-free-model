@@ -365,6 +365,160 @@ await checkAsync('a JSON answer to a streamed responses request is synthesised i
   assert.equal(finishReason(outcome.finish).kind, 'stop')
 })
 
+async function aggregateJsonTurn({ payload, providerId, modelId, wire, body }) {
+  script = (req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(payload))
+  }
+  const pushed = []
+  await postAggregateStreamed({ config: liveConfig, providerId, modelId, body, onData: value => pushed.push(value) })
+  const { chunks, outcome } = await decode(pushed, wire)
+  return { pushed, chunks, outcome }
+}
+
+const CHAT_REFUSAL_TEXT = 'I cannot help with that request.'
+await checkAsync('a JSON Chat refusal is synthesised into one decoded refusal answer', async () => {
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: {
+      id: 'chat-refusal-1', object: 'chat.completion', model: 'gpt-oss-120b',
+      choices: [{ index: 0, message: { role: 'assistant', refusal: CHAT_REFUSAL_TEXT }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 7, completion_tokens: 4 },
+    },
+    providerId: 'cerebras', modelId: 'gpt-oss-120b', wire: 'chat',
+    body: { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'hi' }] },
+  })
+  const refusalFrames = pushed.flatMap(frame => {
+    const delta = JSON.parse(frame).choices?.[0]?.delta
+    return typeof delta?.refusal === 'string' ? [delta.refusal] : []
+  })
+  assert.deepEqual({
+    refusalFrames,
+    text: chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text),
+    sawText: outcome.sawText,
+    textBlocks: chunks.filter(chunk => chunk.type === 'block-end' && chunk.block?.type === 'text').map(chunk => chunk.block.text),
+  }, {
+    refusalFrames: [CHAT_REFUSAL_TEXT],
+    text: [CHAT_REFUSAL_TEXT],
+    sawText: true,
+    textBlocks: [CHAT_REFUSAL_TEXT],
+  })
+  assert.deepEqual(outcome.usage, { inputTokens: 7, outputTokens: 4, totalTokens: 11 })
+  assert.equal(finishReason(outcome.finish).kind, 'stop')
+})
+
+const RESPONSES_REFUSAL_TEXT = 'I cannot help with that request.'
+await checkAsync('a JSON Responses refusal part is synthesised into one decoded refusal answer', async () => {
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: {
+      id: 'resp-refusal-1', object: 'response', status: 'completed', model: 'gpt-5.5',
+      output: [{ type: 'message', id: 'msg-refusal-1', role: 'assistant', content: [{ type: 'refusal', refusal: RESPONSES_REFUSAL_TEXT }] }],
+      usage: { input_tokens: 6, output_tokens: 3 },
+    },
+    providerId: 'openai_api', modelId: 'gpt-5.5', wire: 'responses',
+    body: { model: 'gpt-5.5', input: [{ role: 'user', content: [{ type: 'input_text', text: 'hi' }] }] },
+  })
+  const refusalFrames = pushed.flatMap(frame => {
+    const event = JSON.parse(frame)
+    return event.type === 'response.refusal.delta' ? [event.delta] : []
+  })
+  assert.deepEqual({
+    refusalFrames,
+    text: chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text),
+    sawText: outcome.sawText,
+    textBlocks: chunks.filter(chunk => chunk.type === 'block-end' && chunk.block?.type === 'text').map(chunk => chunk.block.text),
+  }, {
+    refusalFrames: [RESPONSES_REFUSAL_TEXT],
+    text: [RESPONSES_REFUSAL_TEXT],
+    sawText: true,
+    textBlocks: [RESPONSES_REFUSAL_TEXT],
+  })
+  assert.deepEqual(outcome.usage, { inputTokens: 6, outputTokens: 3, totalTokens: 9 })
+  assert.equal(finishReason(outcome.finish).kind, 'stop')
+})
+
+await checkAsync('Chat JSON keeps different content and refusal in stable content-first order', async () => {
+  const content = 'Context: '
+  const refusal = 'I cannot help with that request.'
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: { choices: [{ message: { content, refusal }, finish_reason: 'stop' }] },
+    providerId: 'cerebras', modelId: 'gpt-oss-120b', wire: 'chat',
+    body: { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'hi' }] },
+  })
+  const answerDeltas = pushed.flatMap(frame => {
+    const delta = JSON.parse(frame).choices?.[0]?.delta
+    return typeof delta?.content === 'string' ? [{ type: 'content', text: delta.content }]
+      : typeof delta?.refusal === 'string' ? [{ type: 'refusal', text: delta.refusal }]
+        : []
+  })
+  assert.deepEqual(answerDeltas, [{ type: 'content', text: content }, { type: 'refusal', text: refusal }])
+  assert.deepEqual(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text), [content, refusal])
+  assert.equal(chunks.find(chunk => chunk.type === 'block-end' && chunk.block?.type === 'text')?.block.text, `${content}${refusal}`)
+  assert.equal(outcome.sawText, true)
+})
+
+await checkAsync('Chat JSON emits an identical content/refusal answer once with refusal semantics', async () => {
+  const refusal = 'I cannot help with that request.'
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: { choices: [{ message: { content: refusal, refusal }, finish_reason: 'stop' }] },
+    providerId: 'cerebras', modelId: 'gpt-oss-120b', wire: 'chat',
+    body: { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'hi' }] },
+  })
+  const answerDeltas = pushed.flatMap(frame => {
+    const delta = JSON.parse(frame).choices?.[0]?.delta
+    return typeof delta?.content === 'string' ? [{ type: 'content', text: delta.content }]
+      : typeof delta?.refusal === 'string' ? [{ type: 'refusal', text: delta.refusal }]
+        : []
+  })
+  assert.deepEqual(answerDeltas, [{ type: 'refusal', text: refusal }])
+  assert.deepEqual(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text), [refusal])
+  assert.equal(outcome.sawText, true)
+})
+
+await checkAsync('Responses JSON preserves text/refusal/text content order', async () => {
+  const content = [
+    { type: 'output_text', text: 'Before ' },
+    { type: 'refusal', refusal: 'I cannot help with that request.' },
+    { type: 'output_text', text: ' after.' },
+  ]
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: { output: [{ type: 'message', id: 'msg-mixed', content }] },
+    providerId: 'openai_api', modelId: 'gpt-5.5', wire: 'responses',
+    body: { model: 'gpt-5.5', input: [{ role: 'user', content: [{ type: 'input_text', text: 'hi' }] }] },
+  })
+  const answerEvents = pushed.flatMap(frame => {
+    const event = JSON.parse(frame)
+    return ['response.output_text.delta', 'response.refusal.delta'].includes(event.type)
+      ? [{ type: event.type, delta: event.delta }]
+      : []
+  })
+  assert.deepEqual(answerEvents, [
+    { type: 'response.output_text.delta', delta: 'Before ' },
+    { type: 'response.refusal.delta', delta: 'I cannot help with that request.' },
+    { type: 'response.output_text.delta', delta: ' after.' },
+  ])
+  assert.deepEqual(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text), ['Before ', 'I cannot help with that request.', ' after.'])
+  assert.equal(chunks.find(chunk => chunk.type === 'block-end' && chunk.block?.type === 'text')?.block.text, 'Before I cannot help with that request. after.')
+  assert.equal(outcome.sawText, true)
+})
+
+await checkAsync('Responses JSON emits an identical output_text/refusal answer once with refusal semantics', async () => {
+  const refusal = 'I cannot help with that request.'
+  const { pushed, chunks, outcome } = await aggregateJsonTurn({
+    payload: { output: [{ type: 'message', content: [{ type: 'output_text', text: refusal }, { type: 'refusal', refusal }] }] },
+    providerId: 'openai_api', modelId: 'gpt-5.5', wire: 'responses',
+    body: { model: 'gpt-5.5', input: [{ role: 'user', content: [{ type: 'input_text', text: 'hi' }] }] },
+  })
+  const answerEvents = pushed.flatMap(frame => {
+    const event = JSON.parse(frame)
+    return ['response.output_text.delta', 'response.refusal.delta'].includes(event.type)
+      ? [{ type: event.type, delta: event.delta }]
+      : []
+  })
+  assert.deepEqual(answerEvents, [{ type: 'response.refusal.delta', delta: refusal }])
+  assert.deepEqual(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text), [refusal])
+  assert.equal(outcome.sawText, true)
+})
+
 const ANTHROPIC_SSE = [
   JSON.stringify({ type: 'message_start', message: { id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-sonnet-4-20250514', usage: { input_tokens: 11, cache_read_input_tokens: 3, output_tokens: 0 } } }),
   JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } }),
@@ -483,6 +637,48 @@ await checkAsync('a 429 is a rate-limit failure with the retry hint', async () =
   assert.equal(failure?.code, 'RATE_LIMIT')
   assert.equal(failure?.status, 429)
   assert.equal(failure?.providerRetryAfterMs, 2000)
+})
+
+await checkAsync('a 200 JSON refusal is classified by its error type, not retried as SERVER', async () => {
+  script = (req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ error: { message: 'fixture refusal', type: 'invalid_request_error' } }))
+  }
+  let failure
+  try {
+    await postAggregateStreamed({
+      config: liveConfig, providerId: 'cerebras', modelId: 'gpt-oss-120b',
+      body: { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'hi' }] },
+      onData: () => {},
+    })
+  } catch (error) { failure = error }
+  assert.equal(failure?.code, 'CLIENT_ERROR')
+  assert.equal(failure?.status, 200)
+})
+
+await checkAsync('a 200 refusal keeps dedicated judgements ahead of the generic type', async () => {
+  const cases = [
+    { type: 'invalid_request_error', message: 'Model is unavailable.', code: 'SERVER', unavailable: true },
+    { type: 'rate_limit_error', message: "OpenCode's free tier can only be used from within OpenCode.", code: 'LANE_LOCKED' },
+    { type: 'rate_limit_error', message: '需要 GitHub 授权，请先登录', reason: 'missing', code: 'AUTHORIZATION_REQUIRED' },
+  ]
+  for (const fixture of cases) {
+    script = (req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { type: fixture.type, message: fixture.message, ...(fixture.reason ? { reason: fixture.reason } : {}) } }))
+    }
+    let failure
+    try {
+      await postAggregateStreamed({
+        config: liveConfig, providerId: 'cerebras', modelId: 'gpt-oss-120b',
+        body: { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'hi' }] },
+        onData: () => {},
+      })
+    } catch (error) { failure = error }
+    assert.equal(failure?.code, fixture.code, `${fixture.type} + ${fixture.message}`)
+    if (fixture.unavailable !== undefined) assert.equal(failure?.unavailable, fixture.unavailable)
+    if (fixture.reason !== undefined) assert.equal(failure?.reason, fixture.reason)
+  }
 })
 
 await checkAsync('an HTML 200 body is the front proxy speaking, not a retryable fault', async () => {

@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 import { loadChromium } from './lib/playwright.mjs'
 
 const chromium = loadChromium()
@@ -18,6 +19,21 @@ if (chromium === null) {
   console.log('skip feedback-e2e: playwright or its browser is not installed')
   process.exit(0)
 }
+
+// The collector entry is intentionally hidden in the shipped navigation. Mount
+// the retained real page only in this same-origin test fixture, while keeping
+// its management -> collector -> GitHub chain real and entirely local.
+const uiRequire = createRequire(new URL('../packages/standalone/package.json', import.meta.url))
+const { build } = uiRequire('esbuild')
+const fixture = await build({
+  stdin: {
+    contents: "import React from 'react'; import { createRoot } from 'react-dom/client'; import { Feedback } from './feedback'; createRoot(document.getElementById('root')).render(React.createElement(Feedback, {version:'test',active:true}));",
+    resolveDir: fileURLToPath(new URL('../packages/standalone/frontend/', import.meta.url)),
+    loader: 'tsx',
+  },
+  bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
+  define: { 'process.env.NODE_ENV': '"production"' },
+})
 
 // ── 假 GitHub ───────────────────────────────────────────────────────────────
 const gh = http.createServer((req, res) => {
@@ -90,7 +106,12 @@ try {
   await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()))
   await page.waitForTimeout(700)
   await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()))
-  await page.click('.console-nav-item:has-text("反馈与许愿")')
+  if (await page.locator('.console-nav-item:has-text("反馈与许愿")').count()) throw new Error('retired feedback navigation must remain hidden')
+  await page.route('**/__feedback-test', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body:
+    '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><div id="root"></div><script>'
+    + fixture.outputFiles[0].text.replaceAll('</script', '<\\/script') + '</script></html>',
+  }))
+  await page.goto(`http://127.0.0.1:${servicePort}/__feedback-test`)
   await page.waitForSelector('.fb-gate', { timeout: 10000 })
 
   await check('未登录时显示登录门槛', async () => {
@@ -157,7 +178,6 @@ try {
     if (errs.length) throw new Error(errs.slice(0, 2).join(' | '))
   })
 
-  await page.screenshot({ path: '.verify/feedback-e2e.png', fullPage: true })
 } finally {
   await browser?.close()
   service.kill()

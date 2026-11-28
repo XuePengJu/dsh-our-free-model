@@ -59,3 +59,8 @@ backup/
 # 打包走 esbuild 读 src/，类型检查用 `tsc --noEmit`。删了随时可重新生成。
 vendor/channel-pack/lib/
 vendor/channel-pack/package-lock.json
+# Upstream OpenCode sources fetched by scripts/fetch-opencode-assets.mjs. They are
+# inputs to the asset build, not part of the repository: the generated assets in
+# src/o2a/assets/ are what ships, and docs/opencode-assets.md records their
+# provenance and per-file digests.
+.build-cache/

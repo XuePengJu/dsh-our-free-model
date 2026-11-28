@@ -194,6 +194,7 @@ const CLASSIFICATION_CASES = [
   ['project SERVER code', { code: 'SERVER' }, { kind: 'upstream', scope: 'transient', cooldownMs: 30000, retryable: true }],
   ['project EMPTY_RESPONSE code', { code: 'EMPTY_RESPONSE' }, { kind: 'upstream', scope: 'transient', cooldownMs: 30000, retryable: true }],
   ['project CLIENT_ERROR code', { code: 'CLIENT_ERROR' }, { kind: 'invalid_request', scope: 'request', cooldownMs: 0, retryable: false }],
+  ['project CONTENT_BLOCKED code', { code: 'CONTENT_BLOCKED' }, { kind: 'invalid_request', scope: 'request', cooldownMs: 0, retryable: false }],
   ['project INVALID_CREDENTIAL code', { code: 'INVALID_CREDENTIAL' }, { kind: 'auth', scope: 'account', cooldownMs: 120000, retryable: false }],
   ['project RATE_LIMIT code', { code: 'RATE_LIMIT' }, { kind: 'rate_limit', scope: 'account', cooldownMs: 2000, retryable: true }],
   ['project REGION_BLOCKED code', { code: 'REGION_BLOCKED' }, { kind: 'unavailable', scope: 'provider', cooldownMs: 0, retryable: false }],
@@ -287,6 +288,7 @@ check('shouldAdvance rotates for unhealthy candidates and holds for request faul
   assert.equal(shouldAdvance(classifyFailure({ status: 500 })), true)
   assert.equal(shouldAdvance(classifyFailure({ status: 403, message: 'request not allowed' })), true)
   assert.equal(shouldAdvance(classifyFailure({ status: 400, message: 'bad parameter' })), false)
+  assert.equal(shouldAdvance(classifyFailure({ code: 'CONTENT_BLOCKED' })), false)
   assert.equal(shouldAdvance(classifyFailure({ code: 'ABORTED' })), false)
   assert.equal(shouldAdvance(classifyFailure({ status: 400, body: { error: { code: 'context_length_exceeded' } } })), false)
   assert.equal(shouldAdvance(null), false)

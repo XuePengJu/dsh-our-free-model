@@ -61,7 +61,20 @@ export function zcodeMessagesUrl(channel: 'start-plan' | 'coding-plan'): string 
 /** 额度余额端点（**需要 Authorization**）。 */
 export const ZCODE_BILLING_BALANCE_URL = `${ZCODE_ORIGIN}/api/v1/zcode-plan/billing/balance`
 
-/** 可领活动预览端点（**不需要 Authorization**）。 */
+/**
+ * 可领活动预览端点（**需要 Authorization**）。
+ *
+ * ⚠ 2026-11-25 实测纠偏：本文件早先注释写「不需要 Authorization」，与
+ * `fetchZcodeBalance` 的写法不一致。实测（同一账号、同一代理出口）：
+ *
+ * | 请求 | 结果 |
+ * |---|---|
+ * | 不带 `Authorization` | **HTTP 401**，空 body |
+ * | 带 `Authorization` | HTTP 200，`{"code":0,"msg":"","logid":…}` |
+ *
+ * 而 `fetchZcodeClaimablePlans` 只要 `!response.ok` 就 `return []` ——
+ * 于是「401」被折叠成「今天没有可领额度」，用户看到的永远是「暂无可领」。
+ */
 export const ZCODE_BILLING_PREVIEW_URL = `${ZCODE_ORIGIN}/api/v1/zcode-plan/billing/preview`
 
 /** 领取端点（**需要 Authorization + captcha**）。 */
@@ -72,6 +85,18 @@ export const ZCODE_EVENT_REPORT_URL = `${ZCODE_ORIGIN}/api/v1/event/report`
 
 /** 客户端配置端点（captcha 配置与模型池都从这里来）。 */
 export const ZCODE_CLIENT_CONFIGS_URL = `${ZCODE_ORIGIN}/api/v1/client/configs`
+
+/**
+ * 客户端平台键 —— 与官方 `nD()` 同口径：`${process.platform}-${process.arch}`。
+ *
+ * 官方客户端 `X-Platform` / `platform` 查询参数发的是 `win32-x64`，
+ * 而不是裸 `win32`（2026-11-25 在 `resources/app.asar` 里读到
+ * `function nD(){return `${process.platform}-${process.arch}`}`）。
+ * 裸 `win32` 实测也能过（200），但既然是对齐官方流量，就按官方口径发。
+ */
+export function zcodePlatformKey(): string {
+  return `${process.platform}-${process.arch}`
+}
 
 /**
  * 构造 ZCode 的「来源标识」请求头。
@@ -93,7 +118,7 @@ export function buildZcodeHeaders(
     'X-Client-Language': 'zh-CN',
     'X-Client-Timezone': 'Asia/Shanghai',
     'X-Device-Mid': credential.device_mid,
-    'X-Platform': 'win32',
+    'X-Platform': zcodePlatformKey(),
     'X-Os-Category': 'windows',
     'anthropic-version': '2023-06-01',
   }
@@ -357,8 +382,8 @@ async function fetchClaimablePlans(
     const appVersion = credential.app_version ?? ZCODE_APP_VERSION_FALLBACK
     const response = await fetchWithTimeout(
       fetchImpl,
-      `${ZCODE_BILLING_PREVIEW_URL}?app_version=${encodeURIComponent(appVersion)}&platform=win32`,
-      { method: 'GET', headers: buildZcodeHeaders(credential, { json: false }) },
+      `${ZCODE_BILLING_PREVIEW_URL}?app_version=${encodeURIComponent(appVersion)}&platform=${encodeURIComponent(zcodePlatformKey())}`,
+      { method: 'GET', headers: buildZcodeHeaders(credential, { json: false, authorization: `Bearer ${credential.zcode_jwt}` }) },
       15_000,
     )
     if (!response.ok) return []
@@ -402,7 +427,7 @@ export async function reportZcodeActivation(
         body: JSON.stringify({
           event,
           device_mid: credential.device_mid,
-          platform: 'win32',
+          platform: zcodePlatformKey(),
           app_version: appVersion,
         }),
       }, 20_000)
@@ -418,10 +443,14 @@ export async function fetchZcodeClaimablePlans(
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly ZcodeClaimablePlan[]> {
   const appVersion = credential.app_version ?? ZCODE_APP_VERSION_FALLBACK
-  const url = `${ZCODE_BILLING_PREVIEW_URL}?app_version=${encodeURIComponent(appVersion)}&platform=win32`
+  const url = `${ZCODE_BILLING_PREVIEW_URL}?app_version=${encodeURIComponent(appVersion)}&platform=${encodeURIComponent(zcodePlatformKey())}`
   const response = await fetchWithTimeout(fetchImpl, url, {
     method: 'GET',
-    headers: buildZcodeHeaders(credential, { json: false }),
+    /**
+     * ★ 必须带 `Authorization`（2026-11-25 实测）：不带一律 401、body 为空，
+     * 于是下面的 `!response.ok` 把「没登录」静默折叠成「今天没有可领额度」。
+     */
+    headers: buildZcodeHeaders(credential, { json: false, authorization: `Bearer ${credential.zcode_jwt}` }),
   }, 25_000)
   if (!response.ok) return []
   let parsed: { data?: { plans?: unknown } }

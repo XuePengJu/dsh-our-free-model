@@ -90,7 +90,7 @@ try {
   let aborted = false
   const scoped = createEacLoginPoller({ credentialOf: () => credential, readUser: () => cancelSaved,
     writeUser: value => (cancelSaved = value), onSaved() {}, fetch: async (url, init) => {
-      if (url.includes('/auth/github/start?')) { registered = true; return new Response(null, { status: 302 }) }
+      if (url.includes('/auth/github/start?')) { assert.equal(init.redirect, 'manual'); registered = true; return new Response(null, { status: 302 }) }
       if (url.includes('/auth/ack?')) { cancelAcks++; return new Response('{}') }
       init.signal.addEventListener('abort', () => { aborted = true }, { once: true })
       await delivering.promise // Deliberately ignore abort to test the late-write fence too.
@@ -110,6 +110,15 @@ try {
   assert.equal((await scoped.poll(newLink)).status, 'ok', 'cancelling one link does not prevent a new sign-in')
   assert.deepEqual(scoped.cancel(newLink), { status: 'ok', login: 'octocat' }, 'a completed atomic save is reported as completed, never as a cancelled login')
   console.log('ok  Host: registration precedes browser start; link cancellation aborts/fences collection without affecting another link')
+  for (const [code, detail] of [['ECONNRESET', 'ECONNRESET'], ['https://private.invalid/?token=SECRET', 'unknown']]) {
+    const unreachable = createEacLoginPoller({ credentialOf: () => credential, readUser: () => null,
+      writeUser: () => assert.fail('unreachable login cannot save'), onSaved() {},
+      fetch: async () => { throw Object.assign(new Error('private response'), { cause: { code } }) },
+    })
+    assert.deepEqual(await unreachable.prepare('e'.repeat(32)), { error: 'unreachable', detail })
+    assert.deepEqual(await unreachable.poll('p'.repeat(32)), { error: 'unreachable', detail })
+  }
+  console.log('ok  Host: transport codes are useful and arbitrary private text is never returned or logged')
 } finally {
   if (previousHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = previousHome

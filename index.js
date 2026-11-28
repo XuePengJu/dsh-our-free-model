@@ -30,14 +30,14 @@ import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { externalUrl, openExternal } from './src/open-external.js'
 import { findBunExecutable } from './src/bun-fetch.js'
-import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION } from './src/adapter.js'
-import { DATA_DIR_NAME, resolveDshHome, publicModelVisibility, validateModelVisibility, isModelHidden } from './src/store.js'
+import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION, createAccountChannelBridge } from './src/adapter.js'
+import { DATA_DIR_NAME, resolveDshHome, publicModelVisibility, validateModelVisibility, isModelHidden, isModelHiddenByGroup, hiddenIdsFor } from './src/store.js'
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from './src/forward.js'
 import { chanGatewayCredential, chanGatewayEnabled, chanGatewayPort, startChanRelay } from './src/chan-relay.js'
 import { CODE, UpstreamError } from './src/http.js'
-import { egressActive, egressFetch, outletLabel, readOutletSelection, startEgressRelay, setFreeLaneProxy, freeLaneProxyActive, laneProxyEcho } from './src/egress.js'
+import { egressActive, egressFetch, outletLabel, readOutletSelection, startEgressRelay, normalizeSubscriptionInterval, setFreeLaneProxies, setFreeLaneMaxTries, freeLaneProxyActive, freeLaneExitSnapshot, clearLaneExits, laneProxyEcho } from './src/egress.js'
 import { directFetch } from './src/eac.js'
 import { clearEacUser, readEacUser, writeEacUser } from './src/eac-user.js'
 import { createEacLoginPoller } from './src/eac-login.js'
@@ -48,7 +48,6 @@ import { AnnouncementFeed, createFeedback } from './src/feed.js'
 import { createPickStats } from './src/picks.js'
 import { PluginUpdater, installationIsManaged } from './src/updater.js'
 import { selfReload, watchPackage, isReloading, canSafelyHotReload } from './src/reload.js'
-import { createPushHub } from './src/push.js'
 import { rejectionFor, isLoopbackHost, connectionAdmissionView } from './src/trust.js'
 import { resolveAttributionUserAgent } from './adapter/kernel.js'
 import { buildAggregateCatalog, fetchProviderModels, isAggregateEntry, testProvider } from './src/aggregate.js'
@@ -150,10 +149,11 @@ export function apply(ctx, config) {
 
   // Environment readiness: the official free lane's POST inference needs a
   // local Bun, and a user who never learns that reads only a failed turn.
-  // Probe once at boot — the summary's `bun` bit and this log line are the two
-  // surfaces the answer lives on.
-  const bunAvailable = findBunExecutable() !== undefined
-  if (!bunAvailable) {
+  // The boot probe exists for this one log line; the summary re-reads the
+  // machine on every request, because installing Bun while the process stays
+  // up must clear the warning without a restart.
+  const bunAvailable = () => findBunExecutable() !== undefined
+  if (!bunAvailable()) {
     logger.warn?.('our-free-model: 未检测到本机 Bun —— OpenCode 免费车道无法推理。请安装 Bun（https://bun.sh 或 npm i -g bun）后重启，或把可执行文件路径写入 OUR_FREE_MODEL_BUN。(Bun not found: the OpenCode free lane cannot run inference)')
   }
 
@@ -166,6 +166,16 @@ export function apply(ctx, config) {
 
   const stores = createRuntimeStores({ dataDir, logger })
   const { settings, stats, availability } = stores
+
+  // Manual and package-manager installs bypass the in-app upgrade callback.
+  // Reconcile with this module's version, including ordinary hot reloads, but
+  // let a pending self-upgrade record success only after its transaction commits.
+  const pendingUpgrade = globalThis[Symbol.for('our-free-model.pending-upgrade')]
+  if (packageVersion !== '' && pendingUpgrade?.version !== packageVersion
+    && settings.get().installedVersion !== packageVersion) {
+    settings.update({ installedVersion: packageVersion })
+    settings.flush()
+  }
 
   if (generation > 1) {
     settings.update({ reloadedAt: Date.now(), reloadCount: generation - 1 })
@@ -441,7 +451,6 @@ export function apply(ctx, config) {
   // The successor offers a notification callback, but only the caller that
   // confirmed selfReload() and committed the outcome may invoke it. Booting a
   // replacement is not yet evidence that every fiber started successfully.
-  const pendingUpgrade = globalThis[Symbol.for('our-free-model.pending-upgrade')]
   if (pendingUpgrade?.version === packageVersion) {
     pendingUpgrade.notify = () => {
       if (disposed) return
@@ -488,10 +497,14 @@ export function apply(ctx, config) {
   // a desktop-console surface.
   for (const descriptor of builtinDescriptors()) extensions.registerBuiltin(descriptor)
   extensionHookRuntime = extensions
+  const accountChannelRuntime = createAccountChannelBridge(ctx.llm, () => {
+    if (!disposed) modelRuntime.syncAggregateCatalog()
+  })
   const modelRuntime = createModelRuntime({
     ...stores,
     logger,
     subscriptionRuntime,
+    accountChannelRuntime,
     extensionRuntime: extensions,
     attributionUserAgent: 'deepseek-harness',
     resolveImage: imageResolver(ctx, logger),
@@ -499,8 +512,12 @@ export function apply(ctx, config) {
     onSealedUnavailable: () => logger.warn?.('our-free-model: the sealed lane is not available in this composition (no recognized host profile); its models stay hidden'),
     onTopology: () => emitTopology(),
   })
-  const { state, adapter, refreshCatalog, refreshAvailability, watchEgress, fetchListing, publicModelRows, syncAggregateCatalog, clearLaneBreaker } = modelRuntime
+  const { state, adapter, refreshCatalog, refreshAvailability, watchEgress, fetchListing, publicModelRows, syncAggregateCatalog, clearLaneBreaker, laneGate } = modelRuntime
   const runForwarded = modelRuntime.complete
+  ctx.effect(() => () => accountChannelRuntime.dispose(), 'our-free-model: account channel bridge')
+  ctx.on?.('llm/adapters-updated', () => {
+    void accountChannelRuntime.refresh().catch(error => logger.warn?.(`our-free-model: account catalog unavailable (${error?.message ?? error})`))
+  })
 
   // ── registration ────────────────────────────────────────────────────────────
   const routes = () => Object.keys(state().membership)
@@ -918,29 +935,35 @@ export function apply(ctx, config) {
     try { await run } finally { if (outletSyncInFlight === run) outletSyncInFlight = null }
   }
   /**
-   * Apply the settings file's lane proxy to the egress layer.
+   * Apply the settings file's lane exit pool to the egress layer.
    *
    * Boot-time sync; the settings route re-applies on every `freeLane` patch
    * through `sanitizeSettings` (which is where a bad address fails the write).
-   * A stored value that no longer parses is dropped with one log line — the
-   * lane falls back to the global outlet rather than failing every turn.
+   * A stored entry that no longer parses is dropped with one log line — the lane
+   * falls back to the global outlet rather than failing every turn.
    */
-  function syncFreeLaneProxy() {
+  function syncFreeLaneProxies() {
+    const lane = settings.get().freeLane ?? {}
+    const proxies = Array.isArray(lane.proxies) ? lane.proxies : []
+    const legacy = String(lane.proxyUrl ?? '').trim()
+    const effective = proxies.length > 0 ? proxies : (legacy === '' ? [] : [legacy])
     try {
-      setFreeLaneProxy(String(settings.get().freeLane?.proxyUrl ?? ''))
+      setFreeLaneProxies(effective)
+      setFreeLaneMaxTries(lane.maxTries)
     } catch (error) {
-      logger.warn?.(`our-free-model: the OpenCode lane proxy address is invalid (${error?.message ?? error}); the lane keeps its current exit`)
-      setFreeLaneProxy('')
+      logger.warn?.(`our-free-model: an OpenCode lane exit address is invalid (${error?.message ?? error}); the lane keeps its current exits`)
+      try { setFreeLaneProxies([]) } catch { /* nothing left to clear */ }
     }
   }
-  syncFreeLaneProxy()
+  syncFreeLaneProxies()
   async function syncEgressOnce() {
     const desired = settings.get().egress ?? {}
     const wanted = desired.enabled === true
     const mode = desired.mode === 'client' ? 'client' : 'subscription'
     const url = String(desired.url ?? '').trim()
     const mihomoPath = String(desired.mihomoPath ?? '').trim()
-    const fingerprint = `${mode}\n${url}\n${mihomoPath}`
+    const subscriptionIntervalSeconds = desired.subscriptionIntervalSeconds ?? 86400
+    const fingerprint = `${mode}\n${url}\n${mihomoPath}\n${mode === 'subscription' ? subscriptionIntervalSeconds : ''}`
     if (outletRelay !== null && wanted && outletFingerprint === fingerprint && !outletRelay.dead) return
     if (outletRelay === null && !wanted) return
     if (outletRelay !== null) {
@@ -969,6 +992,7 @@ export function apply(ctx, config) {
             mode: current.mode === 'client' ? 'client' : 'subscription',
             url: String(current.url ?? '').trim(),
             mihomoPath: String(current.mihomoPath ?? '').trim(),
+            subscriptionIntervalSeconds: current.subscriptionIntervalSeconds,
           }
         },
         dataDir,
@@ -1155,6 +1179,7 @@ export function apply(ctx, config) {
         outlet: { active: egressActive, fetch: egressFetch, fetchSigned: (input, init, send) => egressFetch(input, init, send) },
       })
       channelPack = { state: 'ready', error: '' }
+      void accountChannelRuntime.refresh().catch(error => logger.warn?.(`our-free-model: account catalog unavailable (${error?.message ?? error})`))
       logger.info?.('our-free-model: free-channel pack mounted (10 account providers)')
     }).catch(error => {
       if (stopped) return
@@ -1170,7 +1195,7 @@ export function apply(ctx, config) {
   }
   const api = createApiRoutes({
     settings, stats, availability, catalog: () => modelRuntime.catalog, state,
-    refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress, clearLaneBreaker,
+    refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress, clearLaneBreaker, laneGate,
     extensions,
     bunAvailable,
     onVisibilityChanged: emitTopology,
@@ -1502,23 +1527,23 @@ export function apply(ctx, config) {
   // server was busy serving it.
   ctx.inject(['webServer'], scoped => {
     const server = scoped.webServer
-    scoped.effect(() => server.register({ kind: 'prefix', path: '/api/our-free-model', handler: api }), 'our-free-model: api routes')
+    scoped.effect(() => server.register({ kind: 'prefix', path: '/api/our-free-model', auth: 'required', handler: api }), 'our-free-model: api routes')
     // The events stream is an exact route: exact dispatch outranks the prefix, so
     // the hub's handler owns the socket while every other path still lands on the
     // JSON API.
-    scoped.effect(() => server.register({ kind: 'exact', path: '/api/our-free-model/events', handler: eventsRoute }), 'our-free-model: events stream')
+    scoped.effect(() => server.register({ kind: 'exact', path: '/api/our-free-model/events', auth: 'required', handler: eventsRoute }), 'our-free-model: events stream')
     logger.info?.('our-free-model: settings API mounted at /api/our-free-model')
   })
 
   /** Adopt one request as a live push stream, after the trust fence. */
-  function eventsRoute(req, res) {
-    const rejection = rejectionFor(req, fenceConnection, logAdmissionRejection('events'))
+  function eventsRoute(req, res, peer) {
+    const rejection = rejectionFor(req, fenceConnection, logAdmissionRejection('events'), peer)
     if (rejection !== undefined) {
       res.writeHead(rejection, { 'content-type': 'text/plain; charset=utf-8' })
       res.end(rejection === 401 ? 'unauthorized' : rejection === 503 ? 'admission unavailable' : 'forbidden')
       return
     }
-    push.attach(req, res, helloPayload())
+    push.attach(req, res, helloPayload(), peer?.signal)
   }
 
   function helloPayload() {
@@ -1790,14 +1815,29 @@ function sanitizeSettings(patch, current) {
     next.updateCheckHours = Number.isFinite(hours) && hours >= 0 ? Math.trunc(hours) : (Number(current.updateCheckHours) || 6)
   }
   if (next.freeLane !== undefined) {
-    // The lane proxy is a URL the egress layer validates on save: a typo must
-    // fail the write, not the first turn. Everything else about the object is
-    // carried verbatim.
+    // The lane's exits are addresses the egress layer validates on save: a typo
+    // must fail the write, not the first turn. `proxies` is the pool; `proxyUrl`
+    // is the pre-pool single-address field and is folded in when the list is
+    // empty, so an older settings file keeps working.
     const incoming = next.freeLane
     const merged = { ...(current.freeLane ?? {}), ...(incoming && typeof incoming === 'object' ? incoming : {}) }
     const proxyUrl = String(merged.proxyUrl ?? '').trim()
-    setFreeLaneProxy(proxyUrl)
-    next.freeLane = { ...merged, proxyUrl }
+    const rawProxies = Array.isArray(merged.proxies) ? merged.proxies : []
+    const proxies = rawProxies.map(entry => String(entry ?? '').trim()).filter(entry => entry !== '')
+    const effective = proxies.length > 0 ? proxies : (proxyUrl === '' ? [] : [proxyUrl])
+    // `setFreeLaneProxies` throws on an address it cannot parse, which is the
+    // intended contract: a typo must fail the write. It has to fail as a 400,
+    // though — the generic handler maps a bare throw to 500, and "500" tells the
+    // user the plugin broke rather than that their address is wrong.
+    try {
+      setFreeLaneProxies(effective)
+    } catch (error) {
+      throw httpError(400, String(error?.message ?? error))
+    }
+    const maxTries = Number(merged.maxTries)
+    const tries = Number.isFinite(maxTries) ? Math.min(8, Math.max(1, Math.trunc(maxTries))) : 3
+    setFreeLaneMaxTries(tries)
+    next.freeLane = { ...merged, proxies, proxyUrl, maxTries: tries }
   }
   return next
 }
@@ -1879,14 +1919,14 @@ function perfSnapshot(root, fetchImpl) {
 }
 
 export function createApiRoutes(deps) {
-  return async function handler(req, res) {
+  return async function handler(req, res, peer) {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const marker = '/api/our-free-model'
     const markerAt = url.pathname.indexOf(marker)
     const apiPrefix = markerAt >= 0 ? url.pathname.slice(0, markerAt + marker.length) : marker
     const routePath = url.pathname.slice(markerAt >= 0 ? apiPrefix.length : 0).replace(/\/+$/, '') || '/'
     const method = String(req.method ?? 'GET').toUpperCase()
-    const rejection = rejectionFor(req, deps.connection, deps.onAdmissionRejection)
+    const rejection = rejectionFor(req, deps.connection, deps.onAdmissionRejection, peer)
     const send = (status, payload) => {
       const body = JSON.stringify(payload)
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
@@ -2070,10 +2110,12 @@ export function createApiRoutes(deps) {
       }
       if (method === 'POST' && routePath === '/eac/login/start') {
         const started = await deps.eacAuth.start()
+        if (started.error !== undefined) deps.logger?.warn?.(`our-free-model: eac login start failed (${started.error}${started.detail ? `: ${started.detail}` : ''})`)
         return send(started.error === undefined ? 200 : 404, started.error === undefined ? started : { error: started.error })
       }
       if (method === 'GET' && routePath === '/eac/login/poll') {
         const polled = await deps.eacAuth.poll(url.searchParams.get('link') ?? '')
+        if (polled.error !== undefined) deps.logger?.warn?.(`our-free-model: eac login poll failed (${polled.error}${polled.detail ? `: ${polled.detail}` : ''})`)
         const status = polled.error === undefined ? 200 : polled.error === 'bad-link' ? 400 : polled.error === 'no-lane' ? 404 : 502
         return send(status, polled)
       }
@@ -2251,7 +2293,11 @@ export function createApiRoutes(deps) {
           next.forward = forward
         }
         if (patch.egress !== undefined) {
-          const egressPatch = pick(patch.egress, ['enabled', 'mode', 'url', 'mihomoPath'])
+          const egressPatch = pick(patch.egress, ['enabled', 'mode', 'url', 'mihomoPath', 'subscriptionIntervalSeconds'])
+          if (egressPatch.subscriptionIntervalSeconds !== undefined) {
+            try { normalizeSubscriptionInterval(egressPatch.subscriptionIntervalSeconds) }
+            catch (error) { return send(400, { error: error.message }) }
+          }
           if (egressPatch.mode !== undefined && egressPatch.mode !== 'subscription' && egressPatch.mode !== 'client') {
             return send(400, { error: 'the egress mode is "subscription" or "client"' })
           }
@@ -2294,14 +2340,20 @@ export function createApiRoutes(deps) {
       }
       if (method === 'POST' && routePath === '/lane/clear') {
         // 换出口后重试一次：出口已变（或用户自备了新出口代理），把额度断路器
-        // 清掉，让下一次手动检测/真实回合重新出发。一次调用只清一次。
+        // 和每个出口的冷却一起清掉，让下一次手动检测/真实回合重新出发。
         const cleared = deps.clearLaneBreaker()
-        return send(200, { ok: true, cleared, ...buildSummary(deps) })
+        const exits = clearLaneExits()
+        return send(200, { ok: true, cleared, exits, ...buildSummary(deps) })
       }
       if (method === 'POST' && routePath === '/lane/echo') {
         // 测试出口：打第三方回显服务，不打免费网关 —— 一次测试不花配额。
+        // 请求体可带 `proxy` 指定测某一条出口；不带则测车道当前会选的那条。
+        const body = await readJson(req).catch(() => ({}))
         try {
-          const echo = await laneProxyEcho({ signal: req.signal ?? undefined })
+          const echo = await laneProxyEcho({
+            signal: req.signal ?? undefined,
+            proxy: typeof body?.proxy === 'string' ? body.proxy : undefined,
+          })
           return send(200, { ok: true, ...echo })
         } catch (error) {
           return send(502, { ok: false, error: String(error?.message ?? error).slice(0, 200) })
@@ -2780,6 +2832,7 @@ function publicSettings(settings, forwardInfo, egressInfo) {
     // the settings page's own ask (see src/egress.js `outletLabel`).
     egress: {
       ...pick(settings.egress ?? {}, ['enabled', 'mode', 'mihomoPath']),
+      subscriptionIntervalSeconds: settings.egress?.subscriptionIntervalSeconds ?? 86400,
       hasUrl: String(settings.egress?.url ?? '') !== '',
       urlLabel: outletLabel(settings.egress?.url ?? ''),
       outlet: egressInfo?.outlet ?? '',
@@ -2803,6 +2856,11 @@ function buildSummary(deps) {
   const update = deps.update.status()
   const feedView = deps.announcements.view()
   const defaultMaxTokens = deps.settings.get().defaultMaxTokens
+  // Read per summary, not captured at boot: a process that outlived the Bun
+  // installation must stop claiming the transport is unavailable. A plain
+  // boolean is still accepted for compositions and tests that predate the
+  // function form.
+  const bunReady = typeof deps.bunAvailable === 'function' ? deps.bunAvailable() : deps.bunAvailable !== false
   // Lanes that carry no availability verdict of their own. The absorbed channels
   // and the aggregate lane are named by a listing round that already succeeded,
   // and a combo is a view over rows that were themselves named — none of them is
@@ -2811,9 +2869,10 @@ function buildSummary(deps) {
   return {
     catalog: state.catalog.map(entry => ({
       ...entry,
-      hiddenByUser: isModelHidden(entry, state.settings),
-      hiddenByGroup: isModelHidden(entry, { ...state.settings, hiddenModelIds: [] }),
-      ...modelAvailability(entry.id, snapshot, unprobed(entry)),
+      hiddenByUser: isModelHidden(entry, state.settings, state.visibility),
+      hiddenIds: hiddenIdsFor(entry, state.visibility),
+      hiddenByGroup: isModelHiddenByGroup(entry, state.settings),
+      ...modelAvailability(entry.id, snapshot, unprobed(entry), { bunAvailable: bunReady }),
       // What each rung of the effort menu will really put on the wire for this
       // model, so the page never shows a 32K "output ceiling" beside a call that
       // was cut off at 8K. A model with no effort menu has no ladder to show;
@@ -2832,15 +2891,29 @@ function buildSummary(deps) {
     // renders as the countdown / lock banner, and the proxy seam issue #708's
     // bypass reduces to. `lane` is null until a real verdict exists.
     lane: snapshot.lane ?? null,
+    // The breaker's own verdict, evaluated now: `{ok: true}` unless a recorded
+    // window is still open. The raw `lane` row above says what was recorded
+    // (and when); this says whether it still binds, so the page can decide
+    // whether to offer the release button without re-deriving the rules. It is
+    // also where the 30-minute read-side clamp shows up: an oversized window
+    // written by an older build reports as open only until `retryAt` here.
+    laneGate: deps.laneGate?.() ?? { ok: true },
     freeLane: {
       proxyActive: freeLaneProxyActive(),
-      proxyConfigured: String(deps.settings.get().freeLane?.proxyUrl ?? '').trim() !== '',
+      proxyConfigured: (Array.isArray(deps.settings.get().freeLane?.proxies) && deps.settings.get().freeLane.proxies.length > 0)
+        || String(deps.settings.get().freeLane?.proxyUrl ?? '').trim() !== '',
+      // The configured exits with their live cooldown, so the page can show
+      // which route is spent and for how long. Labels are masked (protocol, host,
+      // port only) — an exit URL routinely carries credentials in its userinfo.
+      exits: freeLaneExitSnapshot(),
+      maxTries: Number(deps.settings.get().freeLane?.maxTries) || 3,
       transport: process.env.OUR_FREE_MODEL_FREE_TRANSPORT ?? 'auto',
     },
     // Environment readiness for the free lane: the official POST inference
     // needs a local Bun, and a user who never learns that reads only a failed
-    // turn. Probed once at boot (see the readiness effect below).
-    bun: deps.bunAvailable !== false,
+    // turn. Re-probed on each summary read (see `bunReady` above), so the pill
+    // disappears as soon as the executable is installed.
+    bun: bunReady,
     probedAt: snapshot.at ?? 0,
     announcementVersion: ANNOUNCEMENT_VERSION,
     disclaimerVersion: DISCLAIMER_VERSION,
@@ -2862,3 +2935,93 @@ function buildSummary(deps) {
     update: { available: update.available, latest: update.latest, current: update.current, checkedAt: update.checkedAt, applying: update.applying, managed: update.managed === true },
   }
 }
+
+/**
+ * Server-push channel: one Server-Sent-Events route that every open web surface
+ * subscribes to. See src/push.js history: inlined to stay inside the release
+ * set's 80-file cap.
+ */
+const HEARTBEAT_MS = 25_000
+
+export function createPushHub({ logger = console, heartbeatMs = HEARTBEAT_MS } = {}) {
+  /** @type {Set<import('node:http').ServerResponse>} */
+  const clients = new Set()
+  let heartbeat = undefined
+
+  function startHeartbeat() {
+    if (heartbeat !== undefined || clients.size === 0) return
+    heartbeat = setInterval(() => {
+      for (const res of clients) {
+        if (res.writableEnded === true || res.destroyed === true) { clients.delete(res); continue }
+        res.write(': ping\n\n')
+      }
+      if (clients.size === 0) stopHeartbeat()
+    }, heartbeatMs)
+    heartbeat.unref?.()
+  }
+
+  function stopHeartbeat() {
+    if (heartbeat === undefined) return
+    clearInterval(heartbeat)
+    heartbeat = undefined
+  }
+
+  return {
+    /** @returns {number} how many surfaces are currently attached */
+    get size() { return clients.size },
+    /**
+     * Adopt one request as a live event stream. The route handler has already
+     * passed the trust fence; this takes ownership of the response.
+     */
+    attach(req, res, hello, signal) {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+        'x-accel-buffering': 'no',
+      })
+      res.write(': connected\n\n')
+      if (hello !== undefined) this.sendTo(res, 'hello', hello)
+      clients.add(res)
+      startHeartbeat()
+      const drop = () => {
+        req.off('close', drop)
+        res.off('close', drop)
+        signal?.removeEventListener('abort', onAbort)
+        clients.delete(res)
+        if (clients.size === 0) stopHeartbeat()
+      }
+      const onAbort = () => {
+        drop()
+        if (!res.writableEnded && !res.destroyed) res.end()
+      }
+      req.once('close', drop)
+      res.once('close', drop)
+      if (signal?.aborted) onAbort()
+      else signal?.addEventListener('abort', onAbort, { once: true })
+    },
+    sendTo(res, event, data) {
+      if (res.writableEnded === true || res.destroyed === true) { clients.delete(res); return }
+      try {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data ?? {})}\n\n`)
+      } catch (error) {
+        clients.delete(res)
+        logger.debug?.(`our-free-model push: dropped client (${error?.message ?? error})`)
+      }
+    },
+    /** Broadcast one event to every attached surface. */
+    emit(event, data) {
+      for (const res of [...clients]) this.sendTo(res, event, data)
+    },
+    /** Close every stream; called from the fiber dispose so a hot reload or
+     *  uninstall never leaves a half-open response behind. */
+    dispose() {
+      for (const res of [...clients]) {
+        try { res.end() } catch { /* already gone */ }
+      }
+      clients.clear()
+      stopHeartbeat()
+    },
+  }
+}
+

@@ -18,6 +18,7 @@ struct ServiceState {
     process: Mutex<Option<ServiceProcess>>,
     stopping: AtomicBool,
     updating: AtomicBool,
+    reopening: AtomicBool,
 }
 
 #[tauri::command]
@@ -196,6 +197,49 @@ fn show_main(app: &tauri::AppHandle, address: &str) -> tauri::Result<()> {
     Ok(())
 }
 
+// Native tray/second-instance action only. No webview command or event can
+// request a new login capability, including a same-origin or sandboxed frame.
+fn refresh_management_login(app: &tauri::AppHandle) {
+    let state = app.state::<ServiceState>();
+    if state.stopping.load(Ordering::SeqCst) || state.updating.load(Ordering::SeqCst)
+        || state.reopening.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err()
+    {
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let result = (|| {
+            let state = handle.state::<ServiceState>();
+            let mut guard = state.process.lock().map_err(|_| "Desktop service state is unavailable")?;
+            if state.stopping.load(Ordering::SeqCst) || state.updating.load(Ordering::SeqCst) {
+                return Err("Desktop service is stopping".to_string());
+            }
+            guard.as_mut().ok_or("Desktop service has not started")?.bootstrap()
+        })();
+        match result {
+            Ok(address) => {
+                let window_handle = handle.clone();
+                let scheduled = handle.run_on_main_thread(move || {
+                    let state = window_handle.state::<ServiceState>();
+                    if !state.stopping.load(Ordering::SeqCst) && !state.updating.load(Ordering::SeqCst) {
+                        if let Some(window) = window_handle.get_webview_window("main") {
+                            if let Ok(url) = address.parse() { let _ = window.navigate(url); }
+                        }
+                    }
+                    state.reopening.store(false, Ordering::SeqCst);
+                });
+                if scheduled.is_err() {
+                    handle.state::<ServiceState>().reopening.store(false, Ordering::SeqCst);
+                }
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                handle.state::<ServiceState>().reopening.store(false, Ordering::SeqCst);
+            }
+        }
+    });
+}
+
 fn show_existing(app: &tauri::AppHandle) {
     if let Some(window) = app
         .get_webview_window("main")
@@ -205,6 +249,7 @@ fn show_existing(app: &tauri::AppHandle) {
         let _ = window.show();
         set_main_webview_visible(app, true);
         let _ = window.set_focus();
+        if window.label() == "main" { refresh_management_login(app); }
     }
 }
 

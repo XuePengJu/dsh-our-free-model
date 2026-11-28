@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { measureModelTest, runModelTest, modelAvailability, MODEL_TEST_TIMEOUT_MS } from '../src/model-test.js'
 import { createRuntimeStores, createModelRuntime, computeMembership } from '../src/core/runtime.js'
+import { createApiRoutes } from '../index.js'
 import { CODE } from '../src/http.js'
 
 const text = value => ({ type: 'text-delta', text: value })
@@ -133,4 +134,69 @@ test('an older overlapping failed test cannot overwrite the newer successful res
 test('a listing alone is not reported as a successful test', () => {
   assert.equal(modelAvailability('eac/test', {}, true).availabilitySource, 'listing')
   assert.equal(modelAvailability('eac/test', {}, true).availability, 'unknown')
+})
+
+const BUN_MISSING_DETAIL = 'OpenCode 免费车道推理需要本机 Bun：请安装 Bun（https://bun.sh 或 npm i -g bun）后重试，或把 Bun 可执行文件路径写入 OUR_FREE_MODEL_BUN 环境变量。安装 Bun 后上游仍可能以 403 地区限制或 429 免费额度拒绝；这属于另一层状态。'
+
+test('a cached "no Bun" result stops being reported once a Bun executable resolves', () => {
+  const snapshot = { manualResults: { m: { state: 'unknown', source: 'manual', at: 1, detail: BUN_MISSING_DETAIL } } }
+  const unavailable = modelAvailability('m', snapshot, false, { bunAvailable: false })
+  assert.match(unavailable.detail, /需要本机 Bun/)
+  assert.match(unavailable.detail, /403.*429/)
+  assert.equal(unavailable.availabilityState, 'transport-unavailable')
+  assert.equal(unavailable.availability, 'unknown')
+  assert.equal(modelAvailability('m', snapshot, false, { bunAvailable: true }).detail, '')
+  // A real model failure is not mistaken for the transport sentence.
+  const failed = { manualResults: { m: { state: 'unknown', source: 'manual', at: 1, detail: 'Upstream request failed: model is unavailable' } } }
+  assert.equal(modelAvailability('m', failed, false, { bunAvailable: true }).detail, 'Upstream request failed: model is unavailable')
+})
+
+test('the summary re-reads Bun on every request instead of replaying the boot value', async () => {
+  let ready = false
+  const deps = {
+    state: () => ({
+      catalog: [{ id: 'm', name: 'm', contextWindow: 1000, maxOutput: 100 }],
+      settings: {},
+      membership: {},
+    }),
+    availability: {
+      get: () => ({
+        at: 0, egress: null, lane: null, results: {},
+        manualResults: { m: { state: 'unknown', source: 'manual', at: 1, detail: BUN_MISSING_DETAIL } },
+      }),
+    },
+    forwardInfo: () => ({ running: false, port: 0, error: '', lan: {} }),
+    update: { status: () => ({}) },
+    announcements: { view: () => ({ unread: 0, fetchedAt: 0 }) },
+    settings: { get: () => ({ defaultMaxTokens: 4096 }) },
+    egressInfo: () => ({}),
+    meta: () => ({ version: 'test', distribution: 'self' }),
+    bunAvailable: () => ready,
+    laneAvailable: () => false,
+    channels: () => ({ state: 'unknown', error: '' }),
+  }
+  const handler = createApiRoutes(deps)
+  const read = async () => {
+    const res = { status: 0, body: '', writeHead(status) { this.status = status }, end(body) { this.body = body } }
+    await handler({ url: '/api/our-free-model/summary', method: 'GET', headers: { host: '127.0.0.1' } }, res)
+    assert.equal(res.status, 200)
+    return JSON.parse(res.body)
+  }
+  const before = await read()
+  assert.equal(before.bun, false)
+  assert.match(before.catalog[0].detail, /需要本机 Bun/)
+  ready = true
+  const after = await read()
+  assert.equal(after.bun, true)
+  assert.equal(after.catalog[0].detail, '')
+})
+
+test('the transport state is distinct from an upstream model verdict', () => {
+  const snapshot = { manualResults: { m: { state: 'unknown', source: 'manual', at: 1, detail: BUN_MISSING_DETAIL } } }
+  const local = modelAvailability('m', snapshot, false, { bunAvailable: false })
+  assert.deepEqual([local.availability, local.availabilityState], ['unknown', 'transport-unavailable'])
+  const region = { manualResults: { m: { state: 'region-blocked', source: 'manual', at: 2, detail: 'HTTP 403 RegionError' } } }
+  assert.deepEqual(modelAvailability('m', region, false, { bunAvailable: false }),
+    { availabilitySource: 'manual', availability: 'region-blocked', detail: 'HTTP 403 RegionError', probedAt: 2,
+      ttftMs: undefined, latencyMs: undefined })
 })

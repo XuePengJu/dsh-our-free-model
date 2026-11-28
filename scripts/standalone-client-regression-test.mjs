@@ -176,7 +176,9 @@ let editor = render(ChainEditor, editorProps)
 let capacity = nodes(editor).find(node => node.type === ChainCapacity).props.capacity
 assert.equal(capacity.contextWindow, 128000)
 assert.equal(capacity.maxOutput, 16000)
-assert.equal(capacity.vision, false)
+// upstream 2.9 起 combo 的 vision 语义为「任一成员支持即广播」（适配器分派时
+// 逐成员过滤视觉请求，见 src/adapter.js）；token 容量保持交集。
+assert.equal(capacity.vision, true)
 effects.length = 0
 button(editor, t('routing.removeMember')).props.onClick()
 render(ChainEditor, editorProps)

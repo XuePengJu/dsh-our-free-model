@@ -6,7 +6,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { bunFetch, bunWorkerPath, findBunExecutable } from '../src/bun-fetch.js';
+import { bunFetch, bunWorkerPath, findBunExecutable, bunExecutableCandidates } from '../src/bun-fetch.js';
 
 const server = http.createServer();
 const sockets = new Set();
@@ -46,6 +46,17 @@ const nodeOptions = { executable: process.execPath };
 const call = (path, init = {}, options = nodeOptions) => bunFetch(base + path, init, options);
 const deadline = setTimeout(() => { console.error('Test deadline exceeded'); process.exit(1); }, 30000);
 try {
+  await test('GUI discovery includes macOS package managers and Windows native installs with empty PATH (#852)', async () => {
+    const home = path.join(os.tmpdir(), 'ofm-detection-home');
+    const mac = bunExecutableCandidates({ platform: 'darwin', env: {}, home });
+    for (const candidate of ['/opt/homebrew/bin/bun', '/usr/local/bin/bun', '/opt/local/bin/bun']) assert.ok(mac.includes(candidate));
+    const win = bunExecutableCandidates({ platform: 'win32', env: { APPDATA: home, LOCALAPPDATA: home }, home });
+    assert.ok(win.includes(path.join(home, 'scoop', 'apps', 'bun', 'current', 'bun.exe')));
+    assert.ok(win.includes(path.join(home, 'Microsoft', 'WinGet', 'Links', 'bun.exe')));
+    assert.ok(win.includes(path.join(home, 'npm', 'node_modules', 'bun', 'bin', 'bun.exe')));
+    assert.equal(bunExecutableCandidates({ platform: 'darwin', env: { OUR_FREE_MODEL_BUN: '/chosen/bun' }, home })[0], '/chosen/bun');
+    assert.ok(mac.every(candidate => !candidate.endsWith('.cmd')));
+  });
   await test('string and byte bodies / request and response headers', async () => {
     for (const body of ['hello ✓\u0000', Uint8Array.from([0, 255, 128, 10, 13])]) {
       const response = await call('/echo', { method: 'POST', headers: { 'x-test': 'kept', authorization: 'Bearer PRIVATE' }, body });
@@ -179,6 +190,37 @@ try {
         fs.rmSync(scratch, { recursive: true, force: true });
         if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
       }
+    }
+  });
+  await test('detection prefers OUR_FREE_MODEL_BUN and finds the standard ~/.bun/bin install', async () => {
+    const keys = ['OUR_FREE_MODEL_BUN', 'BUN_INSTALL', 'APPDATA', 'PATH', 'USERPROFILE', 'HOME'];
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-bun-detect-'));
+    const name = process.platform === 'win32' ? 'bun.exe' : 'bun';
+    try {
+      const home = path.join(scratch, 'home');
+      const standard = path.join(home, '.bun', 'bin', name);
+      fs.mkdirSync(path.dirname(standard), { recursive: true });
+      fs.writeFileSync(standard, '');
+      if (process.platform !== 'win32') fs.chmodSync(standard, 0o755);
+      process.env.USERPROFILE = home;
+      process.env.HOME = home;
+      delete process.env.OUR_FREE_MODEL_BUN;
+      delete process.env.BUN_INSTALL;
+      delete process.env.APPDATA;
+      process.env.PATH = '';
+      assert.equal(findBunExecutable(), path.resolve(standard));
+      // The explicit override remains the highest-priority candidate.
+      process.env.OUR_FREE_MODEL_BUN = process.execPath;
+      assert.equal(findBunExecutable(), path.resolve(process.execPath));
+      // A stale or mistyped override is skipped, not fatal.
+      process.env.OUR_FREE_MODEL_BUN = path.join(scratch, 'missing', name);
+      assert.equal(findBunExecutable(), path.resolve(standard));
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+      }
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
   });
   const bun = findBunExecutable();

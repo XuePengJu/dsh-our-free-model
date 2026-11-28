@@ -61,6 +61,7 @@ export interface ProviderAccountEntry {
   refreshable: boolean
   /** 每个模型的重置时间，key=模型ID（毫秒时间戳） */
   modelRateLimits?: Record<string, number>
+  suspendedUntil?: number
   /**
    * TRAE 签到设备轮换代次（仅 `trae` provider 使用）。
    *
@@ -812,6 +813,14 @@ export interface RpcModelListEntry {
 /** RPC: 列出某 provider 的模型响应 */
 export interface RpcModelListResponse {
   models: RpcModelListEntry[]
+  /** 来源日期不是页面刷新日期；重读静态表不能称作远端目录刷新成功。 */
+  catalog?: {
+    source: 'static-snapshot'
+    snapshotDate: string
+    pricing: 'reference-only'
+    refreshSupported: false
+    refreshUnavailableReason: 'missing-authorized-catalog-contract'
+  }
 }
 
 /** RPC: 打开/关闭某个模型请求 */

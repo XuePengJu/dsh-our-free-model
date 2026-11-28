@@ -31,7 +31,6 @@ import { isEacEntry, isKiloEntry, isExtensionEntry } from './catalog.js'
 import { isComboEntry, comboChain } from './combos.js'
 import { applyTokenSavers, saverConfig } from './token-saver.js'
 import { classifyFailure, describeVerdict, shouldAdvance } from './route/classify.js'
-import { FALLBACK_IMAGE_PRICING } from './image-pricing.js'
 import { isSubscriptionEntry, subscriptionChunks } from './subscription-adapter.js'
 
 /**
@@ -51,6 +50,14 @@ import { isSubscriptionEntry, subscriptionChunks } from './subscription-adapter.
  * thinks for a minute while streaming its thoughts keeps resetting the clock.
  */
 const CHAIN_SILENCE_MS = 25_000
+
+/** Recognize request images, including tool-result content and compatible API blocks. */
+function hasRequestImage(content) {
+  if (Array.isArray(content)) return content.some(hasRequestImage)
+  if (content === null || typeof content !== 'object' || content.offloaded === true) return false
+  return content.type === 'image' || content.type === 'image_url' || content.type === 'input_image'
+    || content.image_url !== undefined || hasRequestImage(content.content)
+}
 
 /** Distinguishes "the watchdog fired" from a row the iterator really produced. */
 const SILENT_CANDIDATE = Symbol('ofm-silent-candidate')
@@ -77,6 +84,97 @@ async function nextOrSilence(iterator, ms) {
 
 export const ROUTE_MAIN = 'our-free-model'
 export const ROUTE_REGION = 'our-free-model-region'
+
+// Only the currently maintained account providers may cross this bridge. In
+// particular, a third-party registration must not revive removed channels.
+export const ACCOUNT_CHANNEL_PROVIDERS = Object.freeze([
+  'lobsterai', 'qoder', 'qodercn', 'trae', 'cline', 'loomy', 'raccoon', 'minimax', 'zcode', 'gemini',
+])
+const isAccountChannelEntry = entry => entry?.accountChannel === true
+  && ACCOUNT_CHANNEL_PROVIDERS.includes(entry.accountProvider)
+
+// GenerateOptions has no forced-tool-selection contract. Disabling future
+// calls is representable by withholding declarations; a forced choice is not.
+// Reject it before dispatch rather than silently letting the model use AUTO.
+function nativeAccountRequest(request) {
+  const { toolChoice, ...native } = request
+  if (toolChoice !== undefined && toolChoice !== 'auto' && toolChoice !== 'none') {
+    throw new UpstreamError('Account channels do not support required or named tool_choice', CODE.client, { status: 400 })
+  }
+  if (toolChoice === 'none') delete native.tools
+  return native
+}
+
+/** Project public model metadata only; never copy credentials from a runtime. */
+export function accountChannelCatalog(runtime) {
+  if (typeof runtime?.catalog !== 'function' || typeof runtime?.complete !== 'function') return []
+  const capacity = (value, fallback) => Number.isSafeInteger(value) && value > 0 ? value : fallback
+  return runtime.catalog().flatMap(row => {
+    if (typeof row?.id !== 'string') return []
+    const slash = row.id.indexOf('/')
+    const provider = row.id.slice(0, slash)
+    const model = row.id.slice(slash + 1)
+    if (slash < 1 || !model || !ACCOUNT_CHANNEL_PROVIDERS.includes(provider)) return []
+    return [{
+      id: `account:${row.id}`, name: typeof row.name === 'string' && row.name !== '' ? row.name : row.id,
+      channel: provider, accountChannel: true, accountProvider: provider, accountModel: model, accountModelId: row.id,
+      contextWindow: capacity(row.contextWindow ?? row.context_window, 131072),
+      maxOutput: capacity(row.maxOutput ?? row.max_tokens, 8192),
+      vision: row.vision === true || row.inputModalities?.includes('image') === true || row.input?.includes('image') === true,
+      reasoning: row.reasoning === true || Array.isArray(row.efforts) || Array.isArray(row.x_ofm_efforts),
+      ...Array.isArray(row.efforts ?? row.x_ofm_efforts) ? { efforts: [...(row.efforts ?? row.x_ofm_efforts)] } : {},
+    }]
+  })
+}
+
+/** Host seam: call existing provider registrations directly, never our own route. */
+export function createAccountChannelBridge(llm, onCatalogChanged = () => {}) {
+  let rows = []
+  let refreshing
+  let stopped = false
+  return {
+    catalog: () => rows,
+    async refresh() {
+      if (stopped || typeof llm?.listModels !== 'function') return rows
+      if (refreshing) return refreshing
+      refreshing = (async () => {
+        const groups = await Promise.all(ACCOUNT_CHANNEL_PROVIDERS.map(async provider => {
+          try {
+            const listed = await llm.listModels(provider)
+            return await Promise.all(listed.map(async model => {
+              let info
+              try { info = await llm.resolveModelInfo?.(provider, model.id) } catch {}
+              return {
+                id: `${provider}/${model.id}`, name: model.name ?? model.id,
+                inputModalities: info?.inputModalities ?? model.inputModalities,
+                contextWindow: info?.context?.contextWindow,
+                maxOutput: info?.defaultMaxTokens,
+                efforts: info?.reasoning?.efforts?.map(level => typeof level === 'string' ? level : level.id),
+              }
+            }))
+          } catch { return [] } // A removed/unmounted provider contributes no rows.
+        }))
+        const next = groups.flat()
+        if (!stopped && JSON.stringify(next) !== JSON.stringify(rows)) {
+          rows = next
+          onCatalogChanged()
+        }
+        return rows
+      })().finally(() => { refreshing = undefined })
+      return refreshing
+    },
+    async complete(request, onChunk) {
+      if (stopped || !rows.some(row => row.id === request.model)) {
+        throw Object.assign(new Error('Account channel model is unavailable or disabled'), { code: CODE.client, status: 404 })
+      }
+      const slash = request.model.indexOf('/')
+      const provider = request.model.slice(0, slash)
+      const model = request.model.slice(slash + 1)
+      for await (const chunk of llm.stream(nativeAccountRequest({ ...request, provider, model }))) onChunk(chunk)
+    },
+    dispose() { stopped = true; rows = [] },
+  }
+}
 
 /** Group headings — the only strings the picker shows as a section title. */
 export const ROUTE_LABELS = {
@@ -159,7 +257,7 @@ export class FreeModelAdapter {
     const state = this.deps.state()
     const ids = new Set(state.membership[provider] ?? [])
     return state.catalog
-      .filter(entry => ids.has(entry.id))
+      .filter(entry => ids.has(entry.id) && !isAccountChannelEntry(entry))
       .map(entry => ({
         provider,
         id: entry.id,
@@ -303,33 +401,56 @@ export class FreeModelAdapter {
       yield { type: 'finish', reason: { kind: 'error', failure: { message: 'our free model is switched off in its settings page', code: 'CONFIG_DISABLED' } } }
       return
     }
+    const needsVision = hasRequestImage(options.messages)
     const candidates = comboChain(entry, snapshot.catalog, snapshot.routing ?? {})
+      .filter(candidate => !needsVision || candidate.vision !== false)
     if (candidates.length === 0) {
       rejectedTurn(0)
-      yield { type: 'finish', reason: { kind: 'error', failure: { message: `the chain "${entry.name}" has no model available on this egress`, code: CODE.server } } }
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: needsVision ? `the chain "${entry.name}" has no image-capable candidate available on this egress`
+          : `the chain "${entry.name}" has no model available on this egress`,
+        code: needsVision ? CODE.client : CODE.server,
+      } } }
       return
     }
     const tried = []
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index]
-      const iterator = this.runSingle(options, candidate, snapshot, {
+      const candidateController = new AbortController()
+      const candidateOptions = { ...options, signal: options.signal
+        ? AbortSignal.any([options.signal, candidateController.signal]) : candidateController.signal }
+      const iterator = this.runSingle(candidateOptions, candidate, snapshot, {
         wire: wireOf(candidate),
         turnModel: entry.id,
         recordTurn: false,
         allowAdvance: true,
       })
       let committed = false
+      let completed = false
+      let ending
       let result
       const held = []
-      while (true) {
-        const row = committed ? await iterator.next() : await nextOrSilence(iterator, CHAIN_SILENCE_MS)
-        if (row.done === true) { result = row.value; break }
-        if (committed) { yield row.value; continue }
-        held.push(row.value)
-        if (commitsAnswer(row.value)) {
-          committed = true
-          for (const chunk of held) yield chunk
-          held.length = 0
+      try {
+        while (true) {
+          const row = committed ? await iterator.next() : await nextOrSilence(iterator, CHAIN_SILENCE_MS)
+          if (row.done === true) { completed = true; result = row.value; break }
+          if (row.value?.type === 'finish') ending = row.value
+          if (committed) { yield row.value; continue }
+          held.push(row.value)
+          if (commitsAnswer(row.value)) {
+            committed = true
+            for (const chunk of held) yield chunk
+            held.length = 0
+          }
+        }
+      } finally {
+        candidateController.abort()
+        if (!completed) {
+          try { await iterator.return?.() }
+          finally {
+            this.deps.recordTurn?.({ at: started, model: entry.id, ok: ending?.reason?.kind === 'stop',
+              recovered: false, attempts: index + 1, origin: 'harness' })
+          }
         }
       }
       if (committed) {
@@ -341,9 +462,9 @@ export class FreeModelAdapter {
         // Not a candidate fault — an abort, or a failure that arrived after the
         // single-model recovery budget was spent. Hand the caller the real
         // ending instead of pretending another model could have saved it.
-        for (const chunk of held) yield chunk
         note(candidate, index, 'aborted', 'aborted')
         rejectedTurn(index + 1)
+        for (const chunk of held) yield chunk
         return
       }
       const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
@@ -398,6 +519,9 @@ export class FreeModelAdapter {
     if (isSubscriptionEntry(entry)) return yield * this.runSubscription({
       ...options, maxTokens: Math.min(options.maxTokens ?? settings.defaultMaxTokens ?? entry.maxOutput, entry.maxOutput),
     }, entry, plan)
+    if (isAccountChannelEntry(entry)) return yield * this.runAccountChannel({
+      ...options, maxTokens: Math.min(options.maxTokens ?? settings.defaultMaxTokens ?? entry.maxOutput, entry.maxOutput),
+    }, entry, plan)
 
     const sealed = isEacEntry(entry)
     const kilo = isKiloEntry(entry)
@@ -412,13 +536,48 @@ export class FreeModelAdapter {
       // wall no model/session/UA choice moves (issue #767 measured exactly
       // that), so the lane refuses locally instead of feeding the wall another
       // request. `重试` here means changing the exit or waiting for `retryAt`.
+      //
+      // This refusal reports itself the way every other pre-request refusal in
+      // this function does — a `finish` chunk carrying a classified failure —
+      // and deliberately does NOT throw. A throw here escapes the `try` below
+      // (it starts at the request, hundreds of lines down), so the host received
+      // a bare exception with no `failure.code` and rendered it as UNKNOWN:
+      // measured 2026-11-22, the one error the user could act on was the one
+      // error the page could not classify.
+      //
+      // It must also not re-enter `onFreeLaneOutcome`: that records the verdict
+      // that opened this window, so feeding the local refusal back into it would
+      // push `retryAt` forward on every attempt and the window would never close
+      // while the user kept trying.
       const gate = this.deps.freeLaneGate?.()
       if (gate?.ok === false) {
-        const when = Number.isFinite(gate.retryAt) ? new Date(gate.retryAt).toISOString() : 'until the exit changes'
-        throw new UpstreamError(
-          `the OpenCode free quota window is open on this egress${gate.message ? `: ${gate.message}` : ''} — retry after ${when}, or switch the lane's exit proxy; Kilo and extension channels are unaffected`,
-          CODE.quota,
-          { ...(Number.isFinite(gate.retryAt) ? { providerRetryAfterMs: Math.max(1000, gate.retryAt - Date.now()) } : {}), laneQuota: true, laneState: gate.state })
+        const since = Number.isFinite(gate.since) ? new Date(gate.since).toISOString() : ''
+        const until = Number.isFinite(gate.retryAt) ? new Date(gate.retryAt).toISOString() : ''
+        const lifted = gate.state === 'locked'
+          ? 'changing the lane exit lifts it'
+          : `it lifts at ${until}`
+        recordRejectedTurn()
+        yield {
+          type: 'finish',
+          reason: {
+            kind: 'error',
+            failure: {
+              message: `our free model is holding this lane shut locally: a ${gate.state === 'locked' ? 'client-gate refusal' : 'quota 429'}${since ? ` recorded at ${since}` : ''} opened a cooldown on this exit${gate.message ? ` (${gate.message})` : ''} — ${lifted}; use "解除车道锁定" on the settings page to retry now, or switch the lane's exit proxy. Kilo and extension channels are unaffected`,
+              code: CODE.quota,
+              ...(Number.isFinite(gate.retryAt) ? { providerRetryAfterMs: Math.max(1000, gate.retryAt - Date.now()) } : {}),
+              laneQuota: true,
+              laneState: gate.state,
+            },
+          },
+        }
+        // A combo may still have a candidate this gate does not cover (a Kilo or
+        // EAC row carries its own lane), so the refusal stays advanceable. For a
+        // single model `allowAdvance` is absent and nothing moves.
+        return {
+          ok: false,
+          advance: plan.allowAdvance === true && options.signal?.aborted !== true,
+          verdict: null,
+        }
       }
     }
     // The absorbed channels speak the Chat wire regardless of what their ids
@@ -807,6 +966,79 @@ export class FreeModelAdapter {
     }
   }
 
+  /** Dispatch once to the native channel; its own account rotation stays intact. */
+  async * runAccountChannel(options, entry, plan) {
+    const started = Date.now()
+    let first
+    let answered = false
+    let usage
+    let ending
+    let ok = false
+    let dispatched = false
+    let stream
+    const blocks = createBlockTracker()
+    try {
+      const runtime = this.deps.accountChannelRuntime
+      if (typeof runtime?.complete !== 'function') throw new UpstreamError('Account channel runtime is unavailable', CODE.server)
+      const request = nativeAccountRequest({
+        ...options, model: entry.accountModelId, provider: entry.accountProvider,
+        messages: repairToolPairing(options.messages ?? []),
+        maxTokens: Math.min(options.maxTokens ?? entry.maxOutput, entry.maxOutput),
+        // This adapter owns OFM's one physical sample and logical turn. The
+        // native provider's separate token ledger continues to record normally.
+        recordUsage: false, recordTurn: false,
+      })
+      dispatched = true
+      stream = subscriptionChunks(runtime, request)
+      while (true) {
+        const row = await stream.next()
+        if (row.done) {
+          if (row.value?.error) throw Object.assign(new Error(row.value.error), row.value.failure)
+          break
+        }
+        const chunk = row.value
+        if (chunk.type === 'finish') { ending = chunk; continue }
+        if (chunk.type === 'usage') usage = chunk.usage
+        if (commitsAnswer(chunk)) { answered = true; first ??= Date.now() }
+        blocks.accept(chunk)
+        yield chunk
+      }
+      if (!ending) throw new UpstreamError('Account channel ended without a finish event', CODE.transport)
+      if (ending.reason?.kind === 'error' || ending.reason?.kind === 'aborted') {
+        throw Object.assign(new Error(ending.reason.failure?.message ?? 'Account channel failed'), ending.reason.failure, {
+          code: ending.reason.kind === 'aborted' ? CODE.aborted : ending.reason.failure?.code,
+        })
+      }
+      ok = true
+      yield ending
+      return { ok: true, advance: false, verdict: null, recovered: false }
+    } catch (error) {
+      const aborted = options.signal?.aborted === true || error?.code === CODE.aborted
+      let failure = toFailure({ ...error, message: error?.message, code: error?.code, status: error?.status ?? error?.statusCode })
+      // A host retry must not replay already delivered tool/text output.
+      if (answered && this.providerRetryPolicy().retryableCodes.includes(failure.code)) failure = { ...failure, code: 'STREAM_CUT' }
+      const verdict = aborted ? null : classifyFailure(failure)
+      for (const chunk of blocks.close()) yield chunk
+      yield { type: 'finish', reason: { kind: aborted ? 'aborted' : 'error', failure } }
+      return { ok: false, advance: plan.allowAdvance === true && !aborted && !answered && shouldAdvance(verdict), verdict }
+    } finally {
+      await stream?.return()
+      if (dispatched) this.deps.recordUsage?.({
+        at: started, model: entry.id, ok,
+        input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0,
+        reasoning: usage?.reasoningTokens ?? 0, cacheRead: usage?.cacheReadTokens ?? 0,
+        origin: 'harness', elapsedMs: Date.now() - started,
+        ttftMs: first === undefined ? undefined : first - started,
+        decodeMs: first === undefined ? 0 : Date.now() - first,
+        decodeTokens: ok ? windowTokens(usage, false) : 0,
+        noUsage: usage === undefined, aborted: options.signal?.aborted === true,
+      })
+      if (plan.recordTurn !== false) this.deps.recordTurn?.({
+        at: started, model: plan.turnModel ?? entry.id, ok, recovered: false, attempts: 1, origin: 'harness',
+      })
+    }
+  }
+
   /** The subscription helper owns physical usage; the caller owns the turn. */
   async * runSubscription(options, entry, plan) {
     let answered = false
@@ -1074,3 +1306,16 @@ function describe(entry, settings) {
   }
   return parts.join(' · ')
 }
+
+/**
+ * 缺少厂商视觉计价协议时的同步估算，供宿主的 Token 预算和结果落盘使用。
+ * 1024 是兜底估算值，不代表所有厂商的真实消耗或上限。已移出请求的图片只计描述文本。
+ */
+export const FALLBACK_IMAGE_PRICING = Object.freeze({
+  /** @param {readonly { offloaded?: boolean }[]} images */
+  priceImages(images) {
+    return images.map(image => image.offloaded === true
+      ? { visualTokens: 0, text: '[image omitted]' }
+      : { visualTokens: 1024, text: '[image]' })
+  },
+})

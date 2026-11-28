@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minimize2, RefreshCw, Settings2 } from 'lucide-react'
 import { Button } from './components/ui'
 import { management } from './management'
+import { t } from './i18n.mjs'
 import './workspace.css'
 
 /**
@@ -19,7 +20,7 @@ export function Workspace({ active }: { active: boolean }) {
   const [generation, setGeneration] = useState(0)
   const [expanded, setExpanded] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
-  const host = useRef<HTMLDivElement>(null)
+  const panel = useRef<HTMLDialogElement>(null)
   const started = useRef(false)
 
   const syncTheme = () => {
@@ -56,7 +57,7 @@ export function Workspace({ active }: { active: boolean }) {
       .catch(reason => {
         if (!alive) return
         setState('error')
-        setError(reason instanceof Error ? reason.message : '模型工作台启动失败')
+        setError(reason instanceof Error ? reason.message : t('ws.startFailed'))
       })
     return () => { alive = false }
   }, [active, generation])
@@ -73,38 +74,63 @@ export function Workspace({ active }: { active: boolean }) {
   }, [])
 
   useEffect(() => {
-    if (!expanded) return
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setExpanded(false) }
-    window.addEventListener('keydown', escape)
+    if (!expanded || !panel.current) return
+    const host = panel.current
     const previous = document.activeElement as HTMLElement | null
+    // Keep the iframe in place while the browser promotes this dialog above
+    // sticky headers and transformed page containers.
+    host.close()
+    host.showModal()
     return () => {
-      window.removeEventListener('keydown', escape)
+      host.close()
+      host.show()
       if (previous?.isConnected) previous.focus?.()
     }
   }, [expanded])
+
+  useEffect(() => {
+    if (!expanded || state !== 'ready' || !frame.current) return
+    const iframe = frame.current
+    let doc: Document | null = null
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if ([...doc!.querySelectorAll('dialog[open],[role="dialog"][aria-modal="true"]')].some(dialog => dialog.getClientRects().length)) return
+      setExpanded(false)
+    }
+    const bind = () => {
+      try {
+        doc?.removeEventListener('keydown', escape)
+        doc = iframe.contentDocument
+        doc?.addEventListener('keydown', escape)
+      } catch { /* cross-origin frames keep their own keyboard handling */ }
+    }
+    bind()
+    iframe.addEventListener('load', bind)
+    return () => { iframe.removeEventListener('load', bind); doc?.removeEventListener('keydown', escape) }
+  }, [expanded, state])
 
   const refresh = async () => {
     try {
       await management('/engine/refresh', {})
       frame.current?.contentWindow?.postMessage({ type: 'ofm:engine-action', action: 'refresh' }, window.location.origin)
-    } catch { setError('刷新失败，请重试') }
+    } catch { setError(t('ws.refreshFailed')) }
   }
 
   const toolbar = (
     <header className="ws-toolbar">
       <div className="ws-title">
-        <h2>模型工作台（magpie）</h2>
-        <p>在应用内管理渠道、账号与模型；改动会同步进模型清单。</p>
+        <h2>{t('ws.title')}</h2>
+        <p>{t('ws.sub')}</p>
       </div>
-      <div className="ws-tools" role="group" aria-label="模型工作台操作">
+      <div className="ws-tools" role="group" aria-label={t('ws.toolsAria')}>
         <Button variant="ghost" size="icon"
-          title={expanded ? '退出全屏' : '全屏'} aria-label={expanded ? '退出全屏' : '全屏'}
+          title={expanded ? t('ws.exitFullscreen') : t('ws.fullscreen')} aria-label={expanded ? t('ws.exitFullscreen') : t('ws.fullscreen')}
           onClick={() => setExpanded(value => !value)}>
           {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </Button>
         {state === 'ready' && <>
-          <Button variant="ghost" size="icon" title="刷新" aria-label="刷新" onClick={() => void refresh()}><RefreshCw size={17} /></Button>
-          <Button variant="ghost" size="icon" title="工作台设置" aria-label="工作台设置"
+          <Button variant="ghost" size="icon" title={t('action.refresh')} aria-label={t('action.refresh')} onClick={() => void refresh()}><RefreshCw size={17} /></Button>
+          <Button variant="ghost" size="icon" title={t('ws.settings')} aria-label={t('ws.settings')}
             onClick={() => frame.current?.contentWindow?.postMessage({ type: 'ofm:engine-action', action: 'settings' }, window.location.origin)}>
             <Settings2 size={17} />
           </Button>
@@ -114,19 +140,21 @@ export function Workspace({ active }: { active: boolean }) {
   )
 
   const body = (
-    <div className={`ws-body ${expanded ? 'is-expanded' : ''}`} ref={host}>
+    <div className={`ws-body ${expanded ? 'is-expanded' : ''}`}>
       {error && <div className="ws-error" role="alert">{error}</div>}
       {state === 'ready'
-        ? <iframe ref={frame} className="ws-frame" title="模型工作台"
+        ? <iframe ref={frame} className="ws-frame" title={t('ws.title')}
             src="/api/management/engine/ui/?mode=window&view=providers"
             allow="clipboard-write" referrerPolicy="same-origin"
             onLoad={syncTheme} />
         : <div className="ws-empty" role="status">
-            <span>{state === 'starting' ? '正在启动模型工作台…' : '模型工作台未能启动'}</span>
-            {state === 'error' && <Button onClick={() => { started.current = false; setGeneration(n => n + 1) }}>重试</Button>}
+            <span>{state === 'starting' ? t('ws.starting') : t('ws.empty')}</span>
+            {state === 'error' && <Button onClick={() => { started.current = false; setGeneration(n => n + 1) }}>{t('action.retry')}</Button>}
           </div>}
     </div>
   )
 
-  return <section className={`ws-page ${expanded ? 'is-expanded' : ''}`}>{toolbar}{body}</section>
+  return <dialog ref={panel} open className={`ws-page ${expanded ? 'is-expanded' : ''}`}
+    role={expanded ? 'dialog' : 'region'} aria-modal={expanded ? true : undefined} aria-label={t('ws.title')}
+    onCancel={event => { event.preventDefault(); setExpanded(false) }}>{toolbar}{body}</dialog>
 }

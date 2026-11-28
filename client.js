@@ -60,6 +60,7 @@ window.__ModuleLoader__.load({
         'hint.listed': '来自渠道目录，未做逐模型推理测试；不代表对话或工具调用成功。',
         'hint.region': '该模型按出口地区放行。开启网络代理后，插件会在下一次探测自动把它移入可用分组。',
         'hint.unknown': '尚未探测，默认保持可达。',
+        'hint.transportUnavailable': '本机传输未就绪；这不等于上游模型拒绝。安装或修复本机传输后重新测试。',
         'hint.hidden': '探测显示网关点名了它却不路由它，因此已从模型选择器中移除；某一次探测重新通过，它会自己回来。',
         'hint.sharedBudget': '该模型思考不可关闭：思考与可见回答共用同一份额度，档位越低留给正文的越少。',
         'tag.vision': '视觉',
@@ -170,6 +171,35 @@ window.__ModuleLoader__.load({
         'section.forwardHint': '让其它本地工具用一个 base URL 调用这些模型。',
         'section.egress': '出口代理（订阅分流）',
         'section.egressHint': '把推理与探测请求从代理出口发出，缓解按 IP 的频率限制。',
+        'section.laneExits': '免费车道专属出口',
+        'section.laneExitsHint': '只让 OpenCode 免费车道走这些出口，其它流量不受影响。免费额度按出口 IP 计数——一个出口被限流时，车道会在同一回合里换下一个。',
+        'laneLock.title': '免费车道被本地锁住',
+        'laneLock.quota': '这个出口在 {since} 收到过一次 429，插件正在本地拒绝所有免费车道请求，直到 {until}。',
+        'laneLock.locked': '这个出口在 {since} 收到过一次客户端闸门拒绝（403），插件会一直本地拒绝，直到出口改变或你手动解除。',
+        'laneLock.stale': '上游可能早就恢复了。上面那次判定只代表当时那一刻——解除后下一回合会重新真实请求，若墙还在会立刻重新锁上，不会白烧配额。',
+        'laneLock.release': '解除车道锁定',
+        'laneLock.releasing': '解除中…',
+        'laneLock.released': '已解除。下一次请求会重新真实打向上游。',
+        'laneLock.failed': '解除失败：{message}',
+        'laneLock.hint': '这一层是本插件自己的保护，不是上游返回的错误。它存在的理由是：真的撞墙时不必每回合都等一轮超时。',
+        'laneExits.list': '出口地址（一行一条）',
+        'laneExits.placeholder': 'http://127.0.0.1:7890\nsocks5://127.0.0.1:1080\nhttp://127.0.0.1:7891#pool',
+        'laneExits.hint': '支持 http / https / socks5 / socks5h。地址后加 #pool（或前缀 pool+）表示轮换池端点：每次连接都换 IP，因此不会被冷却。留空则依次回落到全局出口、系统 HTTP(S)_PROXY、直连。',
+        'laneExits.maxTries': '每回合最多换几个出口',
+        'laneExits.maxTriesHint': '1–8。只在出口被限流（429）或 IP 被标记滥用（403）时才换——请求本身有问题时不会白跑其它出口。',
+        'laneExits.apply': '应用出口',
+        'laneExits.none': '未配置专属出口',
+        'laneExits.status': '状态',
+        'laneExits.ok': '可用',
+        'laneExits.cooling': '冷却中（{seconds}s）',
+        'laneExits.pool': '轮换池',
+        'laneExits.test': '测试',
+        'laneExits.testing': '测试中…',
+        'laneExits.testOk': '出口 IP：{ip}',
+        'laneExits.testFail': '测试失败：{message}',
+        'laneExits.clear': '清除冷却',
+        'laneExits.cleared': '已清除 {count} 个出口的冷却',
+        'laneExits.never': '地址按凭据对待：只存在本机设置里，面板不回显已保存的值，改动请整段重新粘贴。',
         'egress.enabled': '启用出口',
         'egress.modeSubscription': '订阅模式（本地 mihomo 自动测速分流）',
         'egress.url': '订阅 / 代理 URL',
@@ -180,6 +210,8 @@ window.__ModuleLoader__.load({
         'egress.urlClearWarn': '清除本机保存的订阅 / 代理地址，并关闭出口',
         'egress.mihomoPath': 'mihomo 路径',
         'egress.mihomoHint': '订阅模式留空则自动查找本机 mihomo（如 Clash Verge）。',
+        'egress.subscriptionInterval': '订阅刷新间隔（秒）',
+        'egress.subscriptionIntervalHint': '60–604800 秒，默认 86400 秒（24 小时）；不改变节点健康检查间隔。',
         'egress.apply': '应用',
         'egress.active': '出口生效中',
         'egress.inactive': '未启用',
@@ -561,6 +593,36 @@ window.__ModuleLoader__.load({
         'eac.tankLabel': '协付池压力',
         'chan.title': 'EAC router',
         'chan.sub': '账号渠道',
+        'chan.backup.title': '账号备份',
+        'chan.backup.export': '导出账号备份',
+        'chan.backup.import': '导入账号备份',
+        'chan.backup.note': '备份 JSON 含明文登录凭据，可用于迁移账号、模型开关和积分锁定设置。请仅保存在可信位置，勿上传、分享或提交到代码仓库。文件上限 8 MiB。',
+        'chan.backup.confirm': '导入会整体替换当前渠道账号、模型开关和备份中的积分锁定设置，不会合并。仅导入可信的备份；其中包含明文登录凭据。继续？',
+        'chan.backup.tooBig': '备份文件超过 8 MiB，未导入或导出。',
+        'chan.backup.invalidJson': '无法读取备份 JSON，请检查文件内容和格式。',
+        'chan.backup.exportFailed': '账号备份导出失败，请检查渠道连接后重试。',
+        'chan.backup.importFailed': '账号备份导入失败，请检查备份格式、版本和渠道连接后重试。',
+        'chan.backup.exported': '已开始下载账号备份。',
+        'chan.backup.exportWarnings': '{count} 条凭据未能导出，对应账号可能需要重新登录。',
+        'chan.backup.imported': '已导入 {accounts} 个账号、{credentials} 条凭据。',
+        'chan.backup.importWarnings': '过期账号 {expired} 个，缺失凭据账号 {missing} 个，跳过凭据 {skipped} 条；部分账号可能需要重新登录。',
+        'chan.name.qodercn': 'Qoder 中国版',
+        'chan.org.youdao': '有道',
+        'chan.org.alibaba': '阿里系',
+        'chan.org.bytedance': '字节',
+        'chan.org.iflytek': '讯飞',
+        'chan.org.sensetime': '商汤',
+        'chan.org.zhipu': '智谱',
+        'chan.note.lobsterai': '龙虾 · 每日签到积分',
+        'chan.note.qoder': '每日 100 Credits，加密推理端点',
+        'chan.note.qodercn': '中国版端点与模型池',
+        'chan.note.trae': '手机号登录',
+        'chan.note.cline': 'Cline 账号免费额度',
+        'chan.note.loomy': '微信扫码，或短信验证码备用',
+        'chan.note.raccoon': '手机号登录',
+        'chan.note.minimax': '设备码 + PKCE，每日签到',
+        'chan.note.zcode': '浏览器登录（需本机可开浏览器）',
+        'chan.note.gemini': '本地回调 OAuth 免费线',
         'chan.search': '搜索渠道、厂商或 ID',
         'chan.filterStatus': '连接状态',
         'chan.filterAll': '全部',
@@ -591,6 +653,10 @@ window.__ModuleLoader__.load({
         'chan.enabled': '已启用',
         'chan.act.enable': '启用',
         'chan.act.disable': '停用',
+        'chan.act.moveUp': '上移',
+        'chan.act.moveDown': '下移',
+        'chan.act.moveUpHint': '上移，提高该账号的使用优先级',
+        'chan.act.moveDownHint': '下移，降低该账号的使用优先级',
         'chan.expires.never': '长效',
         'chan.disabled': '禁用',
         'chan.login.title': '登录 {name}',
@@ -602,6 +668,8 @@ window.__ModuleLoader__.load({
         'chan.login.expired': '等待超时，请重新发起登录。',
         'chan.login.done': '已接入：{login}',
         'chan.login.failed': '登录未完成：{reason}',
+        'chan.login.manualHint': '如果浏览器跳转后显示「无法访问 localhost」：把地址栏里那条完整链接粘贴到这里，点提交即可完成登录（云端/容器部署用）。',
+        'chan.login.manualSubmit': '提交回调链接',
         'chan.test.ok': '连接正常（{ms} ms）',
         'chan.test.failed': '测试失败：{reason}',
         'chan.claim.result': '已领取 {count} 个账号，共 {credit} 积分。',
@@ -617,6 +685,9 @@ window.__ModuleLoader__.load({
         'chan.model.disableAll': '全部禁用',
         'chan.model.enabledCount': '已启用 {enabled}/{total}',
         'chan.model.allScope': '仅操作当前渠道的全部模型',
+        'chan.model.snapshot': '模型来源：静态目录快照（{date}）。模型、倍率及免费状态可能已过期，仅供参考，不代表当前价格或实际扣费。',
+        'chan.model.refreshUnavailable': '远端目录刷新暂不可用：尚无已验证且获授权的目录请求契约。刷新账号、余额或签到不会更新此快照。请在 Qoder 官方客户端核对当前模型和价格。',
+        'chan.model.snapshotPrice': '快照参考：{name}',
         'chan.error': '操作失败：{reason}',
         'chan.confirm.delete': '移除账号 {name}？该账号的凭据会一并删除。',
         'chan.rpc.unavailable': '宿主未提供 connection 服务，渠道操作暂不可用。',
@@ -730,6 +801,7 @@ window.__ModuleLoader__.load({
         'chan.credits.quota': '剩余配额',
         'chan.credits.loaded': '已查询 {count} 个账号',
         'chan.credits.refresh': '刷新余额',
+        'chan.credits.full': '显示完整余额',
         'chan.credits.loading': '余额查询中…',
         'chan.credits.failed': '余额查询失败：{reason}',
         'chan.credits.partial': '{count} 个账号未能查询余额，请展开账号查看原因并重试。',
@@ -974,6 +1046,16 @@ window.__ModuleLoader__.load({
         'routing.savedBody': '链路已保存。',
         'routing.failed': '保存失败',
         'routing.loadFailed': '无法读取链路设置',
+        'routing.ioExport': '导出 JSON',
+        'routing.ioImport': '导入 JSON',
+        'routing.ioNote': '组合链 JSON 只包含链路定义，不含账号、密钥或其它设置。导入会整体替换当前链路，不会合并；导入后可在列表中检查实际解析结果。',
+        'routing.ioInvalid': '无法导入：文件不是有效的组合链 JSON，或格式不符合要求。',
+        'routing.ioTooBig': '组合链 JSON 超过 2 MiB，未导入。',
+        'routing.ioExported': '已开始下载组合链 JSON。',
+        'routing.ioImported': '已导入 {n} 条组合链。',
+        'routing.ioConfirm': '导入会整体替换当前的 {n} 条组合链，不会合并，也不会改动账号、密钥或其它设置。继续？',
+        'routing.ioExportFailed': '导出组合链 JSON 失败。',
+        'routing.ioImportFailed': '导入组合链失败：{reason}',
         'routing.cancel': '取消',
         'routing.edit': '编辑',
         'routing.delete': '删除',
@@ -1015,6 +1097,7 @@ window.__ModuleLoader__.load({
         'hint.listed': 'Listed by the channel; inference has not been tested. This does not confirm chat or tool use.',
         'hint.region': 'This model is gated by egress country. Once a proxy changes your egress, the next probe moves it into the available group by itself.',
         'hint.unknown': 'Not probed yet, so it stays reachable.',
+        'hint.transportUnavailable': 'The local transport is unavailable. This is not an upstream model verdict; repair the local transport and test again.',
         'hint.hidden': 'The gateway names it but refuses to route it, so it is out of the model picker. It returns by itself as soon as a probe gets through.',
         'hint.sharedBudget': 'Thinking cannot be switched off on this model, so thinking and the visible answer share one ceiling — a lower rung leaves the answer less room.',
         'tag.vision': 'Vision',
@@ -1065,7 +1148,7 @@ window.__ModuleLoader__.load({
         'tag.eacChannel': 'EAC lane · co-paid',
         'tag.new': 'NEW',
         'tag.newTitle': 'Just added: relayed to the EAC lane from OpenCode’s free tier.',
-        'tag.hot': '爆',
+        'tag.hot': 'HOT',
         'tag.hotTitle': 'One of the most requested free models right now.',
         'tag.fast': 'Fast',
         'tag.fastTitle': 'Quick first token and high throughput — good for long or back-to-back turns.',
@@ -1079,6 +1162,35 @@ window.__ModuleLoader__.load({
         'section.forwardHint': 'Let other local tools reach these models through one base URL.',
         'section.egress': 'Egress outlet (subscription routing)',
         'section.egressHint': 'Send inference and probe traffic through a proxy outlet to ease per-IP rate limits.',
+        'section.laneExits': 'Free-lane exits',
+        'section.laneExitsHint': 'Route only the OpenCode free lane through these exits; everything else is unaffected. The free allowance is counted per exit IP, so when one is rate-limited the lane moves to the next within the same turn.',
+        'laneLock.title': 'The free lane is held shut locally',
+        'laneLock.quota': 'This exit answered one 429 at {since}, so the plugin is refusing free-lane requests locally until {until}.',
+        'laneLock.locked': 'This exit answered one client-gate refusal (403) at {since}, so the plugin keeps refusing locally until the exit changes or you release it.',
+        'laneLock.stale': 'The upstream may well have recovered already. That verdict describes one moment; releasing sends the next turn upstream for real, and if the wall is still there it re-locks immediately at no quota cost.',
+        'laneLock.release': 'Release the lane lock',
+        'laneLock.releasing': 'Releasing…',
+        'laneLock.released': 'Released. The next request goes upstream for real.',
+        'laneLock.failed': 'Release failed: {message}',
+        'laneLock.hint': 'This layer is the plugin\'s own protection, not an error the upstream returned. It exists so a real wall costs one timed-out turn instead of every turn.',
+        'laneExits.list': 'Exit addresses (one per line)',
+        'laneExits.placeholder': 'http://127.0.0.1:7890\nsocks5://127.0.0.1:1080\nhttp://127.0.0.1:7891#pool',
+        'laneExits.hint': 'Accepts http / https / socks5 / socks5h. Add #pool (or the pool+ prefix) to mark a rotating pool endpoint: every connection exits from a different IP, so it is never cooled. Leave empty to fall back to the global outlet, then the system HTTP(S)_PROXY, then direct.',
+        'laneExits.maxTries': 'Exits to try per turn',
+        'laneExits.maxTriesHint': '1–8. Another exit is only tried when one is rate-limited (429) or its IP is flagged for abuse (403) — a request-level failure does not spend the rest of the pool.',
+        'laneExits.apply': 'Apply exits',
+        'laneExits.none': 'No dedicated exit configured',
+        'laneExits.status': 'Status',
+        'laneExits.ok': 'available',
+        'laneExits.cooling': 'cooling down ({seconds}s)',
+        'laneExits.pool': 'rotating pool',
+        'laneExits.test': 'Test',
+        'laneExits.testing': 'testing…',
+        'laneExits.testOk': 'Exit IP: {ip}',
+        'laneExits.testFail': 'Test failed: {message}',
+        'laneExits.clear': 'Clear cooldowns',
+        'laneExits.cleared': 'Cleared the cooldown on {count} exit(s)',
+        'laneExits.never': 'An address is treated as a credential: it lives in this machine\'s settings only, the panel never echoes a saved value, and a change means pasting the whole list again.',
         'egress.enabled': 'Enable outlet',
         'egress.modeSubscription': 'Subscription mode (local mihomo picks the fastest node)',
         'egress.url': 'Subscription / proxy URL',
@@ -1089,6 +1201,8 @@ window.__ModuleLoader__.load({
         'egress.urlClearWarn': 'Clear the stored subscription / proxy address and turn the outlet off',
         'egress.mihomoPath': 'mihomo path',
         'egress.mihomoHint': 'Leave empty in subscription mode to auto-locate a local mihomo (e.g. Clash Verge).',
+        'egress.subscriptionInterval': 'Subscription refresh interval (seconds)',
+        'egress.subscriptionIntervalHint': '60–604800 seconds; default 86400 (24 hours). Node health checks keep their own interval.',
         'egress.apply': 'Apply',
         'egress.active': 'Outlet active',
         'egress.inactive': 'Not enabled',
@@ -1251,7 +1365,7 @@ window.__ModuleLoader__.load({
         'ann.p2': 'The roster follows upstream: models, context lengths and capabilities are re-fetched on every refresh.',
         'ann.p3': 'Honest capability claims: anything a probe cannot confirm stays hidden, and each effort level is a real output budget.',
         'ann.n1': 'Two new models are live on the EAC lane, relayed from OpenCode’s free tier: DeepSeek V4.1 Flash Free and GLM 5.3 Flash Free.',
-        'ann.n2': 'They lead the EAC models page, marked with a red NEW / 爆 badge and a “Fast” tag.',
+        'ann.n2': 'They lead the EAC models page, marked with a red NEW / HOT badge and a “Fast” tag.',
         'ann.n3': 'Both expose real thinking levels (Low / High / Max), and DeepSeek can also switch thinking off; the level goes to the upstream as-is, not as a prompt hint.',
         'ann.s1': 'Pick any model under the “Our Free Model” group in the composer’s model selector.',
         'ann.s2': 'For harder reasoning, open the Effort menu — it sends a real budget, not a prompt hint.',
@@ -1515,6 +1629,36 @@ window.__ModuleLoader__.load({
         'eac.tankLabel': 'Co-paid pool pressure',
         'chan.title': 'EAC router',
         'chan.sub': 'Account channels',
+        'chan.backup.title': 'Account backup',
+        'chan.backup.export': 'Export account backup',
+        'chan.backup.import': 'Import account backup',
+        'chan.backup.note': 'The backup JSON contains plaintext sign-in credentials and can migrate accounts, model switches and credit lock settings. Keep it in a trusted location; do not upload, share or commit it to a repository. Maximum file size: 8 MiB.',
+        'chan.backup.confirm': 'Import replaces the current channel accounts, model switches and any credit lock settings in the backup; it does not merge them. Only import a trusted backup, which contains plaintext sign-in credentials. Continue?',
+        'chan.backup.tooBig': 'The backup exceeds 8 MiB. No backup was imported or exported.',
+        'chan.backup.invalidJson': 'Unable to read the backup JSON. Check the file contents and format.',
+        'chan.backup.exportFailed': 'Account backup export failed. Check the channel connection and try again.',
+        'chan.backup.importFailed': 'Account backup import failed. Check the backup format, version and channel connection, then try again.',
+        'chan.backup.exported': 'Account backup download started.',
+        'chan.backup.exportWarnings': '{count} credential(s) could not be exported; the affected accounts may need to sign in again.',
+        'chan.backup.imported': 'Imported {accounts} account(s) and {credentials} credential(s).',
+        'chan.backup.importWarnings': 'Expired accounts: {expired}; accounts missing credentials: {missing}; skipped credentials: {skipped}. Some accounts may need to sign in again.',
+        'chan.name.qodercn': 'Qoder China',
+        'chan.org.youdao': 'Youdao',
+        'chan.org.alibaba': 'Alibaba',
+        'chan.org.bytedance': 'ByteDance',
+        'chan.org.iflytek': 'iFlytek',
+        'chan.org.sensetime': 'SenseTime',
+        'chan.org.zhipu': 'Zhipu',
+        'chan.note.lobsterai': 'Lobster · daily check-in credits',
+        'chan.note.qoder': '100 Credits daily, encrypted inference endpoint',
+        'chan.note.qodercn': 'China endpoints and model pool',
+        'chan.note.trae': 'Phone number sign-in',
+        'chan.note.cline': 'Free quota with a Cline account',
+        'chan.note.loomy': 'Scan with WeChat, or use an SMS code',
+        'chan.note.raccoon': 'Phone number sign-in',
+        'chan.note.minimax': 'Device code + PKCE, daily check-in',
+        'chan.note.zcode': 'Browser sign-in (requires a local browser)',
+        'chan.note.gemini': 'Free OAuth lane with a local callback',
         'chan.search': 'Search channel, vendor or ID',
         'chan.filterStatus': 'Connection status',
         'chan.filterAll': 'All',
@@ -1545,6 +1689,10 @@ window.__ModuleLoader__.load({
         'chan.enabled': 'Enabled',
         'chan.act.enable': 'Enable',
         'chan.act.disable': 'Disable',
+        'chan.act.moveUp': 'Up',
+        'chan.act.moveDown': 'Down',
+        'chan.act.moveUpHint': 'Move up: raise this account’s priority',
+        'chan.act.moveDownHint': 'Move down: lower this account’s priority',
         'chan.expires.never': 'Long-lived',
         'chan.disabled': 'Disabled',
         'chan.login.title': 'Sign in to {name}',
@@ -1556,6 +1704,8 @@ window.__ModuleLoader__.load({
         'chan.login.expired': 'Timed out — please start the sign-in again.',
         'chan.login.done': 'Connected: {login}',
         'chan.login.failed': 'Sign-in did not complete: {reason}',
+        'chan.login.manualHint': 'If the browser says it cannot reach localhost: paste the full callback URL from the address bar here and submit (for remote/container deployments).',
+        'chan.login.manualSubmit': 'Submit callback URL',
         'chan.test.ok': 'Connection healthy ({ms} ms)',
         'chan.test.failed': 'Test failed: {reason}',
         'chan.claim.result': 'Claimed for {count} account(s), {credit} credits in total.',
@@ -1571,6 +1721,9 @@ window.__ModuleLoader__.load({
         'chan.model.disableAll': 'Disable all',
         'chan.model.enabledCount': 'Enabled {enabled}/{total}',
         'chan.model.allScope': 'Apply to all models in this channel only',
+        'chan.model.snapshot': 'Model source: static catalog snapshot ({date}). Models, multipliers and free status may be outdated; reference only, not current prices or actual charges.',
+        'chan.model.refreshUnavailable': 'Remote catalog refresh is unavailable: a verified, authorized catalog request contract is missing. Refreshing accounts, balances or check-in does not update this snapshot. Check current models and prices in the official Qoder client.',
+        'chan.model.snapshotPrice': 'Snapshot reference: {name}',
         'chan.error': 'Action failed: {reason}',
         'chan.confirm.delete': 'Remove account {name}? Its credential is deleted with it.',
         'chan.rpc.unavailable': 'This host exposes no connection service, so channel actions are unavailable.',
@@ -1684,6 +1837,7 @@ window.__ModuleLoader__.load({
         'chan.credits.quota': 'Quota left',
         'chan.credits.loaded': '{count} accounts queried',
         'chan.credits.refresh': 'Refresh balance',
+        'chan.credits.full': 'Show full balance',
         'chan.credits.loading': 'Querying balance…',
         'chan.credits.failed': 'Balance query failed: {reason}',
         'chan.credits.partial': 'Could not query {count} accounts. Expand accounts to see the reasons and retry.',
@@ -1929,6 +2083,16 @@ window.__ModuleLoader__.load({
         'routing.savedBody': 'The chain is saved.',
         'routing.failed': 'Not saved',
         'routing.loadFailed': 'Cannot read the chain settings',
+        'routing.ioExport': 'Export JSON',
+        'routing.ioImport': 'Import JSON',
+        'routing.ioNote': 'The chain JSON contains only chain definitions, with no accounts, secrets or other settings. Import replaces every current chain rather than merging them; review the resolved models in the list afterwards.',
+        'routing.ioInvalid': 'Cannot import: the file is not valid chain JSON or does not match the required shape.',
+        'routing.ioTooBig': 'The chain JSON exceeds 2 MiB and was not imported.',
+        'routing.ioExported': 'Chain JSON download started.',
+        'routing.ioImported': 'Imported {n} chain(s).',
+        'routing.ioConfirm': 'Import will replace all {n} current chain(s) rather than merging them. Accounts, secrets and other settings are not changed. Continue?',
+        'routing.ioExportFailed': 'Could not export the chain JSON.',
+        'routing.ioImportFailed': 'Could not import the chains: {reason}',
         'routing.cancel': 'Cancel',
         'routing.edit': 'Edit',
         'routing.delete': 'Delete',
@@ -3058,6 +3222,7 @@ window.__ModuleLoader__.load({
 .ofm_enginebar h2{display:flex;align-items:center;gap:9px;margin:0;font-size:18px;font-weight:650}
 .ofm_enginebar h2::before{content:"";width:9px;height:9px;border-radius:3px;flex:none;background:linear-gradient(135deg,var(--dsw-alias-state-business-primary),var(--dsw-alias-state-success-primary))}
 .ofm_engineworkspace{gap:8px}
+.ofm_enginepanel{position:static;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:100%;max-width:none;max-height:none;min-width:0;margin:0;padding:0;border:0;background:transparent;color:inherit}
 .ofm_enginetools{display:flex;align-items:center;gap:4px;flex:none}
 .ofm_engineicon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none;transition:color .16s ease,background-color .16s ease,border-color .16s ease,transform .12s ease,box-shadow .16s ease}
 .ofm_engineicon:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);transform:translateY(-1px)}
@@ -3065,13 +3230,13 @@ window.__ModuleLoader__.load({
 .ofm_engineicon:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .ofm_engineicon svg{display:block;width:16px;height:16px;transition:transform .3s ease}
 .ofm_engineicon:hover svg{transform:rotate(12deg)}
-.ofm_engineframe{display:block;width:100%;height:clamp(420px,calc(100dvh - 340px),900px);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);color-scheme:normal;animation:ofm_engineframe_in .4s ease}
+.ofm_engineframe{display:block;width:100%;height:min(65dvh,clamp(420px,calc(100dvh - 340px),900px));border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);color-scheme:normal;animation:ofm_engineframe_in .4s ease}
 @keyframes ofm_engineframe_in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .ofm_engineempty{display:flex;flex-direction:column;align-items:flex-start;gap:14px;padding:34px 26px;border:1px dashed var(--dsw-alias-border-l2);border-radius:10px;animation:ofm_workspaceview_in .3s ease}
 .ofm_enginestarting{display:inline-flex;align-items:center;gap:9px}
 .ofm_enginestarting::before{content:"";width:13px;height:13px;border-radius:50%;flex:none;border:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 32%,transparent);border-top-color:var(--dsw-alias-state-business-primary);animation:ofm_engine_spin .9s linear infinite}
 @keyframes ofm_engine_spin{to{transform:rotate(360deg)}}
-.ofm_engineoverlay{position:fixed!important;inset:0;z-index:1900!important;display:flex!important;flex-direction:column;box-sizing:border-box;width:100%!important;max-width:none!important;min-height:0;padding:12px 16px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);gap:10px;animation:ofm_engineoverlay_in .26s cubic-bezier(.2,.9,.3,1)}
+.ofm_engineoverlay{position:fixed!important;inset:0;z-index:1900!important;display:flex!important;flex-direction:column;box-sizing:border-box;width:100%!important;height:100dvh;max-width:none!important;min-height:0;padding:12px 16px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);gap:10px;animation:ofm_engineoverlay_in .26s cubic-bezier(.2,.9,.3,1)}
 @keyframes ofm_engineoverlay_in{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
 .ofm_engineoverlay .ofm_enginebar{flex:none}
 .ofm_engineoverlay .ofm_engineframe{height:100%;min-height:0;flex:1}
@@ -3227,14 +3392,26 @@ window.__ModuleLoader__.load({
 
     function useAsync(loader, deps) {
       const [state, setState] = useState({ status: 'loading', data: undefined, error: '' })
-      const run = useCallback(() => {
-        let alive = true
+      const owner = useRef(null)
+      const latest = useRef(null)
+      const run = useCallback(async () => {
+        if (owner.current !== run) return
+        const request = {}
+        latest.current = request
         setState(current => ({ ...current, status: 'loading' }))
-        loader().then(data => { if (alive) setState({ status: 'ready', data, error: '' }) })
-          .catch(error => { if (alive) setState({ status: 'error', data: undefined, error: String(error?.message ?? error) }) })
-        return () => { alive = false }
+        try {
+          const data = await loader()
+          if (latest.current === request) setState({ status: 'ready', data, error: '' })
+        } catch (error) {
+          if (latest.current === request) setState({ status: 'error', data: undefined, error: String(error?.message ?? error) })
+        }
       }, deps)
-      useEffect(() => run(), [run])
+      useEffect(() => {
+        owner.current = run
+        void run()
+        // Cleanup owns manual reloads too, including callbacks retained by an old dependency set.
+        return () => { owner.current = null; latest.current = null }
+      }, [run])
       return { ...state, reload: run }
     }
 
@@ -3264,21 +3441,47 @@ window.__ModuleLoader__.load({
     }
 
     /** Format a balance with the formatter its declared unit calls for. */
-    function balanceText(value, capability, locale) {
+    function balanceText(value, capability, locale, full = false) {
       if (capability?.unit === 'dollars') return money(value, locale)
+      if (full) {
+        const number = Number(value)
+        if (!Number.isFinite(number)) return '—'
+        return number.toLocaleString(String(locale).toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US', { maximumFractionDigits: 6 })
+      }
       return kilo(value)
     }
 
     function ago(ts, locale) {
       if (!ts) return '—'
-      const seconds = Math.max(1, Math.round((Date.now() - ts) / 1000))
       const zh = String(locale ?? '').toLowerCase().startsWith('zh')
+      // A future timestamp is a deadline, not an age: the lane breaker's
+      // `retryAt` is in the future by definition, and reading it through the
+      // past-tense branch printed "1 秒前" for a window still nineteen hours
+      // out. `until(…)` below is the honest reading of the same instant.
+      if (ts > Date.now()) return until(ts, locale)
+      const seconds = Math.max(1, Math.round((Date.now() - ts) / 1000))
       if (seconds < 60) return zh ? `${seconds} 秒前` : `${seconds}s ago`
       const minutes = Math.round(seconds / 60)
       if (minutes < 60) return zh ? `${minutes} 分钟前` : `${minutes}m ago`
       const hours = Math.round(minutes / 60)
       if (hours < 24) return zh ? `${hours} 小时前` : `${hours}h ago`
       return zh ? `${Math.round(hours / 24)} 天前` : `${Math.round(hours / 24)}d ago`
+    }
+
+    /** Count forward to a deadline: "还有 19 小时" / "in 19h". */
+    function until(ts, locale) {
+      if (!ts) return '—'
+      const zh = String(locale ?? '').toLowerCase().startsWith('zh')
+      // Floor, not round: a deadline 90 minutes out is "1 小时后", and rounding
+      // it up to "2 小时后" would overstate the wait by up to half a unit. `ago`
+      // rounds because an age is a summary; a countdown is a promise.
+      const seconds = Math.max(1, Math.floor((ts - Date.now()) / 1000))
+      if (seconds < 60) return zh ? `${seconds} 秒后` : `in ${seconds}s`
+      const minutes = Math.floor(seconds / 60)
+      if (minutes < 60) return zh ? `${minutes} 分钟后` : `in ${minutes}m`
+      const hours = Math.floor(minutes / 60)
+      if (hours < 24) return zh ? `${hours} 小时后` : `in ${hours}h`
+      return zh ? `${Math.floor(hours / 24)} 天后` : `in ${Math.floor(hours / 24)}d`
     }
 
     function copy(text, done) {
@@ -3830,6 +4033,8 @@ window.__ModuleLoader__.load({
         listed ? h('p', { className: 'ofm_note' }, t('hint.listed'))
           : manual && m.availability !== 'available' ? h('p', { className: 'ofm_note' }, m.detail || t(stateKey))
           : m.availability === 'region-blocked' ? h('p', { className: 'ofm_note' }, t('hint.region'))
+          : m.availabilityState === 'transport-unavailable'
+            ? h('p', { className: 'ofm_note' }, m.detail || t('hint.transportUnavailable'))
           : m.availability === 'unknown' ? h('p', { className: 'ofm_note' }, t('hint.unknown'))
             : m.availability === 'unavailable' ? h('p', { className: 'ofm_note', title: m.detail ?? '' }, t('hint.hidden'))
               : h('div', { className: 'ofm_metrics' },
@@ -4114,7 +4319,11 @@ window.__ModuleLoader__.load({
       const unlisted = lead(roster.filter(m => m.route !== 'our-free-model' && m.route !== 'our-free-model-region'))
       const toggleModel = onApply === undefined ? undefined : model => {
         const ids = summary.settings.hiddenModelIds ?? []
-        return onApply({ hiddenModelIds: ids.includes(model.id) ? ids.filter(id => id !== model.id) : [...ids, model.id] })
+        if (model.hiddenByUser === true) {
+          const hidden = new Set(Array.isArray(model.hiddenIds) && model.hiddenIds.length > 0 ? model.hiddenIds : [model.id])
+          return onApply({ hiddenModelIds: ids.filter(id => !hidden.has(id)) })
+        }
+        return onApply({ hiddenModelIds: ids.includes(model.id) ? ids : [...ids, model.id] })
       }
       // 只有拿到过明确判定（网关答过 /eac/status）且未授权时才上锁：状态未知
       // 不该显示一把凭空的锁，网关不可达时本地记录仍算已授权。
@@ -4714,7 +4923,7 @@ window.__ModuleLoader__.load({
     function Egress(props) {
       const { settings, t, onApply, busy } = props
       const [draft, setDraft] = useState(settings.egress ?? {})
-      useEffect(() => setDraft(settings.egress ?? {}), [settings.egress?.enabled, settings.egress?.mode, settings.egress?.urlLabel, settings.egress?.hasUrl, settings.egress?.active, settings.egress?.error])
+      useEffect(() => setDraft(settings.egress ?? {}), [settings.egress?.enabled, settings.egress?.mode, settings.egress?.urlLabel, settings.egress?.hasUrl, settings.egress?.active, settings.egress?.error, settings.egress?.subscriptionIntervalSeconds])
       const [urlShown, setUrlShown] = useState(false)
       const [urlValue, setUrlValue] = useState('')
       const [copied, setCopied] = useState('')
@@ -4758,6 +4967,7 @@ window.__ModuleLoader__.load({
       const urlMask = draft?.hasUrl === true ? `${draft?.urlLabel ?? ''}/…` : t('egress.urlNone')
       const apply = () => {
         const patch = { enabled: draft?.enabled === true, mode: subscription ? 'subscription' : 'client', mihomoPath: String(draft?.mihomoPath ?? '') }
+        if (subscription) patch.subscriptionIntervalSeconds = Number(draft?.subscriptionIntervalSeconds ?? 86400)
         // Empty means "keep the stored address": this panel never received it,
         // so it has nothing to send back, and an empty string would read as
         // "clear it" on the receiving end.
@@ -4790,6 +5000,10 @@ window.__ModuleLoader__.load({
         subscription ? h('div', { className: 'ofm_row' },
           field(t('egress.mihomoPath'), h('input', { className: 'ofm_input', style: { flex: 1, minWidth: 260 }, value: draft?.mihomoPath ?? '', placeholder: 'auto', onChange: e => setDraft(c => ({ ...c, mihomoPath: e.target.value })) })),
           h('span', { className: 'ofm_note' }, t('egress.mihomoHint'))) : null,
+        subscription ? h('div', { className: 'ofm_row' },
+          field(t('egress.subscriptionInterval'), h('input', { className: 'ofm_input', type: 'number', min: 60, max: 604800, step: 1,
+            value: draft?.subscriptionIntervalSeconds ?? 86400, onChange: e => setDraft(c => ({ ...c, subscriptionIntervalSeconds: e.target.value })) })),
+          h('span', { className: 'ofm_note' }, t('egress.subscriptionIntervalHint'))) : null,
         draft?.error ? h('div', { className: 'ofm_callout ofm_error' }, t('egress.error').replace('{message}', draft.error)) : null,
         h('div', { className: 'ofm_note' }, t('egress.direct')),
         running ? h('div', { className: 'ofm_row' },
@@ -4801,6 +5015,141 @@ window.__ModuleLoader__.load({
         running ? h('div', { className: 'ofm_row' },
           h('span', { className: 'ofm_note' }, t('egress.latency')),
           statusLine(latencyMs > 0 ? `${(latencyMs / 1000).toFixed(2)}s` : t('egress.measuring'))) : null)
+    }
+
+    /**
+     * The free lane's own exit pool.
+     *
+     * The free tier counts its allowance per egress IP, so a burned address
+     * answers every request with a multi-hour `Retry-After`. This panel is how
+     * the owner gives the lane somewhere else to go: a list of exits, each with
+     * its live cooldown, a per-exit "test" that reports the public IP the lane
+     * would leave from, and a "clear cooldowns" button for when the upstream has
+     * lifted a block.
+     *
+     * Addresses are credentials — a proxy URL routinely carries userinfo — so the
+     * panel never renders a saved value. Editing means pasting the whole list
+     * again, which is the same trade the global outlet makes.
+     */
+    function LaneExits(props) {
+      const { summary, t, onApply, busy } = props
+      const freeLane = summary?.freeLane ?? {}
+      const exits = Array.isArray(freeLane.exits) ? freeLane.exits : []
+      const configured = freeLane.proxyConfigured === true
+      const [draft, setDraft] = useState('')
+      const [maxTries, setMaxTries] = useState(Number(freeLane.maxTries) || 3)
+      const [pending, setPending] = useState('')
+      const [note, setNote] = useState('')
+      const [ipByExit, setIpByExit] = useState({})
+      const locked = busy === true || pending !== ''
+
+      useEffect(() => { setMaxTries(Number(freeLane.maxTries) || 3) }, [freeLane.maxTries])
+
+      const lines = () => draft.split('\n').map(line => line.trim()).filter(line => line !== '')
+
+      const apply = () => {
+        // An empty box with exits already saved would otherwise read as "clear
+        // them", so an empty draft keeps the stored list untouched.
+        const patch = { maxTries: Number(maxTries) || 3 }
+        const next = lines()
+        if (next.length > 0) patch.proxies = next
+        onApply({ freeLane: patch })
+        setDraft('')
+        setNote('')
+      }
+
+      const test = async index => {
+        setPending(`test:${index}`)
+        setNote('')
+        try {
+          const payload = await post('/lane/echo', { proxy: exits[index].label })
+          setIpByExit(current => ({ ...current, [index]: String(payload?.ip ?? '') }))
+        } catch (error) {
+          setIpByExit(current => ({ ...current, [index]: '' }))
+          setNote(t('laneExits.testFail').replace('{message}', String(error?.message ?? error).slice(0, 120)))
+        } finally {
+          setPending('')
+        }
+      }
+
+      const clearAll = async () => {
+        setPending('clear')
+        try {
+          const payload = await post('/lane/clear')
+          // `/lane/clear` answers both halves: `exits` is how many exit
+          // cooldowns went away, `cleared` whether the lane breaker itself was
+          // released. Reporting only the exit count said "cleared 0 exit(s)"
+          // while doing the one thing the user asked for.
+          const released = payload?.cleared === true
+          setNote(released
+            ? t('laneLock.released')
+            : t('laneExits.cleared').replace('{count}', String(payload?.exits ?? 0)))
+          summary.reload?.()
+        } catch (error) {
+          setNote(t('laneExits.testFail').replace('{message}', String(error?.message ?? error).slice(0, 120)))
+        } finally {
+          setPending('')
+        }
+      }
+
+      const stateOf = exit => {
+        if (exit.coolingMs > 0) return t('laneExits.cooling').replace('{seconds}', String(Math.ceil(exit.coolingMs / 1000)))
+        if (exit.pool === true) return t('laneExits.pool')
+        return t('laneExits.ok')
+      }
+
+      return h(Panel, null,
+        configured && exits.length > 0
+          ? h('div', { className: 'ofm_sec', style: { gap: 6 } },
+            ...exits.map((exit, index) => h('div', { className: 'ofm_row', key: `${exit.label}:${index}` },
+              h('span', { className: 'ofm_note', style: { minWidth: 200 } }, t('laneExits.status')),
+              h('code', { className: 'ofm_mono', style: { padding: '4px 8px', flex: 1, minWidth: 180 } }, exit.label),
+              h('span', { className: 'ofm_pill' },
+                h('span', { className: `ofm_dot ${exit.coolingMs > 0 ? 'err' : 'ok'}` }),
+                stateOf(exit)),
+              h(Button, { kind: 'ghost', disabled: locked, onClick: () => test(index) },
+                pending === `test:${index}` ? t('laneExits.testing') : t('laneExits.test')),
+              ipByExit[index]
+                ? h('span', { className: 'ofm_note' }, t('laneExits.testOk').replace('{ip}', ipByExit[index]))
+                : null,
+              exit.lastError ? h('span', { className: 'ofm_note' }, exit.lastError) : null)))
+          : h('div', { className: 'ofm_note' }, t('laneExits.none')),
+        field(t('laneExits.list'), h('textarea', {
+          className: 'ofm_input',
+          style: { flex: 1, minWidth: 320, minHeight: 76, fontFamily: 'monospace' },
+          value: draft,
+          placeholder: t('laneExits.placeholder'),
+          disabled: locked,
+          onChange: event => setDraft(event.target.value),
+        })),
+        h('div', { className: 'ofm_note' }, t('laneExits.hint')),
+        h('div', { className: 'ofm_row' },
+          field(t('laneExits.maxTries'), h('input', {
+            className: 'ofm_input',
+            style: { maxWidth: 90 },
+            inputMode: 'numeric',
+            value: maxTries,
+            disabled: locked,
+            onChange: event => setMaxTries(Number(String(event.target.value).replace(/\D/g, '')) || 1),
+          })),
+          h('span', { className: 'ofm_note' }, t('laneExits.maxTriesHint'))),
+        h('div', { className: 'ofm_row' },
+          h(Button, { kind: 'primary', disabled: locked || lines().length === 0, onClick: apply }, t('laneExits.apply')),
+          // Enabled when there is an exit to cool down OR a breaker to release.
+          // The old condition was `exits.every(exit => exit.coolingMs === 0)`,
+          // and `[].every(…)` is `true`: with no lane exits configured — the
+          // default, and the state the user in front of a locked lane is in —
+          // the only control that clears the lock was permanently greyed out.
+          // `/lane/clear` clears both, so the button's own name is the only
+          // thing the exit list should govern. `summary` is the `useAsync`
+          // wrapper, so the gate lives under `.data` (same bug as the banner).
+          h(Button, {
+            kind: 'ghost',
+            disabled: locked || (exits.every(exit => exit.coolingMs === 0) && (summary?.data ?? summary)?.laneGate?.ok !== false),
+            onClick: clearAll,
+          }, t('laneExits.clear'))),
+        note ? h('div', { className: 'ofm_note', role: 'status' }, note) : null,
+        h('div', { className: 'ofm_note' }, t('laneExits.never')))
     }
 
     const field = (label, control) => h('label', { className: 'ofm_field' }, h('span', null, label), control)
@@ -5444,6 +5793,23 @@ window.__ModuleLoader__.load({
       { id: 'cline', name: 'Cline', org: 'Cline', accent: '#5B5BD6', note: 'Cline 账号免费额度', login: 'browser', region: 'global', creditModes: ['quota'] },
     ]
 
+    // Keep the shared provider records unchanged; translate only their display copy.
+    function channelDisplay(channel, t) {
+      switch (channel.id) {
+        case 'lobsterai': return { ...channel, org: t('chan.org.youdao'), note: t('chan.note.lobsterai') }
+        case 'qoder': return { ...channel, org: t('chan.org.alibaba'), note: t('chan.note.qoder') }
+        case 'qodercn': return { ...channel, name: t('chan.name.qodercn'), org: t('chan.org.alibaba'), note: t('chan.note.qodercn') }
+        case 'trae': return { ...channel, org: t('chan.org.bytedance'), note: t('chan.note.trae') }
+        case 'cline': return { ...channel, note: t('chan.note.cline') }
+        case 'loomy': return { ...channel, org: t('chan.org.iflytek'), note: t('chan.note.loomy') }
+        case 'raccoon': return { ...channel, org: t('chan.org.sensetime'), note: t('chan.note.raccoon') }
+        case 'minimax': return { ...channel, note: t('chan.note.minimax') }
+        case 'zcode': return { ...channel, org: t('chan.org.zhipu'), note: t('chan.note.zcode') }
+        case 'gemini': return { ...channel, note: t('chan.note.gemini') }
+        default: return channel
+      }
+    }
+
     /** 与现有 RPC 的能力对应：余额、每日领取及独立签到状态分别判断。 */
     const CHANNEL_CREDITS = {
       lobsterai: { claim: true },
@@ -5536,6 +5902,7 @@ window.__ModuleLoader__.load({
 
     function ChannelCard(props) {
       const { channel, status, rpc, t, onError, onChanged, compact = false, pending = false } = props
+      const display = channelDisplay(channel, t)
       const [open, setOpen] = useState(null)
       const [accounts, setAccounts] = useState(undefined)
       const [models, setModels] = useState(undefined)
@@ -5546,7 +5913,20 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState('')
       const [notice, setNotice] = useState('')
       const [login, setLogin] = useState(null)
+      const [manualUrl, setManualUrl] = useState('')
+      const [manualBusy, setManualBusy] = useState(false)
+      const [manualError, setManualError] = useState('')
+      const [modelCatalog, setModelCatalog] = useState(undefined)
       const modelBatchPending = useRef(false)
+      const modelRequest = useRef(null)
+      if (modelRequest.current?.provider !== channel.id || modelRequest.current?.rpc !== rpc) {
+        modelRequest.current = { provider: channel.id, rpc, generation: 0 }
+      }
+      // These dates also cover an older backend without catalog provenance.
+      // They are collection dates, never the time a panel was opened/refreshed.
+      const snapshotDate = modelCatalog?.provider === channel.id && modelCatalog.value?.source === 'static-snapshot'
+        ? modelCatalog.value.snapshotDate
+        : ({ qoder: '2026-09-21', qodercn: '2026-09-27' })[channel.id]
       const [balanceError, setBalanceError] = useState('')
       const [balanceLoading, setBalanceLoading] = useState(false)
       const balancePending = useRef(null)
@@ -5581,10 +5961,16 @@ window.__ModuleLoader__.load({
         } catch (error) { setAccounts([]); onError(channel, error) }
       }, [rpc, channel.id, onError])
       const loadModels = useCallback(async () => {
+        const owner = modelRequest.current
+        if (!owner || owner.provider !== channel.id || owner.rpc !== rpc) return
+        const generation = ++owner.generation
+        const current = () => modelRequest.current === owner && owner.generation === generation
         try {
           const value = await rpc('model.list', { provider: channel.id })
+          if (!current()) return
           setModels(value?.models ?? [])
-        } catch (error) { setModels([]); onError(channel, error) }
+          setModelCatalog({ provider: channel.id, value: value?.catalog })
+        } catch (error) { if (current()) { setModels([]); onError(channel, error) } }
       }, [rpc, channel.id, onError])
       const loadCredits = useCallback(async () => {
         if (!CHANNEL_CREDITS[channel.id]?.status) return
@@ -5650,6 +6036,10 @@ window.__ModuleLoader__.load({
         window.addEventListener('ofm:channels', onEvent)
         return () => window.removeEventListener('ofm:channels', onEvent)
       }, [open, loadAccounts, loadModels, loadCredits, loadBalances])
+      useEffect(() => {
+        const owner = modelRequest.current ??= { provider: channel.id, rpc, generation: 0 }
+        return () => { if (modelRequest.current === owner) modelRequest.current = null }
+      }, [channel.id, rpc])
 
       const toggle = async fold => {
         if (open === fold) { setOpen(null); return }
@@ -5734,6 +6124,35 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const submitManualCallback = async () => {
+        if (channel.id !== 'gemini' || !rpc || login === null || manualUrl.trim() === '' || manualPending.current) return
+        const owner = manualOwner.current
+        const request = {}
+        manualPending.current = request
+        const current = () => manualOwner.current === owner && manualPending.current === request
+        setManualBusy(true); setManualError('')
+        try {
+          await rpc('account.completeLogin', { accountId: login.accountId, url: manualUrl.trim() })
+          if (current()) setManualUrl('')
+        } catch (error) {
+          if (current()) setManualError(String(error?.message ?? error))
+        } finally { if (current()) { manualPending.current = null; setManualBusy(false) } }
+      }
+      const manualOwner = useRef(null)
+      const manualPending = useRef(null)
+      useEffect(() => {
+        manualOwner.current = {}
+        manualPending.current = null
+        setManualUrl(''); setManualError(''); setManualBusy(false)
+        return () => { manualOwner.current = null; manualPending.current = null }
+      }, [login?.accountId, rpc])
+      const cancelLogin = () => {
+        const accountId = login?.accountId
+        manualOwner.current = null; manualPending.current = null
+        setManualUrl(''); setLogin(null)
+        if (channel.id === 'gemini' && accountId) void rpc('account.delete', { accountId }).catch(() => {})
+      }
+
       // Poll the placeholder until its credential lands. Ten minutes matches the
       // window the pack keeps a pending login link alive for.
       useEffect(() => {
@@ -5814,6 +6233,23 @@ window.__ModuleLoader__.load({
 
       const creditFor = accountId => (credits ?? []).find(row => row.accountId === accountId)?.status ?? null
       const [expanded, setExpanded] = useState(false)
+      const [fullBalances, setFullBalances] = useState(() => {
+        try { return window.localStorage?.getItem('ofm.credits.full') === 'true' } catch { return false }
+      })
+      const toggleFullBalances = () => {
+        const next = !fullBalances
+        setFullBalances(next)
+        try { window.localStorage?.setItem('ofm.credits.full', String(next)) } catch { /* keep the preference for this card */ }
+        window.dispatchEvent?.(new Event('ofm:credits-display'))
+      }
+      useEffect(() => {
+        const sync = () => {
+          try { setFullBalances(window.localStorage?.getItem('ofm.credits.full') === 'true') } catch { /* retain the active choice */ }
+        }
+        window.addEventListener('ofm:credits-display', sync)
+        window.addEventListener('storage', sync)
+        return () => { window.removeEventListener('ofm:credits-display', sync); window.removeEventListener('storage', sync) }
+      }, [])
 
       const card = h('article', {
         className: `ofm_chan ${compact ? 'compact' : 'ofm_glass'}${status?.closed === true ? ' off' : ''}`,
@@ -5825,22 +6261,27 @@ window.__ModuleLoader__.load({
           h('span', { className: 'ofm_chanlogo', 'aria-hidden': 'true' },
             CHANNEL_ICONS[channel.id] !== undefined
               ? h('img', { src: CHANNEL_ICONS[channel.id], alt: '' })
-              : channel.name.slice(0, 2).toUpperCase()),
+              : display.name.slice(0, 2).toUpperCase()),
           h('span', { className: 'ofm_chanid' },
-            h('b', null, channel.name),
-            h('span', null, channel.org)),
+            h('b', null, display.name),
+            h('span', null, display.org)),
           h('span', { className: 'ofm_chanstate' },
             h('span', { className: `ofm_dot ${connected ? 'ok' : status?.closed === true ? 'err' : ''}` }),
             stateText)),
-        h('p', { className: 'ofm_note' }, channel.note),
+        h('p', { className: 'ofm_note' }, display.note),
+        snapshotDate ? h('p', { className: 'ofm_note', 'data-model-catalog': 'static-snapshot' },
+          t('chan.model.snapshot').replace('{date}', snapshotDate)) : null,
         h('div', { className: 'ofm_chanmeta' },
           h('span', null, `${t('chan.meta.accounts')} `, h('b', null, `${enabledCount}/${accountsCount}`)),
           h('span', null, `${t('chan.meta.models')} `, h('b', null, modelsTotal === 0 ? '—' : `${modelsTotal - modelsOff}/${modelsTotal}`)),
           creditCapability ? h('span', { className: 'ofm_credittotal' },
             `${balanceLabel} `,
             h('b', null, balanceLoading ? '…' : balancesKnown
-              ? creditCapability.quota ? t('chan.credits.loaded').replace('{count}', String((balances ?? []).filter(row => Number.isFinite(row.balance?.total)).length)) : balanceText(balancesTotal, creditCapability, t.locale)
-              : balances === undefined ? '…' : '—')) : null),
+              ? creditCapability.quota ? t('chan.credits.loaded').replace('{count}', String((balances ?? []).filter(row => Number.isFinite(row.balance?.total)).length)) : balanceText(balancesTotal, creditCapability, t.locale, fullBalances)
+              : balances === undefined ? '…' : '—')) : null,
+          creditCapability && !creditCapability.quota && creditCapability.unit !== 'dollars' ? h('button', {
+            type: 'button', className: 'ofm_minibtn', disabled: busy !== '', 'aria-pressed': fullBalances, onClick: toggleFullBalances,
+          }, t('chan.credits.full')) : null),
         compact ? h('div', { className: 'ofm_directoryactions' },
           h('span', { className: 'ofm_id' }, channel.id),
           h('button', {
@@ -5901,9 +6342,21 @@ window.__ModuleLoader__.load({
         open === 'accounts' ? h('div', { className: 'ofm_chanfold' },
           accounts === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 44 } })
             : accounts.length === 0 ? h('p', { className: 'ofm_note' }, t('chan.noAccount'))
-              : h('div', { className: 'ofm_acctlist' }, accounts.map(row => {
+              : h('div', { className: 'ofm_acctlist' }, accounts.map((row, index) => {
                 const credit = creditFor(row.id)
                 const pending = row.refreshable !== true && !Number.isFinite(row.expiresAt)
+                // 账号顺序就是自动选号与限流换号的候选优先级（见 account-pool.ts 的
+                // reorderAccounts）。面板给一对上/下按钮把这件事暴露出来：后端
+                // account.reorder 早就实现了，只是一直没有入口。
+                const moveAccount = to => accountAction(`move:${row.id}`, row.id, async () => {
+                  const ids = accounts.map(account => account.id)
+                  const from = ids.indexOf(row.id)
+                  if (from < 0 || to < 0 || to >= ids.length || to === from) return
+                  ids.splice(to, 0, ids.splice(from, 1)[0])
+                  await rpc('account.reorder', { provider: channel.id, orderedIds: ids })
+                  onChanged()
+                  await loadAccounts()
+                })
                 return h('div', { className: 'ofm_acct' + (pending ? ' pending' : ''), key: row.id },
                   h('span', { className: 'ofm_acctname', title: row.nickname ?? row.id }, row.nickname ?? row.id),
                   h('span', { className: 'ofm_acctmeta' }, row.enabled === false ? t('chan.disabled') : t('chan.enabled'), ' · ', expiryText(row, t)),
@@ -5919,11 +6372,23 @@ window.__ModuleLoader__.load({
                         : result?.error || t('chan.credits.unavailable'))
                     const reading = creditCapability.quota
                       ? (balance.packages ?? []).map(pkg => `${pkg.name} ${pkg.remaining}%`).join(' · ') || '—'
-                      : balanceText(balance.total, creditCapability, t.locale)
+                      : balanceText(balance.total, creditCapability, t.locale, fullBalances)
                     return h('span', { className: 'ofm_creditbadge strong', title: balanceLabel },
                       `${balanceLabel} ${reading}`)
                   })(),
                   h('span', { className: 'ofm_acctacts' },
+                    index > 0 ? h('button', {
+                      type: 'button', className: 'ofm_minibtn',
+                      disabled: busy !== '' || !rpc, title: t('chan.act.moveUpHint'),
+                      'aria-label': t('chan.act.moveUpHint'),
+                      onClick: () => void moveAccount(index - 1),
+                    }, t('chan.act.moveUp')) : null,
+                    index < accounts.length - 1 ? h('button', {
+                      type: 'button', className: 'ofm_minibtn',
+                      disabled: busy !== '' || !rpc, title: t('chan.act.moveDownHint'),
+                      'aria-label': t('chan.act.moveDownHint'),
+                      onClick: () => void moveAccount(index + 1),
+                    }, t('chan.act.moveDown')) : null,
                     h('button', {
                       type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
                       onClick: () => accountAction('test:' + row.id, row.id, async () => {
@@ -5960,6 +6425,7 @@ window.__ModuleLoader__.load({
                     }, t('chan.act.delete'))))
               }))) : null,
         open === 'models' ? h('div', { className: 'ofm_chanfold' },
+          snapshotDate ? h('p', { className: 'ofm_note', role: 'status' }, t('chan.model.refreshUnavailable')) : null,
           models === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 44 } })
             : models.length === 0 ? h('p', { className: 'ofm_note' }, '—')
               : h(Fragment, null,
@@ -5981,8 +6447,10 @@ window.__ModuleLoader__.load({
                 className: 'ofm_modelrow' + (model.disabled === true ? ' off' : ''),
                 key: model.id,
               },
-                h('span', { className: 'ofm_id', title: model.id }, model.name ?? model.id),
-                model.isFree === true ? h('span', { className: 'ofm_tagpill free' }, t('chan.model.free')) : null,
+                h('span', { className: 'ofm_id', title: model.id }, snapshotDate
+                  ? t('chan.model.snapshotPrice').replace('{name}', model.name ?? model.id)
+                  : model.name ?? model.id),
+                model.isFree === true && !snapshotDate ? h('span', { className: 'ofm_tagpill free' }, t('chan.model.free')) : null,
                 model.dead === true ? h('span', { className: 'ofm_tagpill dead' }, t('chan.model.dead')) : null,
                 model.disabled === true ? h('span', { className: 'ofm_tagpill' }, t('chan.model.hidden')) : null,
                 h('button', {
@@ -5995,18 +6463,134 @@ window.__ModuleLoader__.load({
                 }, model.dead === true ? t('chan.model.restore') : model.disabled === true ? t('chan.model.on') : t('chan.model.off'))))))) : null) : null)
 
       const modal = login === null ? null : h('div', { className: 'ofm_scrim' },
-        h('div', { className: 'ofm_modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chan.login.title').replace('{name}', channel.name) },
-          h('div', { className: 'ofm_modalhead' }, t('chan.login.title').replace('{name}', channel.name)),
+        h('div', { className: 'ofm_modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chan.login.title').replace('{name}', display.name) },
+          h('div', { className: 'ofm_modalhead' }, t('chan.login.title').replace('{name}', display.name)),
           h('div', { className: 'ofm_modalbody ofm_loginbody' },
             h('div', { className: 'ofm_loginstep' }, h('b', null, '1'), h('span', null, t('chan.login.step1'))),
             h('div', { className: 'ofm_loginstep' }, h('b', null, '2'), h('span', null, t('chan.login.step2'))),
+            channel.id === 'gemini' ? h('div', { style: { display: 'grid', gap: 8, margin: '4px 0 10px' } },
+              h('p', { className: 'ofm_note' }, t('chan.login.manualHint')),
+              h('input', {
+                className: 'ofm_input',
+                type: 'password', autoComplete: 'off', maxLength: 16384,
+                'aria-label': t('chan.login.manualSubmit'),
+                value: manualUrl,
+                placeholder: 'http://localhost:42749/oauth-callback?code=...&state=...',
+                spellCheck: false,
+                onChange: e => setManualUrl(e.target.value),
+              }),
+              h('button', {
+                type: 'button', className: 'ofm_btn ghost',
+                disabled: manualBusy || manualUrl.trim() === '',
+                'aria-busy': manualBusy ? 'true' : undefined,
+                onClick: () => void submitManualCallback(),
+              }, manualBusy ? '…' : t('chan.login.manualSubmit')),
+              manualError === '' ? null : h('p', { className: 'ofm_note', role: 'alert' }, manualError),
+            ) : null,
             login.url === '' ? null : h('code', { className: 'ofm_mono', style: { wordBreak: 'break-all', whiteSpace: 'pre-wrap' } }, login.url),
             h('p', { className: 'ofm_note ofm_scanline' }, t('chan.login.waiting'))),
           h('div', { className: 'ofm_modalfoot' },
             login.url === '' ? null : h('a', { className: 'ofm_btn primary', href: login.url, target: '_blank', rel: 'noreferrer noopener' }, t('chan.login.open')),
-            h('button', { type: 'button', className: 'ofm_btn ghost', onClick: () => setLogin(null) }, t('chan.login.cancel')))))
+            h('button', { type: 'button', className: 'ofm_btn ghost', onClick: cancelLogin }, t('chan.login.cancel')))))
 
       return h(Fragment, null, card, modal)
+    }
+
+    const CHANNEL_BACKUP_MAX_BYTES = 8 * 1024 * 1024
+
+    function ChannelBackupTools({ t, rpc, enabled, onChanged }) {
+      const [busy, setBusy] = useState('')
+      const [notice, setNotice] = useState(null)
+      const input = useRef(null)
+      const pending = useRef(null)
+      const downloads = useRef(new Map())
+      useEffect(() => {
+        setBusy(''); setNotice(null)
+        return () => {
+          if (pending.current) pending.current.cancelled = true
+          pending.current = null
+          for (const [url, timer] of downloads.current) { clearTimeout(timer); URL.revokeObjectURL(url) }
+          downloads.current.clear()
+        }
+      }, [rpc])
+      // Guard before React's next render as well as while buttons are disabled.
+      // Payloads stay local to the operation; only fixed copy and counts reach UI.
+      const run = async (kind, action) => {
+        if (!enabled || !rpc || pending.current) return
+        const request = { transport: channelTransport(rpc), cancelled: false }
+        const current = () => pending.current === request && !request.cancelled
+          && sameChannelTransport(request.transport, channelTransport(rpc))
+        pending.current = request
+        setBusy(kind); setNotice(null)
+        const report = (key, values = {}, error = false) => {
+          if (current()) setNotice({ key, values, error })
+        }
+        try { await action({ current, report }) }
+        catch { report(`chan.backup.${kind}Failed`, {}, true) }
+        finally {
+          if (pending.current === request) {
+            pending.current = null
+            if (!request.cancelled) setBusy('')
+          }
+        }
+      }
+      const exportFile = () => run('export', async ({ current, report }) => {
+        const value = await rpc('backup.export', {})
+        if (!current()) return
+        if (!value?.payload || typeof value.payload !== 'object') throw new Error('invalid-backup-response')
+        const blob = new Blob([JSON.stringify(value.payload, null, 2)], { type: 'application/json' })
+        if (blob.size > CHANNEL_BACKUP_MAX_BYTES) { report('chan.backup.tooBig', {}, true); return }
+        const url = URL.createObjectURL(blob)
+        try {
+          const link = document.createElement('a')
+          link.href = url
+          link.download = `ofm-channels-${new Date().toISOString().slice(0, 10)}.json`
+          link.click()
+          const timer = setTimeout(() => { URL.revokeObjectURL(url); downloads.current.delete(url) }, 60_000)
+          downloads.current.set(url, timer)
+        } catch (error) { URL.revokeObjectURL(url); throw error }
+        report('chan.backup.exported', { warnings: Array.isArray(value.warnings) ? value.warnings.length : 0 })
+      })
+      const importFile = event => {
+        const selected = event.target.files?.[0]
+        event.target.value = ''
+        if (!selected) return
+        return run('import', async ({ current, report }) => {
+          if (selected.size > CHANNEL_BACKUP_MAX_BYTES) { report('chan.backup.tooBig', {}, true); return }
+          let payload
+          try { payload = JSON.parse(await selected.text()) }
+          catch { report('chan.backup.invalidJson', {}, true); return }
+          if (!current() || !window.confirm(t('chan.backup.confirm'))) return
+          const value = await rpc('backup.import', { payload })
+          if (!current()) return
+          const count = value => Number.isInteger(value) && value >= 0 ? value : 0
+          report('chan.backup.imported', {
+            accounts: count(value?.accountsImported), credentials: count(value?.credentialsImported),
+            expired: count(value?.expiredAccounts), missing: count(value?.missingCredentials),
+            skipped: Array.isArray(value?.skipped) ? value.skipped.length : 0,
+          })
+          onChanged()
+        })
+      }
+      const message = notice ? Object.entries(notice.values).reduce((text, [key, value]) => text.replace(`{${key}}`, String(value)), t(notice.key)) : ''
+      const warning = notice?.key === 'chan.backup.exported' && notice.values.warnings > 0
+        ? t('chan.backup.exportWarnings').replace('{count}', String(notice.values.warnings))
+        : notice?.key === 'chan.backup.imported' && (notice.values.expired + notice.values.missing + notice.values.skipped) > 0
+          ? Object.entries(notice.values).reduce((text, [key, value]) => text.replace(`{${key}}`, String(value)), t('chan.backup.importWarnings')) : ''
+      return h('section', { 'aria-label': t('chan.backup.title') },
+        h('div', { className: 'ofm_row' },
+          h('button', {
+            type: 'button', className: 'ofm_btn ghost', disabled: !enabled || busy !== '',
+            'aria-busy': busy === 'export' ? 'true' : undefined, 'aria-describedby': 'ofm-channel-backup-note', onClick: exportFile,
+          }, t('chan.backup.export')),
+          h('button', {
+            type: 'button', className: 'ofm_btn ghost', disabled: !enabled || busy !== '',
+            'aria-busy': busy === 'import' ? 'true' : undefined, 'aria-describedby': 'ofm-channel-backup-note',
+            onClick: () => { if (enabled && !pending.current) input.current?.click() },
+          }, t('chan.backup.import')),
+          h('input', { ref: input, type: 'file', hidden: true, disabled: !enabled || busy !== '', accept: '.json,application/json', onChange: importFile })),
+        h('p', { className: 'ofm_note', id: 'ofm-channel-backup-note' }, t('chan.backup.note')),
+        notice ? h('p', { className: 'ofm_note', role: notice.error ? 'alert' : 'status' }, message, warning ? ` ${warning}` : '') : null)
     }
 
     function ChannelsPage(props) {
@@ -6127,16 +6711,19 @@ window.__ModuleLoader__.load({
 
       const onError = useCallback((channel, err) => {
         const reason = String(err?.message ?? err)
-        showToast({ title: t('chan.error').replace('{reason}', reason).slice(0, 120), body: channel.name, tone: 'warn' })
+        showToast({ title: t('chan.error').replace('{reason}', reason).slice(0, 120), body: channelDisplay(channel, t).name, tone: 'warn' })
       }, [t])
 
       const stateOf = channel => !available ? 'disconnected' : statuses?.[channel.id]?.closed === true ? 'closed'
         : (statuses?.[channel.id]?.accounts?.enabled ?? 0) > 0 ? 'connected' : 'disconnected'
       const connected = CHANNEL_PROVIDERS.filter(row => stateOf(row) === 'connected').length
       const needle = query.trim().toLowerCase()
-      const rows = CHANNEL_PROVIDERS.filter(channel =>
-        (filter === '' || (statuses !== undefined || !available) && stateOf(channel) === filter)
-        && (needle === '' || `${channel.id} ${channel.name} ${channel.org}`.toLowerCase().includes(needle)))
+      const rows = CHANNEL_PROVIDERS.filter(channel => {
+        const display = channelDisplay(channel, t)
+        return (filter === '' || (statuses !== undefined || !available) && stateOf(channel) === filter)
+          && (needle === '' || `${channel.id} ${channel.name} ${channel.org} ${display.name} ${display.org}`.toLowerCase().includes(needle))
+      })
+        .sort((left, right) => Number(stateOf(right) === 'connected') - Number(stateOf(left) === 'connected'))
       const failed = !ready && pack.state === 'failed'
 
       return h('div', { className: 'ofm_page' },
@@ -6177,7 +6764,8 @@ window.__ModuleLoader__.load({
             auto.enabled === true && auto.ranToday !== true && auto.running !== true && typeof auto.time === 'string' && auto.time !== ''
               ? h('span', { className: 'ofm_note' }, t('chan.auto.waiting').replace('{time}', auto.time))
               : null,
-            typeof auto.lastResult === 'string' && auto.lastResult !== '' ? h('span', { className: 'ofm_note', title: auto.lastResult }, t('chan.auto.last').replace('{result}', auto.lastResult.length > 60 ? `${auto.lastResult.slice(0, 60)}…` : auto.lastResult)) : null)),
+            typeof auto.lastResult === 'string' && auto.lastResult !== '' ? h('span', { className: 'ofm_note', title: auto.lastResult }, t('chan.auto.last').replace('{result}', auto.lastResult.length > 60 ? `${auto.lastResult.slice(0, 60)}…` : auto.lastResult)) : null),
+          h(ChannelBackupTools, { t, rpc, enabled: available && ready, onChanged })),
         failed ? h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, t('chan.pack.failed').replace('{reason}', pack.error ?? ''), h('div', { className: 'ofm_note' }, t('chan.pack.hint')))) : null,
         !available ? h('div', { className: 'ofm_callout' }, h('div', null, t('chan.rpc.unavailable'))) : null,
@@ -7899,9 +8487,21 @@ window.__ModuleLoader__.load({
       const panel = usePanel(() => api('/combos'), [])
       const [editing, setEditing] = useState(null)
       const [confirm, setConfirm] = useState('')
+      const [ioBusy, setIoBusy] = useState('')
+      const [ioError, setIoError] = useState('')
+      const importInput = useRef(null)
+      const downloads = useRef(new Map())
       const chains = panel.data?.combos ?? []
       const models = panel.data?.models ?? []
       const lookup = useMemo(() => new Map(models.map(row => [row.id, row])), [models])
+
+      useEffect(() => () => {
+        for (const [url, timer] of downloads.current) {
+          clearTimeout(timer)
+          URL.revokeObjectURL(url)
+        }
+        downloads.current.clear()
+      }, [])
 
       const resolvedOf = chain => {
         const answered = (panel.data?.usable ?? []).find(row => row.id === chain.id)
@@ -7928,6 +8528,64 @@ window.__ModuleLoader__.load({
         setConfirm('')
         showToast({ title: t('routing.saved'), body: t('routing.savedBody'), holdMs: 3200 })
       }
+      const exportFile = () => {
+        if (ioBusy !== '') return
+        setIoBusy('export'); setIoError('')
+        try {
+          const blob = new Blob([JSON.stringify({ format: 'ofm-combos/v1', combos: chains }, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          try {
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `ofm-combos-${new Date().toISOString().slice(0, 10)}.json`
+            link.click()
+            const timer = setTimeout(() => { URL.revokeObjectURL(url); downloads.current.delete(url) }, 60_000)
+            downloads.current.set(url, timer)
+          } catch (error) {
+            URL.revokeObjectURL(url)
+            throw error
+          }
+          showToast({ title: t('routing.ioExport'), body: t('routing.ioExported'), holdMs: 3200 })
+        } catch (error) {
+          setIoError(t('routing.ioExportFailed'))
+        } finally {
+          setIoBusy('')
+        }
+      }
+      const importFile = event => {
+        const selected = event.target.files?.[0]
+        event.target.value = ''
+        if (!selected || ioBusy !== '') return
+        setIoBusy('import'); setIoError('')
+        return (async () => {
+          try {
+            if (selected.size > 2 * 1024 * 1024) { setIoError(t('routing.ioTooBig')); return }
+            let payload
+            try { payload = JSON.parse((await selected.text()).replace(/^\uFEFF/, '')) } catch {
+              setIoError(t('routing.ioInvalid')); return
+            }
+            const rows = payload?.format === 'ofm-combos/v1' && Array.isArray(payload.combos)
+              ? payload.combos
+              : Array.isArray(payload) ? payload : null
+            if (rows === null || rows.some(row => row === null || typeof row !== 'object'
+              || typeof row.name !== 'string' || row.name.trim() === ''
+              || !Array.isArray(row.models) || row.models.length === 0
+              || row.models.length > 1000
+              || row.models.some(id => typeof id !== 'string' || id.trim() === '' || id.length > 300))) {
+              setIoError(t('routing.ioInvalid')); return
+            }
+            if (!window.confirm(t('routing.ioConfirm').replace('{n}', String(chains.length)))) return
+            const answer = await post('/combos', { combos: rows })
+            panel.patch({ combos: answer.combos, usable: answer.usable })
+            panel.reload()
+            showToast({ title: t('routing.ioImport'), body: t('routing.ioImported').replace('{n}', String(answer.combos.length)), holdMs: 3200 })
+          } catch (error) {
+            setIoError(t('routing.ioImportFailed').replace('{reason}', String(error?.message ?? error)))
+          } finally {
+            setIoBusy('')
+          }
+        })()
+      }
       // A fresh chain is the same editor with an empty draft: the fields, the
       // member list and the validation are identical, only the id is absent.
       const blank = { name: '', models: [], strategy: 'fallback', stickyLimit: 1, enabled: true }
@@ -7935,13 +8593,18 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'ofm_page' },
         h(PageHero, { title: t('routing.title'), sub: t('routing.sub') },
           h('div', { className: 'ofm_pills' },
-            h(Pill, null, t('routing.chains') + ' ' + String(chains.length)))),
+            h(Pill, null, t('routing.chains') + ' ' + String(chains.length)),
+            h(Button, { kind: 'ghost', disabled: ioBusy !== '', busy: ioBusy === 'export', onClick: exportFile }, t('routing.ioExport')),
+            h(Button, { kind: 'ghost', disabled: ioBusy !== '', busy: ioBusy === 'import', onClick: () => importInput.current?.click() }, t('routing.ioImport')),
+            h('input', { ref: importInput, type: 'file', hidden: true, disabled: ioBusy !== '', accept: '.json,application/json', onChange: importFile }))),
         panel.status === 'loading' ? h(PanelSkeleton) : null,
         panel.status === 'error'
           ? h(PanelError, { t, title: t('routing.loadFailed'), message: panel.error, onRetry: panel.reload })
           : null,
         panel.status === 'ready'
           ? h(Section, { title: t('routing.chains'), hint: t('routing.chainsHint') },
+            h('p', { className: 'ofm_note' }, t('routing.ioNote')),
+            ioError === '' ? null : h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, ioError),
             // The editor renders full width above the list rather than inside a
             // grid cell: a chain's member list and its picker need the room, and a
             // form squeezed into a 252 px column is a form nobody can order.
@@ -8048,7 +8711,13 @@ window.__ModuleLoader__.load({
     // upgrader triggers — comes back to the page the user was reading.
     const EFFECTS_KEY = 'ofm.visualEffects'
     const TAB_KEY = 'ofm.tab'
-    const TABS = ['free', 'eac', 'channels', 'aggregate', 'workspace', 'extensions', 'saver', 'routing', 'ledger', 'logs', 'gateway', 'upgrade', 'picks', 'feedback']
+    // The replacement gateway does not run the feedback collector, and the old
+    // Beichen host is being retired. Keep the page implementation for a future
+    // self-hosted collector, but do not advertise an entry that can only fail:
+    // the server half still honours an explicit `settings.feedbackUrl`.
+    const FEEDBACK_ENABLED = false
+    const TABS = ['free', 'eac', 'channels', 'aggregate', 'workspace', 'extensions', 'saver', 'routing', 'ledger', 'logs', 'gateway', 'upgrade', 'picks']
+    if (FEEDBACK_ENABLED) TABS.push('feedback')
     const WORKSPACE_CSS = `
       .who{min-width:0}
       .who .name,.nm .n,.lib-path{white-space:normal!important;overflow-wrap:anywhere;overflow:visible!important;text-overflow:clip!important}
@@ -8080,13 +8749,13 @@ window.__ModuleLoader__.load({
 
     function ModelWorkspace({ t, summary }) {
       const [state, setState] = useState('starting')
-      const [error, setError] = useState('')
+      const [error, setError] = useState(null)
       const [generation, setGeneration] = useState(0)
       const frame = useRef(null)
       const anchor = useRef(null)
+      const panel = useRef(null)
       const closeButton = useRef(null)
       const [expanded, setExpanded] = useState(false)
-      const [portal, setPortal] = useState(null)
       const syncTheme = () => {
         const root = anchor.current?.closest('.ofm_root') ?? document.documentElement
         const style = window.getComputedStyle(root)
@@ -8118,49 +8787,42 @@ window.__ModuleLoader__.load({
         return () => { observer.disconnect(); media?.removeEventListener?.('change', syncTheme) }
       }, [state, expanded])
       useEffect(() => {
-        if (!expanded) { setPortal(null); return }
-        const host = document.createElement('div')
-        host.setAttribute('data-ofm-workspace-root', 'true')
-        document.body.appendChild(host)
-        const root = anchor.current?.closest('.ofm_shell')
-        const wasInert = root?.inert
+        if (!expanded || !panel.current) return
+        const host = panel.current
         const focused = document.activeElement
-        if (root) root.inert = true
-        setPortal(host)
-        const escape = event => {
-          if (event.key === 'Escape') setExpanded(false)
-        }
-        // The engine page is an iframe: once focus is inside it, key events go
-        // to the child document and the parent listener never sees them, so
-        // Escape did nothing in exactly the state the panel spends its time in.
-        // Listen on the frame's document too; same-origin, so it is reachable.
-        let frameEscape = null
-        const bindFrame = () => {
-          try {
-            const doc = frame.current?.contentDocument
-            if (!doc || frameEscape) return
-            frameEscape = doc
-            doc.addEventListener('keydown', escape)
-          } catch { /* cross-origin engine page: the parent listener still applies */ }
-        }
-        bindFrame()
-        const frameTimer = setInterval(bindFrame, 400)
-        const focus = event => {
-          if (!host.contains(event.target)) closeButton.current?.focus()
-        }
-        window.addEventListener('keydown', escape)
-        document.addEventListener('focusin', focus)
+        // A modal dialog enters the browser's top layer without moving its DOM.
+        // Moving the React content to a portal remounted the iframe and lost
+        // every unsaved field inside it (#724).
+        host.close()
+        host.showModal()
+        closeButton.current?.focus()
         return () => {
-          clearInterval(frameTimer)
-          window.removeEventListener('keydown', escape)
-          document.removeEventListener('focusin', focus)
-          try { frameEscape?.removeEventListener('keydown', escape) } catch { /* frame already gone */ }
-          if (root) root.inert = wasInert
-          host.remove()
+          host.close()
+          host.show()
           if (focused?.isConnected) focused.focus?.()
         }
       }, [expanded])
-      useEffect(() => { if (portal) closeButton.current?.focus() }, [portal])
+      useEffect(() => {
+        if (!expanded || state !== 'ready' || !frame.current) return
+        const iframe = frame.current
+        let doc = null
+        const escape = event => {
+          if (event.key !== 'Escape' || event.defaultPrevented) return
+          // The iframe owns Escape while its own editor is modal.
+          if ([...doc.querySelectorAll('dialog[open],[role="dialog"][aria-modal="true"]')].some(dialog => dialog.getClientRects().length)) return
+          setExpanded(false)
+        }
+        const bind = () => {
+          try {
+            doc?.removeEventListener('keydown', escape)
+            doc = iframe.contentDocument
+            doc?.addEventListener('keydown', escape)
+          } catch { /* cross-origin frames keep their own keyboard handling */ }
+        }
+        bind()
+        iframe.addEventListener('load', bind)
+        return () => { iframe.removeEventListener('load', bind); doc?.removeEventListener('keydown', escape) }
+      }, [expanded, state])
       useEffect(() => {
         const changed = event => {
           if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow
@@ -8172,17 +8834,17 @@ window.__ModuleLoader__.load({
       }, [summary?.reload])
       useEffect(() => {
         let alive = true
-        setState('starting'); setError('')
+        setState('starting'); setError(null)
         post('/engine/start', {}, 120_000).then(() => {
           if (alive) { setState('ready'); summary?.reload?.() }
-        }).catch(() => {
-          if (alive) { setState('error'); setError(t('engine.failed')) }
+        }).catch(cause => {
+          if (alive) { setState('error'); setError({ key: 'engine.failed', detail: String(cause?.message ?? cause) }) }
         })
         return () => { alive = false }
       }, [generation])
       const refresh = async () => {
         try { await post('/engine/refresh', {}, 30_000); summary?.reload?.() }
-        catch { setError(t('engine.failed')) }
+        catch (cause) { setError({ key: 'engine.failed', detail: String(cause?.message ?? cause) }) }
       }
       const engineAction = action => frame.current?.contentWindow?.postMessage({
         type: 'ofm:engine-action', action,
@@ -8202,7 +8864,8 @@ window.__ModuleLoader__.load({
               onClick: () => engineAction('settings') }, h(WorkspaceIcon, { name: 'settings' })) : null))
       const content = h(Fragment, null,
         toolbar,
-        error ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, error) : null,
+        error ? h('div', { className: 'ofm_callout ofm_error', role: 'alert' }, t(error.key),
+          error.detail ? h('div', null, error.detail) : null) : null,
         state === 'ready'
           ? h('iframe', { ref: frame, className: 'ofm_engineframe', src: `${API}/engine/ui/?mode=window&view=providers`, title: t('engine.title'),
             allow: 'clipboard-write', referrerPolicy: 'same-origin', onLoad: event => {
@@ -8219,13 +8882,11 @@ window.__ModuleLoader__.load({
               state === 'starting' ? t('engine.starting') : t('engine.failed')),
             state === 'error' ? h(Button, { kind: 'primary', onClick: () => setGeneration(value => value + 1) }, t('engine.start')) : null))
       return h('div', { className: 'ofm_page ofm_engineworkspace', ref: anchor },
-        // While expanded the panel lives in its overlay portal. For the one frame
-        // before the portal host exists it stays inline: rendering `null` in that
-        // gap removed the whole toolbar, and with it the only collapse button —
-        // a missed portal left the workbench stuck open until a restart (#700).
-        expanded && portal ? ReactDOM.createPortal(
-          h('div', { className: 'ofm_root ofm_engineoverlay', role: 'dialog', 'aria-modal': 'true',
-            'aria-label': t('engine.title'), 'data-ofm-effects': 'off' }, content), portal) : content)
+        h('dialog', { ref: panel, open: true,
+          className: expanded ? 'ofm_enginepanel ofm_root ofm_engineoverlay' : 'ofm_enginepanel',
+          role: expanded ? 'dialog' : 'region', 'aria-modal': expanded ? 'true' : undefined,
+          'aria-label': t('engine.title'), 'data-ofm-effects': expanded ? 'off' : undefined,
+          onCancel: event => { event.preventDefault(); setExpanded(false) } }, content))
     }
 
     function WorkspacePage({ t, summary, section, onSelect }) {
@@ -8353,7 +9014,7 @@ window.__ModuleLoader__.load({
         ['gateway', t('nav.tab.gateway'), null],
         ['upgrade', t('nav.tab.upgrade'), null],
         ['picks', t('nav.tab.picks'), null],
-        ['feedback', t('nav.tab.feedback'), null],
+        ...(FEEDBACK_ENABLED ? [['feedback', t('nav.tab.feedback'), null]] : []),
       ]
       const nav = h('nav', { className: 'ofm_nav' },
         h('span', { className: 'ofm_navbrand' },
@@ -8403,7 +9064,7 @@ window.__ModuleLoader__.load({
                       ? h(UpgradePage, { t, settings: data.settings, onApply: apply, busy })
                     : tab === 'picks'
                       ? h(PicksPage, { t, effects })
-                    : tab === 'feedback'
+                    : tab === 'feedback' && FEEDBACK_ENABLED
                       ? h(FeedbackPage, { t, version: data.version })
                     : tab === 'eac'
                       ? h(EacPage, { t, data, counts, summary, stats, eacAuth, setEacAuth, eacLogin, busy, catalogBusy, apply, bench, benches, refresh, reprobe })
@@ -8420,6 +9081,71 @@ window.__ModuleLoader__.load({
         disclaimerOpen && disclaimer !== undefined
           ? h(Disclaimer, { t, copy: disclaimer, onClose: () => setDisclaimerOpen(false) })
           : null)
+    }
+
+    /**
+     * The breaker's own banner, and the way out of it.
+     *
+     * The free lane refuses locally while a recorded window is open, and that
+     * refusal is the plugin's idea rather than an error the upstream sent — so
+     * the page has to say so, and has to offer the one action that clears it.
+     * It sits above everything else on this page because a user whose turns all
+     * fail reads the top of the page first, and the previous affordance was
+     * buried in the exits panel and disabled whenever no exit was configured
+     * (`[].every(...)` is `true`), which is exactly the case in which nobody
+     * can clear it.
+     *
+     * `gate.ok !== false` renders nothing: an expired or absent verdict is not
+     * news. The countdown is not a timer that ticks — the page re-reads
+     * `/summary` on the same cadence as the rest of the page, and the release
+     * button reloads it.
+     */
+    function LaneLockBanner(props) {
+      const { t, summary, busy } = props
+      // `summary` here is the `useAsync` wrapper (`{status, data, error,
+      // reload}`), not the response body — `FreePage` receives both, and the
+      // payload lives under `.data`. Reading `summary.laneGate` therefore always
+      // saw `undefined` and the banner never rendered, which is exactly the
+      // report this fixes: a locked lane with no way to see or clear it.
+      // Accept a bare payload too, so the component is not hostage to its caller.
+      const payload = summary?.data ?? summary
+      const gate = payload?.laneGate
+      const [pending, setPending] = useState(false)
+      const [note, setNote] = useState('')
+      if (gate === undefined || gate.ok !== false) return null
+      // Relative wording, deliberately: an absolute clock time invites the user
+      // to compare it against their own clock and timezone, and the interesting
+      // fact is "that was N minutes ago, and it lifts in M minutes".
+      const since = Number.isFinite(gate.since) ? ago(gate.since, t.locale) : '—'
+      const until = Number.isFinite(gate.retryAt) ? ago(gate.retryAt, t.locale) : '—'
+      // The upstream's own words, when the verdict recorded any. They are the
+      // only evidence the user has about *why* this exit was refused, and the
+      // summary sentence above is the plugin's paraphrase of it.
+      const said = typeof gate.message === 'string' && gate.message.trim() !== '' ? gate.message.trim() : ''
+      const release = async () => {
+        setPending(true)
+        setNote('')
+        try {
+          await post('/lane/clear')
+          setNote(t('laneLock.released'))
+          summary.reload?.()
+        } catch (error) {
+          setNote(t('laneLock.failed').replace('{message}', String(error?.message ?? error).slice(0, 140)))
+        } finally {
+          setPending(false)
+        }
+      }
+      return h('div', { className: 'ofm_callout ofm_error', role: 'alert' },
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 } },
+          h('strong', null, t('laneLock.title')),
+          h('span', null, (gate.state === 'locked' ? t('laneLock.locked') : t('laneLock.quota'))
+            .replace('{since}', since).replace('{until}', until)),
+          said === '' ? null : h('span', { className: 'ofm_mono', style: { opacity: 0.85, wordBreak: 'break-word' } }, said),
+          h('span', { className: 'ofm_note' }, t('laneLock.stale')),
+          h('span', { className: 'ofm_note' }, t('laneLock.hint')),
+          note === '' ? null : h('span', { className: 'ofm_note', role: 'status' }, note)),
+        h(Button, { kind: 'primary', busy: pending, disabled: busy || pending, onClick: release },
+          pending ? t('laneLock.releasing') : t('laneLock.release')))
     }
 
     function SponsorBanner({ t }) {
@@ -8455,6 +9181,7 @@ window.__ModuleLoader__.load({
       // 颜色跟随可选比例；实际探测结果仍由下方五格状态独立显示。
       const level = ratio >= 0.6 ? 'ok' : ratio >= 0.3 ? 'busy' : 'over'
       return h('div', { className: 'ofm_page' },
+        h(LaneLockBanner, { t, summary, busy }),
         h(SponsorBanner, { t }),
         h('header', { className: 'ofm_hero ofm_glass' },
           h('div', { className: 'ofm_pagehead' },
@@ -8500,6 +9227,7 @@ window.__ModuleLoader__.load({
             : h('p', { className: 'ofm_note' }, t('loading'))),
         h(Section, { title: t('section.forward'), hint: t('section.forwardHint') }, h(Forward, { settings: data.settings, t, onApply: apply, busy })),
         h(Section, { title: t('section.egress'), hint: t('section.egressHint') }, h(Egress, { settings: data.settings, t, onApply: apply, busy })),
+        h(Section, { title: t('section.laneExits'), hint: t('section.laneExitsHint') }, h(LaneExits, { summary: data, t, onApply: apply, busy })),
         h(Section, { title: t('section.prefs'), hint: t('section.prefsHint') }, h(Preferences, { summary: data, t, onApply: apply, busy })),
         h(Section, { title: t('section.news'), hint: t('section.newsHint') }, h(NewsPanel, { t })))
     }
@@ -9334,6 +10062,14 @@ window.__ModuleLoader__.load({
             let data
             try { data = JSON.parse(event.data) } catch { return }
             for (const item of data.items ?? []) {
+              // `muted` means the host is holding a stale copy of the feed: it
+              // may still list the item, but it may not open a full-screen
+              // modal on the strength of a snapshot that could be out of date.
+              // That is how a retracted urgent announcement (one whose
+              // expiresAt was added after this install cached it) stops
+              // interrupting people. The list entry stays; only the
+              // interruption is withheld.
+              if (item.muted === true) continue
               osNotify(t('toast.annTitle'), item.title)
               if (item.level === 'urgent') {
                 if (urgentShownIds.has(item.id)) continue
@@ -9380,7 +10116,9 @@ window.__ModuleLoader__.load({
         void (async () => {
           try {
             const view = await api('/announcements')
-            const candidates = (view?.items ?? []).filter(item => item.level === 'urgent' && item.acked !== true && urgentShownIds.has(item.id) === false)
+            // `muted` 与上面那条到达推送同义：宿主手里是过期快照，可以继续列
+            // 出条目，但不能凭它弹全屏层。撤销公告正是走这条路生效的。
+            const candidates = (view?.items ?? []).filter(item => item.level === 'urgent' && item.muted !== true && item.acked !== true && urgentShownIds.has(item.id) === false)
             const item = candidates.sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))[0]
             if (item === undefined || disposed === true) return
             urgentShownIds.add(item.id)
@@ -9481,7 +10219,7 @@ window.__ModuleLoader__.load({
     exports.inject = inject
     exports.name = 'our-free-model'
     // Headless test seams use the same stub React as scripts/client-lint.mjs.
-    exports.__test = { parseSafeHtml, safeUrl, sanitizeStyle, htmlToDom, buildHeatCells, Heatmap, ChannelsPage, UpgradePanel, useEacLogin, EacAuth, PicksPage, RecoCard, FeedbackPage, DICT, useChannelRpc, Shell, SubscriptionsPage, Disclaimer, CSS, reloadNoticePlan, announceReloadNotice }
+    exports.__test = { parseSafeHtml, safeUrl, sanitizeStyle, htmlToDom, buildHeatCells, Heatmap, ChannelsPage, UpgradePanel, useEacLogin, EacAuth, PicksPage, RecoCard, FeedbackPage, DICT, useChannelRpc, Shell, SubscriptionsPage, Disclaimer, CSS, reloadNoticePlan, announceReloadNotice, LaneLockBanner, ago, until }
     return module.exports
   },
 })

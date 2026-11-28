@@ -13,6 +13,8 @@
  *   （字符串经 `_$d = base64 → XOR("tqrRVttEZQ4G")` 编码）
  */
 
+import type { RpcModelListResponse } from './types.js'
+
 /** 兜底模型目录中的一个条目（字段口径见下方 `QODER_FALLBACK_MODELS` 的注释）。 */
 export interface QoderFallbackModel {
   /** 模型目录 **key**（如 `qfmodel`）。
@@ -44,8 +46,8 @@ export interface QoderFallbackModel {
    *
    * ⚠️ **它是「目录下发那一刻」的生效价，会随错峰窗口变化** ——
    * 窗口内是折后价、窗口外是原价。因此本表存的是**采集时刻的值**，
-   * 展示时须结合 {@link QoderModelPromotion} 的窗口**本地推算**当前价
-   * （见 `qoderDisplayName`），不要把它当成恒定原价。
+   * 展示时必须标明采集日期和“快照参考”，不要把历史免费状态或促销窗口
+   * 当作今天的价格（见 `qoderDisplayName`）。
    *
    * 实测本机 catalog（2026-09-21，17 个 chat 模型）：
    * `qfmodel`（Qwen3.8-Flash）= **0**、`qmodel` = 0.04、`qmodel_latest`/
@@ -68,15 +70,14 @@ export interface QoderFallbackModel {
    *
    * ⚠️ **`active` 是「目录下发那一刻」的快照，不可作为长期判据**：
    * 用户长时间不重启客户端时它会过期。真实窗口由 `windowStart`/`windowEnd`
-   * 描述且稳定，故展示时**按当前时间本地推算**是否在窗口内
-   * （见 `qoderDisplayName` 的 `promotionActiveNow`），`active` 仅作回退。
+   * 描述历史活动窗口，不证明今天仍有同样的促销；界面只展示快照倍率。
    *
    * 实测三档（`qfmodel` 无 promotion；`qmodel_38max` 是 4 折、
    * `qmodel_latest` 是 2 折），窗口统一为 22:00–08:00（Asia/Singapore）。
    *
    * 关系式（实测三条全部吻合）：
    * `priceFactor === beforePromotionPriceFactor × discountFactor`
-   * —— 故可据原价与折扣推算任意时刻的生效价。
+   * —— 只描述采集时的促销关系，不用来推算今天的生效价。
    */
   promotion?: QoderModelPromotion
   /**
@@ -277,6 +278,19 @@ export interface QoderProduct {
    * （见 `src/qoder-credits.ts` 的模块注释）。
    */
   fallbackModels: readonly QoderFallbackModel[]
+  /** 本地目录/价格快照的采集日期，不是最后一次打开或刷新页面的日期。 */
+  catalogSnapshotDate: string
+}
+
+/** 缓存解密能力不构成远端目录请求/签名契约；当前仅有本地采集快照。 */
+export function qoderCatalogInfo(product: QoderProduct): NonNullable<RpcModelListResponse['catalog']> {
+  return {
+    source: 'static-snapshot',
+    snapshotDate: product.catalogSnapshotDate,
+    pricing: 'reference-only',
+    refreshSupported: false,
+    refreshUnavailableReason: 'missing-authorized-catalog-contract',
+  }
 }
 
 /**
@@ -430,6 +444,7 @@ export const QODER: QoderProduct = {
   userAgentPrefix: 'qoder',
   defaultCredentialRef: 'QODER_ACCESS_TOKEN',
   fallbackModels: QODER_FALLBACK_MODELS,
+  catalogSnapshotDate: '2026-09-21',
 }
 
 /**
@@ -602,6 +617,7 @@ export const QODER_CN: QoderProduct = {
   userAgentPrefix: 'qoder',
   defaultCredentialRef: 'QODERCN_ACCESS_TOKEN',
   fallbackModels: QODER_CN_FALLBACK_MODELS,
+  catalogSnapshotDate: '2026-09-27',
 }
 
 /**

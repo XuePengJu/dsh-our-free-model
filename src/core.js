@@ -1,7 +1,7 @@
 // src/core/completion.js
 import { ROUTE_MAIN, ROUTE_REGION } from "./adapter.js";
 import { toOpenAiUsage } from "./forward.js";
-import { carryFailure } from "./failure.js";
+import { carryFailure } from "./http.js";
 import { effortsFor, defaultEffortFor } from "./effort.js";
 import { flattenResponsesTools, flatNamespaceToolName, normalizeToolName } from "./messages.js";
 function routableModelIds(snapshot) {
@@ -13,7 +13,7 @@ function routableModelIds(snapshot) {
 }
 function publicModelRows(snapshot) {
   const membership = routableModelIds(snapshot);
-  return snapshot.catalog.filter((entry) => membership.has(entry.id)).map((entry) => {
+  return snapshot.catalog.filter((entry) => membership.has(entry.id) && entry.accountChannel !== true).map((entry) => {
     const efforts = effortsFor(entry, void 0, snapshot.settings.defaultMaxTokens);
     return {
       id: entry.id,
@@ -189,11 +189,11 @@ function foldForwardOutcome(outcome, chunk) {
 // src/core/runtime.js
 import fs from "node:fs";
 import path from "node:path";
-import { FreeModelAdapter, ROUTE_MAIN as ROUTE_MAIN2, ROUTE_REGION as ROUTE_REGION2 } from "./adapter.js";
-import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from "./catalog.js";
+import { FreeModelAdapter, ROUTE_MAIN as ROUTE_MAIN2, ROUTE_REGION as ROUTE_REGION2, accountChannelCatalog } from "./adapter.js";
+import { buildCatalog, buildEacCatalog, buildKiloCatalog, catalogFamilyKeys, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from "./catalog.js";
 import { buildAggregateCatalog, isAggregateEntry } from "./aggregate.js";
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from "./combos.js";
-import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from "./store.js";
+import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, buildModelVisibility, migrateStats, pruneDays, recordTurn, recordUsage, isModelHidden } from "./store.js";
 
 // src/core/attempts.js
 var ATTEMPT_LIMIT = 200;
@@ -254,6 +254,12 @@ var FALLBACK_CATALOG = buildCatalog([
   "flint-40b-free"
 ]);
 var LANE_QUOTA_DEFAULT_MS = 6 * 60 * 60 * 1e3;
+var LANE_QUOTA_MAX_MS = 30 * 60 * 1e3;
+function laneWindowFor(retryAfterMs) {
+  const asked = Number(retryAfterMs);
+  if (!Number.isFinite(asked) || asked <= 0) return LANE_QUOTA_DEFAULT_MS;
+  return Math.min(Math.trunc(asked), LANE_QUOTA_MAX_MS);
+}
 function createRuntimeStores({ dataDir, logger = console }) {
   if (typeof dataDir !== "string" || !path.isAbsolute(dataDir)) {
     throw new TypeError("dataDir must be an absolute path");
@@ -299,15 +305,23 @@ function createModelRuntime({
   onTopology = () => {
   },
   subscriptionRuntime,
+  accountChannelRuntime,
   extensionRuntime = null
 }) {
   let catalog = materializeCatalog(catalogStore.get().entries ?? []);
-  let sealedCatalog = sealedCredential() === null ? [] : buildEacCatalog(catalogStore.get().sealIds ?? []);
+  let sealedCatalog = sealedCredential() === null ? [] : buildEacCatalog(
+    (catalogStore.get().sealIds ?? []).filter((row) => {
+      const id = typeof row === "string" ? row : row?.id;
+      return typeof id === "string" && id !== "" && !id.includes("[object ");
+    })
+  );
   let kiloCatalog = reviveKiloCatalog(catalogStore.get().kiloRows);
   let aggregateCatalog = [];
+  let accountEntries = accountChannelCatalog(accountChannelRuntime);
   let subscriptionEntries = [];
   let comboCatalog = [];
   let extensionCatalog = [];
+  let familyKeysById = /* @__PURE__ */ new Map();
   let freeCatalog = catalog;
   let egress = availability.get().egress ?? null;
   let gatewayLatency = { ms: 0, at: 0 };
@@ -319,9 +333,11 @@ function createModelRuntime({
     const laneStandsDown = (entry) => replacedLane === "kilo" && isKiloEntry(entry);
     const seen = /* @__PURE__ */ new Set();
     const merged = [];
-    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog, ...extensionCatalog, ...subscriptionEntries]) {
-      if (entry === null || entry === void 0 || seen.has(entry.id)) continue;
-      if (laneStandsDown(entry)) continue;
+    const candidates = [];
+    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog, ...extensionCatalog, ...subscriptionEntries, ...accountEntries]) {
+      if (entry === null || entry === void 0 || laneStandsDown(entry)) continue;
+      candidates.push(entry);
+      if (seen.has(entry.id)) continue;
       seen.add(entry.id);
       merged.push(entry);
     }
@@ -329,30 +345,38 @@ function createModelRuntime({
     comboCatalog = buildComboCatalog(combos, merged);
     pruneRotation(combos);
     for (const entry of comboCatalog) {
+      candidates.push(entry);
       if (seen.has(entry.id)) continue;
       seen.add(entry.id);
       merged.push(entry);
     }
+    familyKeysById = catalogFamilyKeys(candidates);
     catalog = merged;
   };
   const mergeCatalogs = () => {
     aggregateCatalog = buildAggregateCatalog(settings.get().aggregate ?? {});
     subscriptionEntries = subscriptionCatalog(subscriptionRuntime);
+    accountEntries = accountChannelCatalog(accountChannelRuntime);
     extensionCatalog = extensionRuntime === null ? [] : extensionRuntime.catalog ?? [];
     rebuildCatalog();
   };
   mergeCatalogs();
-  const state = () => ({
-    catalog,
-    membership: computeMembership(catalog, availability.get(), settings.get()),
-    settings: settings.get(),
-    attributionUserAgent,
-    lane: laneRow(),
-    routing: {
-      quota: subscriptionRuntime?.routingQuota?.() ?? {},
-      usage: Object.fromEntries(catalog.map((row) => [row.id, stats.get().models?.[row.id]?.calls ?? 0]))
-    }
-  });
+  const state = () => {
+    const settingsSnapshot = settings.get();
+    const visibility = buildModelVisibility(settingsSnapshot, familyKeysById);
+    return {
+      catalog,
+      membership: computeMembership(catalog, availability.get(), settingsSnapshot, visibility),
+      settings: settingsSnapshot,
+      visibility,
+      attributionUserAgent,
+      lane: laneRow(),
+      routing: {
+        quota: subscriptionRuntime?.routingQuota?.() ?? {},
+        usage: Object.fromEntries(catalog.map((row) => [row.id, stats.get().models?.[row.id]?.calls ?? 0]))
+      }
+    };
+  };
   const emitTopology = () => {
     if (!disposed) onTopology();
   };
@@ -369,10 +393,13 @@ function createModelRuntime({
     if (!lane || lane.state === "ok" || lane.state === void 0) return { ok: true };
     if (lane.state === "quota") {
       if (!Number.isFinite(lane.retryAt) || lane.retryAt <= Date.now()) return { ok: true };
-      return { ok: false, state: "quota", retryAt: lane.retryAt, message: lane.message ?? "" };
+      const recorded = Number.isFinite(lane.at) ? lane.at : lane.retryAt;
+      const retryAt = Math.min(lane.retryAt, recorded + LANE_QUOTA_MAX_MS);
+      if (retryAt <= Date.now()) return { ok: true };
+      return { ok: false, state: "quota", retryAt, since: lane.at, message: lane.message ?? "" };
     }
     if (lane.state === "locked") {
-      return { ok: false, state: "locked", message: lane.message ?? "" };
+      return { ok: false, state: "locked", since: lane.at, message: lane.message ?? "" };
     }
     return { ok: true };
   }
@@ -402,8 +429,7 @@ function createModelRuntime({
     }
     const code = error?.code;
     if (code === CODE.quota) {
-      const retryAfter = Number(error?.providerRetryAfterMs);
-      const retryAt = Number.isFinite(retryAfter) && retryAfter > 0 ? Date.now() + retryAfter : Date.now() + LANE_QUOTA_DEFAULT_MS;
+      const retryAt = Date.now() + laneWindowFor(error?.providerRetryAfterMs);
       setLaneState("quota", { retryAt, message: String(error?.message ?? "free usage limit reached").slice(0, 300) });
       recordPassiveResult(entry.id, STATE.throttled);
       return;
@@ -419,6 +445,7 @@ function createModelRuntime({
     state,
     resolveImage,
     subscriptionRuntime,
+    accountChannelRuntime,
     sealedCredential,
     extensionRuntime,
     recordUsage: (record) => {
@@ -502,6 +529,14 @@ function createModelRuntime({
     if (disposed) return { catalog, sources };
     sources.kilo = { ok: await refreshKiloRoster(), count: kiloCatalog.length };
     if (disposed) return { catalog, sources };
+    if (typeof accountChannelRuntime?.refresh === "function") {
+      try {
+        await accountChannelRuntime.refresh();
+      } catch (error) {
+        logger.warn?.(`our-free-model: account catalog refresh failed (${error?.message ?? error})`);
+      }
+    }
+    if (disposed) return { catalog, sources };
     mergeCatalogs();
     if (probe) await refreshAvailability(force);
     emitTopology();
@@ -515,14 +550,14 @@ function createModelRuntime({
       return { ok: true, count: 0, skipped: true };
     }
     try {
-      const ids = parseListing(await fetchSealedListing(credential, { signal: lifetime.signal }));
+      const rows = parseListing(await fetchSealedListing(credential, { signal: lifetime.signal }));
       if (disposed) return;
       if (Object.hasOwn(credential, "userToken") && sealedCredential()?.userToken !== credential.userToken) return { ok: false, count: sealedCatalog.length, skipped: true };
-      if (ids.length > 0) {
-        sealedCatalog = buildEacCatalog(ids);
-        catalogStore.update({ sealIds: sealedCatalog.map((entry) => entry.id) });
+      if (rows.length > 0) {
+        sealedCatalog = buildEacCatalog(rows);
+        catalogStore.update({ sealIds: rows });
       }
-      return { ok: ids.length > 0, count: sealedCatalog.length };
+      return { ok: rows.length > 0, count: sealedCatalog.length };
     } catch (error) {
       if (disposed) return;
       if (Object.hasOwn(credential, "userToken") && sealedCredential()?.userToken !== credential.userToken) return { ok: false, count: sealedCatalog.length, skipped: true };
@@ -708,12 +743,18 @@ function createModelRuntime({
       signal: lifetime.signal,
       state: () => {
         const snapshot = state();
-        return { ...snapshot, membership: computeMembership(snapshot.catalog, availability.get(), {
+        const forwardSettings = {
           ...snapshot.settings,
           hiddenModelIds: [],
           hideFreeModels: false,
           hideEacModels: false
-        }) };
+        };
+        return { ...snapshot, membership: computeMembership(
+          snapshot.catalog,
+          availability.get(),
+          forwardSettings,
+          buildModelVisibility(forwardSettings, snapshot.visibility.familyKeysById)
+        ) };
       }
     }),
     publicModelRows: () => publicModelRows(state()),
@@ -754,7 +795,8 @@ function materializeCatalog(ids) {
   const rebuilt = buildCatalog(ids);
   return rebuilt.length > 0 ? rebuilt : FALLBACK_CATALOG;
 }
-function computeMembership(catalog, availabilitySnapshot, settings) {
+function computeMembership(catalog, availabilitySnapshot, settings, visibility) {
+  const visibilityIndex = visibility ?? buildModelVisibility(settings, catalogFamilyKeys(catalog));
   const expose = settings?.exposeRegionModels !== false;
   const verdictOf = (entry) => modelAvailability(entry.id, availabilitySnapshot, Boolean(entry.channel)).availability;
   const probeable = catalog.filter((entry) => !entry.channel);
@@ -764,7 +806,7 @@ function computeMembership(catalog, availabilitySnapshot, settings) {
   const main = [];
   const region = [];
   for (const entry of usable) {
-    if (isModelHidden(entry, settings)) continue;
+    if (isModelHidden(entry, settings, visibilityIndex)) continue;
     const verdict = verdictOf(entry);
     if (verdict !== STATE.regionBlocked) main.push(entry.id);
     else if (expose) region.push(entry.id);

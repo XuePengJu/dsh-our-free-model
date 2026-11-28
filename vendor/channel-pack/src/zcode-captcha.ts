@@ -350,6 +350,27 @@ function linuxBrowserCandidates(home: string): string[] {
  * 用 `process.env.USERPROFILE` 拼路径会在「环境变量异常/被沙箱改写」时失效 ——
  * 实测：把 `USERPROFILE` 指到沙箱后，原本可用的 scoop chromium 就找不到了。
  */
+/**
+ * 用 `--version` 预筛一个候选浏览器 —— 只做「这个 exe 是不是真的 chromium」。
+ *
+ * 实测（2026-11-25，Windows）：无效安装（967 KB 的 stub `chrome.exe`）只吐
+ * `libpng warning: tRNS: invalid with alpha channel`、**没有任何版本串**；
+ * 真 Edge / Chrome 秒回 `Microsoft Edge 158.0.4370.33` / `Google Chrome 1xx.…`。
+ *
+ * ⚠️ 判据只认「版本串」，不认退出码 —— stub 的退出码同样是 0。
+ * ⚠️ 超时 2 秒足够（真浏览器 `--version` 是毫秒级）；超时即视为无效。
+ */
+export function probeBrowserVersion(executable: string): string | undefined {
+  try {
+    const result = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 2_000, windowsHide: true })
+    const text = `${result?.stdout ?? ''}${result?.stderr ?? ''}`
+    if (/Chrome|Chromium|Edge|Edg\//i.test(text)) return text.trim().split('\n')[0]!.slice(0, 120)
+  } catch {
+    // 预筛只是优化，抛错就当没通过。
+  }
+  return undefined
+}
+
 export function browserCandidates(
   input: {
     platform?: NodeJS.Platform
@@ -1312,6 +1333,13 @@ export class ZcodeCaptchaBrowser {
    * 否则「浏览器秒退」要白等满 `readyTimeoutMs`（默认 30 秒）才报错。
    */
   private spawnFailure: Error | undefined
+  /**
+   * 启动器进程是否已退出（Windows 交棒特征，见 `launchWithExecutable()` 的
+   * `exit` 监听）。轮询循环据此提前判定「启动器没了、端口也没开」。
+   */
+  private launcherExited = false
+  /** `spawn()` 发起时刻，用于「交棒后 5 秒仍未开端口」的判定。 */
+  private spawnedAt = 0
 
   constructor(private readonly options: ZcodeCaptchaBrowserOptions = {}) {
     this.log = options.log
@@ -1336,20 +1364,71 @@ export class ZcodeCaptchaBrowser {
     await task
   }
 
+  /**
+   * 逐个候选起浏览器，**第一个真正起来的**胜出。
+   *
+   * ## 为什么需要回退（2026-11-25，真实用户环境）
+   *
+   * `findBrowserExecutable()` 只判 `existsSync`，于是「存在但起不来」的
+   * 候选（被安全软件掏空的 stub `chrome.exe`、Edge 自我更新中、权限异常）
+   * 会**吃掉满 `readyTimeoutMs`（默认 30 秒）**才报超时，而不是落到下一个
+   * 可用候选。实测：`%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+   * 是个 967 KB 的 stub（`--version` 只吐 `libpng warning`），CDP 端口永不
+   * 就绪；同机 `msedge.exe` 一切正常却排在它后面 ⇒ 签到恒超时。
+   *
+   * 每个候选失败都会 `kill()` 清场，全失败才抛聚合错误（把每一次的原因
+   * 都列出来，用户才知道该修哪个浏览器）。
+   */
   private async launch(): Promise<void> {
-    const executable = this.options.executablePath ?? findBrowserExecutable()
-    if (executable === undefined) {
+    const explicit = this.options.executablePath
+    const candidates = explicit !== undefined ? [explicit] : browserCandidates()
+    const tried: string[] = []
+    let lastError: unknown
+    for (const candidate of candidates) {
       /**
-       * ⚠ 文案按平台生成（2026-10-03，issue IKJKNT）：原先是单一口径
-       * 「已尝试 scoop chromium / Chrome / Chromium / Edge；用 ZCODE_CHROME_PATH
-       * 显式指定 chrome.exe 路径」—— 在 macOS 上 scoop 不存在、`chrome.exe`
-       * 也不是那个文件名，Mac 用户照着做只会更懵。口径见 {@link browserNotFoundMessage}。
+       * ⚠️ 候选来自 `browserCandidates()`，可能含空串 / 相对路径
+       * （见 {@link browserCandidates} 的坑），这里再拦一次。
        */
-      throw new Error(
-        'zcode: 找不到可用的浏览器（用于产出阿里云 captcha）。' +
-          browserNotFoundMessage(),
-      )
+      if (typeof candidate !== 'string' || candidate.length === 0) continue
+      if (!isAbsolute(candidate) || !existsSync(candidate)) continue
+      try {
+        await this.launchWithExecutable(candidate)
+        return
+      } catch (error) {
+        lastError = error
+        tried.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`)
+        this.kill()
+      }
     }
+    if (lastError !== undefined) {
+      const message = lastError instanceof Error ? lastError.message : String(lastError)
+      throw new Error(`${message}\n已尝试 ${tried.length} 个浏览器：\n  ${tried.join('\n  ')}`)
+    }
+    throw new Error(
+      'zcode: 找不到可用的浏览器（用于产出阿里云 captcha）。' +
+        browserNotFoundMessage(),
+    )
+  }
+
+  /** 用**指定**可执行文件起一次浏览器（候选链的单个分支）。 */
+  private async launchWithExecutable(executable: string): Promise<void> {
+    /**
+     * ★ 先做 `--version` 预筛（2026-11-25）：无效安装（stub / 被替换的
+     * `chrome.exe`）不会输出任何版本串，却会一直跑着不开放 CDP 端口，
+     * 让候选回退白等满 `readyTimeoutMs`。真正命中的浏览器会秒回
+     * `Microsoft Edge 158.…` / `Google Chrome 1xx.…`。
+     *
+     * ⚠️ 显式 `executablePath`（含 `ZCODE_CHROME_PATH`）时**不跳过**候选 ——
+     * 用户点名要它，预筛失败也照样试一次，失败原因由启动竞态那条报。
+     */
+    const probedVersion = probeBrowserVersion(executable)
+    if (probedVersion === undefined && this.options.executablePath === undefined) {
+      throw new Error(`zcode: ${executable} 未通过 --version 预筛（无 Chrome/Chromium/Edge 版本串，疑似 stub 安装）`)
+    }
+    this.log?.(
+      `[channel-pack] zcode captcha 浏览器：${executable}` +
+      `${probedVersion === undefined ? '（已跳过预筛）' : `（${probedVersion}）`}`,
+    )
 
     /**
      * ★ **Edge 兜底必须出声**（Gitee issue IKJLB1 的期望行为 2）。
@@ -1458,6 +1537,8 @@ export class ZcodeCaptchaBrowser {
      * —— 证明这里此前是**遗漏**而非有意。
      */
     const child = this.child
+    this.spawnedAt = Date.now()
+    this.launcherExited = false
     child.once('error', (error: Error) => {
       /**
        * ⚠️ 存起来**而不是就地抛**：此刻 `launch()` 还在下面的轮询循环里，
@@ -1478,6 +1559,19 @@ export class ZcodeCaptchaBrowser {
        */
       if (this.child !== child) return
       this.child = undefined
+      this.launcherExited = true
+      /**
+       * ★ **启动器交棒不是崩溃**（2026-11-25，真实用户环境）。
+       *
+       * Windows 上 Edge / Chrome 的**启动器进程**会立刻以 `code=0` 退出，
+       * 把实际工作交给它拉起的浏览器进程。原实现把这次「正常退出」记成
+       * 致命失败 ⇒ 每一轮签到都报
+       * `浏览器进程异常退出（…msedge.exe，code=0）`，Edge 用户永远领不到。
+       *
+       * 判据：`code === 0 && signal === null`（主动被我们杀掉的是 signal 非空，
+       * 且那时 `this.child` 已被 `killProcessTree()` 置空，走不到这里）。
+       */
+      if (code === 0 && signal === null) return
       const how = signal !== null && signal !== undefined
         ? `signal=${signal}`
         : `code=${String(code)}`
@@ -1514,6 +1608,13 @@ export class ZcodeCaptchaBrowser {
         }
       } catch {
         // 还没起来。
+      }
+      /**
+       * ★ 启动器已交棒、但 5 秒还没开 CDP 端口 ⇒ 这个候选是死的，立刻换下一个。
+       * 没有这条，一次坏候选要吃掉整个 `readyTimeoutMs`（默认 30 秒）。
+       */
+      if (this.launcherExited && Date.now() - this.spawnedAt > 5_000) {
+        throw new Error(`zcode: 浏览器 ${executable} 启动器已退出但 5s 内未开放调试端口（疑似 stub / 无效安装）`)
       }
       await sleep(300)
     }
@@ -2020,6 +2121,17 @@ export class ZcodeCaptchaBrowser {
    * Windows 用 `taskkill /T /F`（`/T` = 含子进程树）。
    */
   private kill(): void {
+    /**
+     * ★ **交棒后只能从 CDP 侧关**（2026-11-25）。
+     *
+     * Windows 上 Edge / Chrome 的启动器以 `code=0` 交棒后退出，`this.child`
+     * 因此被置空 —— `killProcessTree()` 的 `taskkill /T` 再也够不到真正的
+     * 浏览器进程，会留下一个「屏幕外窗口 + 整棵渲染进程树」的常驻泄漏。
+     * `Browser.close` 是浏览器级命令，不依赖我们手里的 pid。
+     *
+     * ⚠️ `send()` 内部同步写 ws 帧，故紧接着的 `close()` 不会把它吞掉。
+     */
+    try { void this.browserCdp?.send('Browser.close', {}, 2_000).catch(() => {}) } catch { /* 已断开 */ }
     try { this.reusablePage?.cdp.close() } catch { /* 已关闭 */ }
     try { this.reusablePage?.ws.close() } catch { /* 已关闭 */ }
     this.reusablePage = undefined

@@ -445,6 +445,12 @@ function resolveChunkTimeoutMs(): number {
   return Number.parseInt(process.env.DSH_QODER_SSE_CHUNK_TIMEOUT_MS ?? '', 10) || 120_000
 }
 
+/** The SSE reader cannot start its first-token timer until fetch has returned headers. */
+function resolveHeadersTimeoutMs(): number {
+  const value = Number(process.env.DSH_QODER_HEADERS_TIMEOUT_MS)
+  return Number.isFinite(value) && value > 0 ? value : 120_000
+}
+
 /** `QoderAdapter` 的构造选项。 */
 export interface QoderAdapterOptions {
   /** 默认凭据 ref（仅用于类型/日志，实际解析走 `resolveCredential`）。 */
@@ -597,7 +603,9 @@ export class QoderAdapter extends LlmAdapter {
    * （用户报障：「关闭的就没有显示倍率」）。详见 `model.list` 端点的注释。
    */
   listAllModels(): readonly { id: string; name: string }[] {
-    return this.product.fallbackModels.map((model) => ({ id: model.id, name: qoderDisplayName(model) }))
+    return this.product.fallbackModels.map((model) => ({
+      id: model.id, name: qoderDisplayName(model, this.product.catalogSnapshotDate),
+    }))
   }
 
   async listModels(_provider: string): Promise<readonly LlmModelInfo[]> {
@@ -617,7 +625,8 @@ export class QoderAdapter extends LlmAdapter {
       id: model.id,
       // 倍率拼进 `name`（**不是** `description`）：composer 的模型切换菜单
       // 只渲染 name，description 仅用于 /model 弹窗。见 qoderDisplayName。
-      name: qoderDisplayName(model),
+      name: qoderDisplayName(model, this.product.catalogSnapshotDate),
+      description: this.catalogDescription(),
       inputModalities: this.inputModalitiesFor(model.id),
     }))
   }
@@ -636,7 +645,8 @@ export class QoderAdapter extends LlmAdapter {
     const resolved: LlmResolvedModelInfo = {
       provider,
       id: model,
-      name: entry?.name ?? model,
+      name: entry === undefined ? model : qoderDisplayName(entry, this.product.catalogSnapshotDate),
+      description: this.catalogDescription(),
       inputModalities: this.inputModalitiesFor(model),
     }
     // 上下文窗口：兜底表是**本地估计值**。未知模型不编造 context
@@ -662,6 +672,12 @@ export class QoderAdapter extends LlmAdapter {
       }
     }
     return resolved
+  }
+
+  private catalogDescription(): string {
+    return `Qoder 静态目录快照（${this.product.catalogSnapshotDate}）。`
+      + '模型、倍率及免费状态可能已过期，仅供参考，不代表当前价格或实际扣费。'
+      + '当前不支持远端目录刷新；刷新账号、余额或签到不会更新模型快照。'
   }
 
   async prepareCall(
@@ -775,33 +791,39 @@ export class QoderAdapter extends LlmAdapter {
         metadata: { ...this.product.clientMetadata },
         host: this.product.encryptedInferBase,
       })
-      return client.prepareInfer({
-        modelKey: options.model,
-        userText,
-        ...(systemText !== undefined ? { systemText } : {}),
-        isReasoning: fallback?.supportsThinking ?? false,
-        history,
-        // 工具定义：这是模型**唯一**能学到函数 schema 的通道，
-        // 缺了它模型只能用正文 XML 臆造调用（真实缺陷）。
-        tools,
-        ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
-        ...(options.reasoningEffort !== undefined ? { reasoningEffort: options.reasoningEffort } : {}),
-        ...(fallback?.supportsImage !== undefined ? { isVl: fallback.supportsImage } : {}),
-        // 官方 `model_config` 的 display_name / max_input_tokens 必须带上。
-        ...(fallback?.name !== undefined ? { displayName: fallback.name } : {}),
-        ...(fallback?.contextWindow !== undefined ? { maxInputTokens: fallback.contextWindow } : {}),
-        // ⚠️ **`business` 必填**，否则服务端把请求路由到错误的后端节点。
-        //
-        // 实测（2026-09-20）：不带 `business` 时 `qfmodel`（Qwen3.8-Flash）
-        // 恒落到故障节点 `oa_qwen-plus-2025-04-28` 并返回
-        // `[FAIL]node:... msg:Execution failed`；补上 `business` 后立即正常
-        // （其余模型如 `qmodel_38max` 恰好不受影响，故早期排查易误判为
-        // 「该模型服务端故障」）。`agent` / `sec_scan` 等取值都能通。
-        //
-        // 源码依据：`MPi(A) { return A === 'sec_scan' ? 'security' : 'default' }`
-        // —— 服务端按 `business.type` 选路由池，缺字段会走异常分支。
-        business: { type: 'agent' },
-      })
+      // 准备好的请求是纯数据（url/headers/body 字符串），返回时 wasm context
+      // 已经没用了 —— 必须在 finally 里释放，否则它的分配每请求泄漏一次（#826）。
+      try {
+        return client.prepareInfer({
+          modelKey: options.model,
+          userText,
+          ...(systemText !== undefined ? { systemText } : {}),
+          isReasoning: fallback?.supportsThinking ?? false,
+          history,
+          // 工具定义：这是模型**唯一**能学到函数 schema 的通道，
+          // 缺了它模型只能用正文 XML 臆造调用（真实缺陷）。
+          tools,
+          ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+          ...(options.reasoningEffort !== undefined ? { reasoningEffort: options.reasoningEffort } : {}),
+          ...(fallback?.supportsImage !== undefined ? { isVl: fallback.supportsImage } : {}),
+          // 官方 `model_config` 的 display_name / max_input_tokens 必须带上。
+          ...(fallback?.name !== undefined ? { displayName: fallback.name } : {}),
+          ...(fallback?.contextWindow !== undefined ? { maxInputTokens: fallback.contextWindow } : {}),
+          // ⚠️ **`business` 必填**，否则服务端把请求路由到错误的后端节点。
+          //
+          // 实测（2026-09-20）：不带 `business` 时 `qfmodel`（Qwen3.8-Flash）
+          // 恒落到故障节点 `oa_qwen-plus-2025-04-28` 并返回
+          // `[FAIL]node:... msg:Execution failed`；补上 `business` 后立即正常
+          // （其余模型如 `qmodel_38max` 恰好不受影响，故早期排查易误判为
+          // 「该模型服务端故障」）。`agent` / `sec_scan` 等取值都能通。
+          //
+          // 源码依据：`MPi(A) { return A === 'sec_scan' ? 'security' : 'default' }`
+          // —— 服务端按 `business.type` 选路由池，缺字段会走异常分支。
+          business: { type: 'agent' },
+        })
+      } finally {
+        client.dispose()
+      }
     }
 
     // 3. 发送（⚠️ 头必须原样透传：Authorization 是 WASM 生成的
@@ -1234,22 +1256,47 @@ export class QoderAdapter extends LlmAdapter {
     request: { url: string; headers: Record<string, string>; body: string },
     options: GenerateOptions,
   ): Promise<Response> {
+    options.signal?.throwIfAborted()
     const headers = new Headers(request.headers)
     headers.set('Accept', 'text/event-stream')
+    const deadline = new AbortController()
+    // Keep parent cancellation connected for the response body as well. The
+    // deadline timer itself is removed as soon as response headers arrive.
+    const signal = options.signal === undefined ? deadline.signal
+      : AbortSignal.any([options.signal, deadline.signal])
+    const timeout = new LlmError('qoder: 等待响应头超时', 'TIMEOUT')
+    let rejectAbort: (reason: unknown) => void = () => {}
+    const aborted = new Promise<never>((_, reject) => { rejectAbort = reject })
+    const onAbort = (): void => rejectAbort(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    const timer = setTimeout(() => deadline.abort(timeout), resolveHeadersTimeoutMs())
     try {
-      return await this.fetchImpl(request.url, {
+      const response = this.fetchImpl(request.url, {
         method: 'POST',
         headers,
         body: request.body,
-        signal: options.signal,
+        signal,
+      }).then(value => {
+        // A custom fetch may ignore cancellation and resolve late. Its body
+        // still belongs to this abandoned attempt and must not remain open.
+        if (signal.aborted) {
+          void value.body?.cancel().catch(() => {})
+          throw signal.reason
+        }
+        return value
       })
+      return await Promise.race([response, aborted])
     } catch (error) {
       if (options.signal?.aborted) throw error
+      if (deadline.signal.aborted) throw timeout
       if (isTransportError(error)) {
         throw new LlmError(`qoder: transport error: ${error instanceof Error ? error.message : String(error)}`,
           'TRANSPORT', { cause: error as Error })
       }
       throw error
+    } finally {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
     }
   }
 }
@@ -1290,40 +1337,21 @@ export function promotionActiveNow(promotion: QoderModelPromotion, now: Date): b
  * 生成模型选择器里显示的名字。
  *
  * ```
- * Qwen3.8-Flash · 免费            ← priceFactor = 0
- * Qwen3.8-Max · x0.5→x0.2        ← 折扣窗口内：原价→折后价
- * Qwen3.8-Max · x0.5             ← 窗口外：只有原价
- * Sonus · x8                     ← 无促销
+ * Qwen3.8-Flash · 快照 x0（2026-09-21，仅参考）
+ * Qwen3.8-Max · 快照 x0.2（2026-09-21，仅参考）
  * ```
  *
  * ⚠️ **倍率必须写进 `name` 而不是 `description`**：composer 的模型切换菜单
  * 只渲染 `name`（见 dsh-client-ui-model-selection 的 ModelSelect：
  * `children: model.name`），`description` 仅用于 `/model` 弹窗。
  *
- * ⚠️ 折后价**不直接采信目录的 `priceFactor`**：它是采集时刻的生效价，
- * 窗口切换后即失真。改为按 `beforePromotionPriceFactor × discountFactor`
- * 本地推算（实测三条全部吻合），窗口外则用原价。
+ * 历史促销窗口不能证明今天仍有同样的活动。只显示采集时的原始倍率，
+ * 不再按当前时钟推算“当前价”，也不把历史 x0 宣称为当前免费。
  */
-export function qoderDisplayName(model: QoderFallbackModel, now: Date = new Date()): string {
-  const promo = model.promotion
-  const before = promo?.beforePromotionPriceFactor
-  const discount = promo?.discountFactor
-  const hasPromo = promo !== undefined && before !== undefined && discount !== undefined
-  const active = hasPromo && promotionActiveNow(promo, now)
-
-  // 免费优先于一切（`0` 是合法倍率，不能显示成 `x0`）。
-  if (model.priceFactor === 0) return `${model.name} · 免费`
-
-  if (hasPromo && active) {
-
-    const effective = Number((before * discount).toFixed(4))
-    return `${model.name} · x${before}→x${effective}`
-  }
-
-  // 窗口外用**原价**（有 promotion 时原价就是 before，而非采集到的折后价）；
-  // 窗口外显示折后价会让用户按折扣价预期、实际被按原价计费。
-  const price = hasPromo ? before : model.priceFactor
-  return price !== undefined ? `${model.name} · x${price}` : model.name
+export function qoderDisplayName(model: QoderFallbackModel, snapshotDate?: string): string {
+  const price = model.priceFactor
+  const reference = snapshotDate === undefined ? '仅参考' : `${snapshotDate}，仅参考`
+  return `${model.name} · 快照${price === undefined ? '' : ` x${price}`}（${reference}）`
 }
 
 /**
